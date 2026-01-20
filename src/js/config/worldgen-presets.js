@@ -2,7 +2,7 @@
  * WorldGen Presets Configuration
  * Defines preset values for terrain and tree generation
  * Based on: docs/plans/2026-01-14-menu-ui-v2-design.md (Section 9.4)
- * 
+ *
  * These presets map user-friendly options to internal terrain/tree parameters.
  * Players only see preset names, not the underlying fBm/scale/offset values.
  */
@@ -99,11 +99,11 @@ export const DEFAULT_WORLDGEN_DRAFT = {
  */
 export function buildWorldGenParams(presetId, overrides = {}) {
   const preset = WORLDGEN_PRESETS[presetId] || WORLDGEN_PRESETS.default
-  
+
   // Deep clone preset
   const terrain = JSON.parse(JSON.stringify(preset.terrain))
   const trees = JSON.parse(JSON.stringify(preset.trees))
-  
+
   // Apply user overrides
   if (overrides.magnitude !== undefined) {
     terrain.magnitude = overrides.magnitude
@@ -114,6 +114,6 @@ export function buildWorldGenParams(presetId, overrides = {}) {
   if (overrides.treeMaxHeight !== undefined) {
     trees.maxHeight = overrides.treeMaxHeight
   }
-  
+
   return { terrain, trees }
 }

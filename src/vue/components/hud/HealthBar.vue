@@ -1,10 +1,10 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
 /**
  * HealthBar - Minecraft Style Health Display
  * 10 hearts, each heart = 2 HP (max 20 HP)
  */
 import { computed } from 'vue'
-import { useHudStore } from '../../vue/hudStore.js'
 
 const hud = useHudStore()
 
@@ -16,9 +16,11 @@ const hearts = computed(() => {
     const heartHp = i * 2
     if (hp >= heartHp + 2) {
       result.push('full')
-    } else if (hp >= heartHp + 1) {
+    }
+    else if (hp >= heartHp + 1) {
       result.push('half')
-    } else {
+    }
+    else {
       result.push('empty')
     }
   }

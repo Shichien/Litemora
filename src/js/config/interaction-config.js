@@ -12,5 +12,5 @@ export const INTERACTION_CONFIG = {
   modes: {
     REMOVE: 'remove',
     ADD: 'add',
-  }
+  },
 }

@@ -3,7 +3,7 @@
  * InfoPanel - Top Right Info Display
  * Shows Time, Day, FPS, Player Count, Server info like typical MC mods
  */
-import { useHudStore } from '../../vue/hudStore.js'
+import { useHudStore } from '@pinia/hudStore.js'
 
 const hud = useHudStore()
 </script>

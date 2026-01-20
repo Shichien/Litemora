@@ -1,11 +1,11 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
 /**
  * ChatBox - System/chat message display & Input
  * Shows messages in bottom-left corner with fade effect
  * Handles user input with 'T' key
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useHudStore } from '../../vue/hudStore.js'
 
 const hud = useHudStore()
 

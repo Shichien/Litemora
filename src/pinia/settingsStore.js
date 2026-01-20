@@ -1,3 +1,4 @@
+import emitter from '@three/utils/event-bus.js'
 /**
  * Settings Store - Game settings management
  * Handles graphics, controls, camera, visual effects, and environment settings
@@ -12,7 +13,6 @@ import {
   FOV_PRESETS,
   SPEEDLINES_PRESETS,
 } from '../js/config/settings-presets.js'
-import emitter from '../js/utils/event-bus.js'
 
 // ========================================
 // Constants

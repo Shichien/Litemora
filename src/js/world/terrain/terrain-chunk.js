@@ -97,7 +97,6 @@ export default class TerrainChunk {
       debugEnabled: false,
     })
 
-
     // ===== 渲染：实例化 mesh，并把 group 放到 chunk 世界位置 =====
     // 注意：chunk 场景下不允许每个 chunk 各自创建 debug panel，否则面板会爆炸式增长
     // 渲染参数由 ChunkManager 提供 sharedRenderParams，统一控制所有 chunk

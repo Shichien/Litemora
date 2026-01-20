@@ -1,10 +1,10 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
 /**
  * ExperienceBar - Minecraft Style XP Bar
  * Shows experience progress and level
  */
 import { computed } from 'vue'
-import { useHudStore } from '../../vue/hudStore.js'
 
 const hud = useHudStore()
 

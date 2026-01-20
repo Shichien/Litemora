@@ -1,23 +1,28 @@
+@charset "UTF-8";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@import './tokens';
+@import './hud';
+
 :root {
-  /*
-		https://tailwindcss.com/docs/customizing-colors
-	*/
-  --primary: #262626; /* neutral-800 */
-  --secondary: #171717; /* neutral-900 */
-  --tertiary: #404040; /* neutral-700 */
+  --primary: #262626;
+  --secondary: #171717;
+  --tertiary: #404040;
   --color: #f3f3f3;
-  --accent-primary: #2563eb; /* blue-600 */
-  --accent-primary-state: #1d4ed8; /* blue-700 */
+  --accent-primary: #2563eb;
+  --accent-primary-state: #1d4ed8;
 }
 
 html,
 body {
   width: 100%;
   height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .github-corner:hover .octo-arm {

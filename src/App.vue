@@ -1,10 +1,10 @@
 <script setup>
+import Experience from '@three/experience.js'
+import Crosshair from '@ui-components/Crosshair.vue'
+import GameHud from '@ui-components/hud/GameHud.vue'
+import UiRoot from '@ui-components/menu/UiRoot.vue'
+import MiniMap from '@ui-components/MiniMap.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import Crosshair from './components/Crosshair.vue'
-import GameHud from './components/hud/GameHud.vue'
-import UiRoot from './components/menu/UiRoot.vue'
-import MiniMap from './components/MiniMap.vue'
-import Experience from './js/experience.js'
 
 const threeCanvas = ref(null)
 let experience = null

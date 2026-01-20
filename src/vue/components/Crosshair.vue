@@ -1,6 +1,6 @@
 <script setup>
+import emitter from '@three/utils/event-bus.js'
 import { onMounted, onUnmounted, ref } from 'vue'
-import emitter from '../js/utils/event-bus.js'
 
 /**
  * Crosshair - Minecraft 风格的十字准星

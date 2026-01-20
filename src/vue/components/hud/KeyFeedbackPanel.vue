@@ -1,10 +1,10 @@
 <script setup>
+import emitter from '@three/utils/event-bus.js'
 /**
  * KeyFeedbackPanel - Displays user key presses (WASD, ZXC, V)
  * Highlighting keys based on input:update events
  */
 import { onMounted, onUnmounted, reactive } from 'vue'
-import emitter from '../../js/utils/event-bus.js'
 
 // Key states
 const keys = reactive({

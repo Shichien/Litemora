@@ -1,10 +1,10 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
 /**
  * CompassWheel - Horizontal scrolling compass with direction markers
  * Uses absolute positioning for seamless looping
  */
 import { computed } from 'vue'
-import { useHudStore } from '../../vue/hudStore.js'
 
 const hud = useHudStore()
 

@@ -1,14 +1,14 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
 /**
  * CoordinateDisplay - Shows player X Y Z world coordinates
  */
 import { computed } from 'vue'
-import { useHudStore } from '../../vue/hudStore.js'
 
 const hud = useHudStore()
 
 // Format coordinate with fixed decimal places
-const formatCoord = (val) => val.toFixed(3)
+const formatCoord = val => val.toFixed(3)
 
 const coords = computed(() => ({
   x: formatCoord(hud.position.x),

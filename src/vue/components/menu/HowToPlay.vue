@@ -1,4 +1,5 @@
 <script setup>
+import { useUiStore } from '@pinia/uiStore.js'
 /**
  * HowToPlay - Main Menu paged tutorial (placeholder-first)
  * - 先用 div 画面占位符把页面结构与交互跑通
@@ -6,7 +7,6 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useUiStore } from '../../vue/uiStore.js'
 
 const ui = useUiStore()
 const { t } = useI18n()

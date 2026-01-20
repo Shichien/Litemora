@@ -103,7 +103,8 @@ block.ao = {
 
 ```js
 function vertexAO(side1, side2, corner) {
-  if (side1 && side2) return 0
+  if (side1 && side2)
+    return 0
   return 3 - (side1 + side2 + corner)
 }
 ```

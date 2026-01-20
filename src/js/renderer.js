@@ -68,7 +68,7 @@ export default class Renderer {
         // Update speedLines config
         this.postProcessConfig.speedLines.enabled = speedLines.enabled
         this.speedLinePass.enabled = speedLines.enabled
-        
+
         if (speedLines.color) {
           this.postProcessConfig.speedLines.color = speedLines.color
           this.speedLinePass.uniforms.uColor.value.setRGB(
@@ -365,10 +365,14 @@ export default class Renderer {
 
   destroy() {
     // Dispose all passes
-    if (this.renderPass) this.renderPass.dispose?.()
-    if (this.bloomPass) this.bloomPass.dispose?.()
-    if (this.speedLinePass) this.speedLinePass.dispose?.()
-    if (this.outputPass) this.outputPass.dispose?.()
+    if (this.renderPass)
+      this.renderPass.dispose?.()
+    if (this.bloomPass)
+      this.bloomPass.dispose?.()
+    if (this.speedLinePass)
+      this.speedLinePass.dispose?.()
+    if (this.outputPass)
+      this.outputPass.dispose?.()
 
     // Dispose composer and its render targets
     if (this.composer) {

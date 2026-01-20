@@ -103,34 +103,48 @@ export default class ChunkManager {
   applyWorldGenParams({ terrain, trees, water, biome } = {}) {
     // Apply terrain params
     if (terrain) {
-      if (terrain.scale !== undefined) this.terrainParams.scale = terrain.scale
-      if (terrain.magnitude !== undefined) this.terrainParams.magnitude = terrain.magnitude
-      if (terrain.offset !== undefined) this.terrainParams.offset = terrain.offset
+      if (terrain.scale !== undefined)
+        this.terrainParams.scale = terrain.scale
+      if (terrain.magnitude !== undefined)
+        this.terrainParams.magnitude = terrain.magnitude
+      if (terrain.offset !== undefined)
+        this.terrainParams.offset = terrain.offset
       if (terrain.fbm) {
-        if (terrain.fbm.octaves !== undefined) this.terrainParams.fbm.octaves = terrain.fbm.octaves
-        if (terrain.fbm.gain !== undefined) this.terrainParams.fbm.gain = terrain.fbm.gain
-        if (terrain.fbm.lacunarity !== undefined) this.terrainParams.fbm.lacunarity = terrain.fbm.lacunarity
+        if (terrain.fbm.octaves !== undefined)
+          this.terrainParams.fbm.octaves = terrain.fbm.octaves
+        if (terrain.fbm.gain !== undefined)
+          this.terrainParams.fbm.gain = terrain.fbm.gain
+        if (terrain.fbm.lacunarity !== undefined)
+          this.terrainParams.fbm.lacunarity = terrain.fbm.lacunarity
       }
     }
 
     // Apply tree params
     if (trees) {
-      if (trees.minHeight !== undefined) this.treeParams.minHeight = trees.minHeight
-      if (trees.maxHeight !== undefined) this.treeParams.maxHeight = trees.maxHeight
-      if (trees.minRadius !== undefined) this.treeParams.minRadius = trees.minRadius
-      if (trees.maxRadius !== undefined) this.treeParams.maxRadius = trees.maxRadius
-      if (trees.frequency !== undefined) this.treeParams.frequency = trees.frequency
+      if (trees.minHeight !== undefined)
+        this.treeParams.minHeight = trees.minHeight
+      if (trees.maxHeight !== undefined)
+        this.treeParams.maxHeight = trees.maxHeight
+      if (trees.minRadius !== undefined)
+        this.treeParams.minRadius = trees.minRadius
+      if (trees.maxRadius !== undefined)
+        this.treeParams.maxRadius = trees.maxRadius
+      if (trees.frequency !== undefined)
+        this.treeParams.frequency = trees.frequency
     }
 
     // Apply water params
     if (water) {
-      if (water.waterOffset !== undefined) this.waterParams.waterOffset = water.waterOffset
+      if (water.waterOffset !== undefined)
+        this.waterParams.waterOffset = water.waterOffset
     }
 
     // Apply biome params
     if (biome) {
-      if (biome.biomeSource !== undefined) this.biomeParams.biomeSource = biome.biomeSource
-      if (biome.forcedBiome !== undefined) this.biomeParams.forcedBiome = biome.forcedBiome
+      if (biome.biomeSource !== undefined)
+        this.biomeParams.biomeSource = biome.biomeSource
+      if (biome.forcedBiome !== undefined)
+        this.biomeParams.forcedBiome = biome.forcedBiome
     }
   }
 

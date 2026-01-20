@@ -1,10 +1,10 @@
 <script setup>
+import emitter from '@three/utils/event-bus.js'
 /**
  * LoadingScreen - Initial loading screen
  * Shows loading progress while resources are being loaded
  */
 import { onMounted, onUnmounted, ref } from 'vue'
-import emitter from '../../js/utils/event-bus.js'
 
 const progress = ref(0)
 const loadingText = ref('Loading...')
@@ -41,7 +41,9 @@ function handleProgress({ loaded, total }) {
           :style="{ width: `${progress}%` }"
         />
       </div>
-      <p class="loading-text">{{ loadingText }}</p>
+      <p class="loading-text">
+        {{ loadingText }}
+      </p>
     </div>
   </div>
 </template>

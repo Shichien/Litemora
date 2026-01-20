@@ -1,12 +1,12 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
+import { useUiStore } from '@pinia/uiStore.js'
+import emitter from '@three/utils/event-bus.js'
 /**
  * GameHud - Main Minecraft Style HUD Container
  * Only visible when screen === 'playing'
  */
 import { onMounted, onUnmounted } from 'vue'
-import emitter from '../../js/utils/event-bus.js'
-import { useHudStore } from '../../vue/hudStore.js'
-import { useUiStore } from '../../vue/uiStore.js'
 import ChatBox from './ChatBox.vue'
 import ExperienceBar from './ExperienceBar.vue'
 import HealthBar from './HealthBar.vue'
@@ -15,8 +15,6 @@ import HungerBar from './HungerBar.vue'
 import InfoPanel from './InfoPanel.vue'
 import KeyFeedbackPanel from './KeyFeedbackPanel.vue'
 import TopInfoBar from './TopInfoBar.vue'
-// Import HUD styles
-import '../../css/hud.css'
 
 const ui = useUiStore()
 const hud = useHudStore()

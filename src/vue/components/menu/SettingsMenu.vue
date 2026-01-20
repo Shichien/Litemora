@@ -1,12 +1,12 @@
 <script setup>
+import { useSettingsStore } from '@pinia/settingsStore.js'
+import { useUiStore } from '@pinia/uiStore.js'
 /**
  * SettingsMenu - Full settings panel with Camera, Visual, Environment controls
  * Supports preset switching and step sliders
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useSettingsStore } from '../../vue/settingsStore.js'
-import { useUiStore } from '../../vue/uiStore.js'
 import McStepSlider from './ui/McStepSlider.vue'
 
 const ui = useUiStore()

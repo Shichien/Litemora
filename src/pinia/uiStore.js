@@ -1,3 +1,5 @@
+import { useSettingsStore } from '@pinia/settingsStore.js'
+import emitter from '@three/utils/event-bus.js'
 /**
  * UI Store - Menu System State Machine
  * Manages screen states, menu views, and world state
@@ -9,8 +11,6 @@ import {
   DEFAULT_WORLDGEN_DRAFT,
   WORLDGEN_PRESETS,
 } from '../js/config/worldgen-presets.js'
-import emitter from '../js/utils/event-bus.js'
-import { useSettingsStore } from './settingsStore.js'
 
 // ========================================
 // Constants

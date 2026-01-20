@@ -1,10 +1,10 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
 /**
  * HungerBar - Minecraft Style Hunger Display
  * 10 drumsticks, each = 2 hunger points (max 20)
  */
 import { computed } from 'vue'
-import { useHudStore } from '../../vue/hudStore.js'
 
 const hud = useHudStore()
 
@@ -16,9 +16,11 @@ const foods = computed(() => {
     const foodPoints = i * 2
     if (hungerVal >= foodPoints + 2) {
       result.push('full')
-    } else if (hungerVal >= foodPoints + 1) {
+    }
+    else if (hungerVal >= foodPoints + 1) {
       result.push('half')
-    } else {
+    }
+    else {
       result.push('empty')
     }
   }

@@ -1,11 +1,11 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
+import emitter from '@three/utils/event-bus.js'
 /**
  * Hotbar - Minecraft Style Hotbar (9 slots)
  * Keyboard 1-9 and mouse wheel to select
  */
 import { computed, onMounted, onUnmounted } from 'vue'
-import emitter from '../../js/utils/event-bus.js'
-import { useHudStore } from '../../vue/hudStore.js'
 
 const hud = useHudStore()
 

@@ -2,14 +2,16 @@
 /**
  * PauseMenu - ESC menu when game is paused
  */
-import { useUiStore } from '../../vue/uiStore.js'
+import { useUiStore } from '@pinia/uiStore.js'
 
 const ui = useUiStore()
 </script>
 
 <template>
   <div class="pause-menu">
-    <h2 class="menu-title">Game Paused</h2>
+    <h2 class="menu-title">
+      Game Paused
+    </h2>
 
     <div class="mc-menu">
       <button class="mc-button" @click="ui.toPlaying()">

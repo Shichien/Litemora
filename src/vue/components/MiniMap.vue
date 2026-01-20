@@ -1,7 +1,7 @@
 <script setup>
+import emitter from '@three/utils/event-bus.js'
 import { Color } from 'three'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import emitter from '../js/utils/event-bus.js'
 
 // ===== 响应式状态 =====
 const canvasRef = ref(null)

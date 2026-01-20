@@ -1,4 +1,3 @@
-
 import { createI18n } from 'vue-i18n'
 import en from '../locales/en.json'
 import zh from '../locales/zh.json'
@@ -17,13 +16,13 @@ function getDefaultLocale() {
       console.warn('Failed to parse settings for language', e)
     }
   }
-  
+
   // Check browser language
   const browserLang = navigator.language.toLowerCase()
   if (browserLang.startsWith('zh')) {
     return 'zh'
   }
-  
+
   return 'en'
 }
 
@@ -33,8 +32,8 @@ const i18n = createI18n({
   fallbackLocale: 'en',
   messages: {
     en,
-    zh
-  }
+    zh,
+  },
 })
 
 export default i18n

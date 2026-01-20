@@ -98,11 +98,11 @@ pnpm clean:report     # Remove Playwright test reports
 Example:
 
 ```javascript
-import * as THREE from 'three';
-import { ref, onMounted } from 'vue';
-import { useUiStore } from '../../vue/uiStore.js';
-import Experience from '../experience.js';
-import vertexShader from '../../shaders/ao.vert.glsl';
+import * as THREE from 'three'
+import { onMounted, ref } from 'vue'
+import { useUiStore } from '@pinia/uiStore.js'
+import Experience from '@three/experience.js'
+import vertexShader from '@/shaders/ao.vert.glsl'
 ```
 
 ### Type Annotations
@@ -155,13 +155,13 @@ calculateAO(vertices) {
 All Three.js logic is managed through the `Experience` singleton:
 
 ```javascript
-import Experience from './experience.js';
+import Experience from './experience.js'
 
 class MyComponent {
   constructor() {
-    this.experience = new Experience(); // Returns singleton
-    this.scene = this.experience.scene;
-    this.camera = this.experience.camera;
+    this.experience = new Experience() // Returns singleton
+    this.scene = this.experience.scene
+    this.camera = this.experience.camera
     // Only extract what this component needs
   }
 }
@@ -178,7 +178,7 @@ class MyComponent {
 Use Pinia for global state shared between UI and 3D logic:
 
 ```javascript
-// In store (src/vue/uiStore.js)
+// In store (src/pinia/uiStore.js)
 export const useUiStore = defineStore('ui', () => {
   const screen = ref('loading')
 
@@ -191,7 +191,7 @@ export const useUiStore = defineStore('ui', () => {
 })
 
 // In Three.js component
-import { useUiStore } from '../../vue/uiStore.js'
+import { useUiStore } from '@pinia/uiStore.js'
 const ui = useUiStore()
 if (ui.screen === 'playing') { ... }
 ```
@@ -201,14 +201,14 @@ if (ui.screen === 'playing') { ... }
 Use `mitt` event bus for decoupled cross-layer communication:
 
 ```javascript
-import emitter from './utils/eventEmitter.js';
+import emitter from './utils/eventEmitter.js'
 
 // Emit event
-emitter.emit('ui:pause-changed', isPaused);
-emitter.emit('core:resize', { width, height });
+emitter.emit('ui:pause-changed', isPaused)
+emitter.emit('core:resize', { width, height })
 
 // Listen to event
-emitter.on('core:resize', (data) => this.resize());
+emitter.on('core:resize', data => this.resize())
 ```
 
 **When to use Pinia vs mitt:**
@@ -322,13 +322,20 @@ test(e2e): add raycasting interaction tests
 
 ## File Organization
 
-```
+### Directory Structure
+
+```text
 src/
-├── components/           # Vue UI components
-│   ├── hud/             # In-game HUD (health, hunger, hotbar)
-│   ├── menu/            # Menus (main, pause, settings, loading)
-│   └── *.vue            # Root-level components
-├── js/                  # Three.js core logic
+├── main.js              # Vue entry point
+├── App.vue               # Root Vue component
+├── vue/                 # Vue UI Layer
+│   └── components/      # Vue components
+│       ├── hud/         # In-game HUD (health, hunger, hotbar)
+│       ├── menu/        # Menus (main, pause, settings, loading)
+│       └── ui/          # Shared UI elements
+├── pinia/               # Pinia stores
+├── styles/              # Global SCSS (single entry: main.scss)
+├── js/                  # Three.js Core logic
 │   ├── camera/          # Camera rig, controls
 │   ├── world/           # Scene, player, terrain, chunks
 │   ├── interaction/     # Block breaking, raycasting
@@ -339,17 +346,26 @@ src/
 │   ├── experience.js    # Main singleton orchestrator
 │   └── sources.js       # Asset manifest
 ├── shaders/             # GLSL shaders (vertex/fragment)
-├── vue/                 # Pinia stores
-├── css/                 # Global CSS + Tailwind
 └── locales/             # i18n translation files
 ```
 
+### Path Aliases
+
+Always use aliases instead of deep relative paths (`../../..`):
+
+- `@` -> `src/`
+- `@ui` -> `src/vue/`
+- `@ui-components` -> `src/vue/components/`
+- `@pinia` -> `src/pinia/`
+- `@styles` -> `src/styles/`
+- `@three` -> `src/js/`
+
 ### Component Placement Rules
 
-- **Vue components:** `src/components/` (create subfolders as needed)
-- **3D components:** `src/js/` (under appropriate subdirectory)
-- **Pinia stores:** `src/vue/`
-- **Utilities:** `src/js/utils/` or `src/js/tools/`
+- **Vue components:** `src/vue/components/` (use `@ui-components/` alias)
+- **3D components:** `src/js/` (use `@three/` alias)
+- **Pinia stores:** `src/pinia/` (use `@pinia/` alias)
+- **Styles:** `src/styles/` (use `@styles/` alias, main entry: `main.scss`)
 - **Shaders:** `src/shaders/` (can create subdirectories)
 
 ---
@@ -376,5 +392,5 @@ src/
 
 ---
 
-**Last Updated:** 2026-01-19  
+**Last Updated:** 2026-01-20
 **Repository:** Third-Person-MC (Voxel-based Minecraft-style game in Three.js + Vue 3)

@@ -2,7 +2,7 @@
 
 [中文](README.md) | English
 
-> A Web 3D demonstration built with **Three.js + Vue 3**, showcasing **Minecraft-style multi-world portals** and **Souls-like target locking combat**.  
+> A Web 3D demonstration built with **Three.js + Vue 3**, showcasing **Minecraft-style multi-world portals** and **Souls-like target locking combat**.
 > Goal: To make Web3D a project that is "runnable, playable, and iteratively improvable," rather than just a screenshot demo.
 
 - Online Preview: `https://third-person-mc.vercel.app/`

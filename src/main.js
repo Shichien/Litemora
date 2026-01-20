@@ -1,9 +1,8 @@
+import i18n from '@three/i18n.js'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import App from './App.vue'
-import i18n from './js/i18n.js'
-import './css/global.css'
-import './scss/global.scss'
+import '@styles/main.scss'
 
 const app = createApp(App)
 app.use(createPinia())

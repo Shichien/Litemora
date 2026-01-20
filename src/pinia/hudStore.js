@@ -1,10 +1,10 @@
+import emitter from '@three/utils/event-bus.js'
 /**
  * HUD Store - Minecraft Style HUD State Management
  * Manages health, hunger, experience, hotbar, position, and chat messages
  */
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import emitter from '../js/utils/event-bus.js'
 
 export const useHudStore = defineStore('hud', () => {
   // ========================================

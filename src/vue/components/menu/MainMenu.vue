@@ -1,13 +1,13 @@
 <script setup>
+import { useSettingsStore } from '@pinia/settingsStore.js'
+import { useUiStore } from '@pinia/uiStore.js'
+import { WORLDGEN_PRESET_IDS, WORLDGEN_PRESETS } from '@three/config/worldgen-presets.js'
 /**
  * MainMenu - Main menu with Root and WorldSetup views
  * Includes Advanced panel for WorldGen settings
  */
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { WORLDGEN_PRESET_IDS, WORLDGEN_PRESETS } from '../../js/config/worldgen-presets.js'
-import { useSettingsStore } from '../../vue/settingsStore.js'
-import { useUiStore } from '../../vue/uiStore.js'
 import McStepSlider from './ui/McStepSlider.vue'
 
 const ui = useUiStore()

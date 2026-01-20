@@ -4,13 +4,13 @@
 
 **目标：** 实现类似原版 Minecraft 的方块挖掘视觉反馈系统，包括挖掘进度条和方块裂纹效果。
 
-**架构：** 
+**架构：**
 - 创建 `BlockMiningController` 类负责挖掘逻辑（进度追踪、状态管理）
 - 扩展现有 Shader 系统，为方块材质添加裂纹覆盖效果
 - 在 `Crosshair.vue` 组件中添加挖掘进度条 UI
 - 通过 mitt 事件总线实现 3D 场景与 UI 层的通信
 
-**技术栈：** 
+**技术栈：**
 - Three.js (InstancedMesh + CustomShaderMaterial)
 - GLSL Shader (裂纹纹理混合)
 - Vue 3 (进度条 UI)
@@ -114,10 +114,10 @@ varying float vInstanceId;
 void main() {
     // 传递 UV 坐标
     vUv = uv;
-    
+
     // 传递实例 ID（通过 gl_InstanceID，但需要转为 float）
     vInstanceId = float(gl_InstanceID);
-    
+
     // 标准 MVP 变换（使用 CSM 的 PositionRaw）
     csm_PositionRaw = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
 }
@@ -149,10 +149,10 @@ void main() {
         // 根据进度选择裂纹纹理（0-9 阶段）
         int stage = int(floor(uMiningProgress * 9.999)); // 9.999 确保 progress=1.0 时不会溢出
         stage = clamp(stage, 0, 9);
-        
+
         // 采样对应阶段的裂纹纹理
         vec4 crackColor;
-        
+
         // GLSL 不支持动态数组索引，需要手动展开
         if (stage == 0) crackColor = texture2D(uCrackTextures[0], vUv);
         else if (stage == 1) crackColor = texture2D(uCrackTextures[1], vUv);
@@ -164,7 +164,7 @@ void main() {
         else if (stage == 7) crackColor = texture2D(uCrackTextures[7], vUv);
         else if (stage == 8) crackColor = texture2D(uCrackTextures[8], vUv);
         else crackColor = texture2D(uCrackTextures[9], vUv);
-        
+
         // 混合裂纹到原始颜色上（使用 alpha 通道）
         csm_DiffuseColor.rgb = mix(csm_DiffuseColor.rgb, crackColor.rgb, crackColor.a * 0.8);
     }
@@ -211,10 +211,10 @@ export default class BlockMiningController {
     }
 
     // 挖掘状态
-    this.isMining = false          // 是否正在挖掘
-    this.miningStartTime = 0       // 挖掘开始时间
-    this.miningProgress = 0        // 当前挖掘进度 [0, 1]
-    this.currentTarget = null      // 当前挖掘目标 { chunkX, chunkZ, worldBlock, instanceId, mesh }
+    this.isMining = false // 是否正在挖掘
+    this.miningStartTime = 0 // 挖掘开始时间
+    this.miningProgress = 0 // 当前挖掘进度 [0, 1]
+    this.currentTarget = null // 当前挖掘目标 { chunkX, chunkZ, worldBlock, instanceId, mesh }
 
     // 绑定事件处理函数
     this._onMouseDown = this._onMouseDown.bind(this)
@@ -233,10 +233,12 @@ export default class BlockMiningController {
    * 鼠标按下事件：开始挖掘
    */
   _onMouseDown(event) {
-    if (!this.params.enabled || event.button !== 0) return
+    if (!this.params.enabled || event.button !== 0)
+      return
 
     const raycaster = this.experience.world?.blockRaycaster
-    if (!raycaster || !raycaster.current) return
+    if (!raycaster || !raycaster.current)
+      return
 
     // 开始挖掘
     this.isMining = true
@@ -255,7 +257,8 @@ export default class BlockMiningController {
    * 鼠标松开事件：停止挖掘
    */
   _onMouseUp(event) {
-    if (event.button !== 0) return
+    if (event.button !== 0)
+      return
 
     if (this.isMining) {
       this._resetMining()
@@ -280,14 +283,15 @@ export default class BlockMiningController {
    * 检查目标是否改变
    */
   _isTargetChanged(newInfo) {
-    if (!this.currentTarget || !newInfo) return true
+    if (!this.currentTarget || !newInfo)
+      return true
 
     return (
-      this.currentTarget.chunkX !== newInfo.chunkX ||
-      this.currentTarget.chunkZ !== newInfo.chunkZ ||
-      this.currentTarget.worldBlock.x !== newInfo.worldBlock.x ||
-      this.currentTarget.worldBlock.y !== newInfo.worldBlock.y ||
-      this.currentTarget.worldBlock.z !== newInfo.worldBlock.z
+      this.currentTarget.chunkX !== newInfo.chunkX
+      || this.currentTarget.chunkZ !== newInfo.chunkZ
+      || this.currentTarget.worldBlock.x !== newInfo.worldBlock.x
+      || this.currentTarget.worldBlock.y !== newInfo.worldBlock.y
+      || this.currentTarget.worldBlock.z !== newInfo.worldBlock.z
     )
   }
 
@@ -304,7 +308,8 @@ export default class BlockMiningController {
    * 完成挖掘：销毁方块
    */
   _completeMining() {
-    if (!this.currentTarget) return
+    if (!this.currentTarget)
+      return
 
     const { worldBlock } = this.currentTarget
     const chunkManager = this.experience.terrainDataManager
@@ -418,34 +423,34 @@ export default class BlockMiningController {
 在 `TerrainRenderer` 的构造函数中，找到 `this._animatedMaterials = []` 这一行后，添加：
 
 ```js
-    // 挖掘系统：加载裂纹纹理数组
-    this._crackTextures = []
-    for (let i = 0; i <= 9; i++) {
-      const textureName = `destroy_stage_${i}`
-      const texture = this.resources.items[textureName]
-      if (texture) {
-        texture.minFilter = THREE.NearestFilter
-        texture.magFilter = THREE.NearestFilter
-        texture.wrapS = THREE.ClampToEdgeWrapping
-        texture.wrapT = THREE.ClampToEdgeWrapping
-        this._crackTextures.push(texture)
-      }
-    }
+// 挖掘系统：加载裂纹纹理数组
+this._crackTextures = []
+for (let i = 0; i <= 9; i++) {
+  const textureName = `destroy_stage_${i}`
+  const texture = this.resources.items[textureName]
+  if (texture) {
+    texture.minFilter = THREE.NearestFilter
+    texture.magFilter = THREE.NearestFilter
+    texture.wrapS = THREE.ClampToEdgeWrapping
+    texture.wrapT = THREE.ClampToEdgeWrapping
+    this._crackTextures.push(texture)
+  }
+}
 
-    // 挖掘 Shader 的 uniform（全局共享，所有方块材质共用）
-    this._miningUniforms = {
-      uCrackTextures: { value: this._crackTextures },
-      uMiningProgress: { value: 0.0 },
-      uTargetInstanceId: { value: -1.0 },
-      uIsBeingMined: { value: false },
-    }
+// 挖掘 Shader 的 uniform（全局共享，所有方块材质共用）
+this._miningUniforms = {
+  uCrackTextures: { value: this._crackTextures },
+  uMiningProgress: { value: 0.0 },
+  uTargetInstanceId: { value: -1.0 },
+  uIsBeingMined: { value: false },
+}
 
-    // 监听挖掘事件
-    this._handleMiningProgress = this._handleMiningProgress.bind(this)
-    this._handleMiningCancel = this._handleMiningCancel.bind(this)
-    emitter.on('game:mining-progress', this._handleMiningProgress)
-    emitter.on('game:mining-cancel', this._handleMiningCancel)
-    emitter.on('game:mining-complete', this._handleMiningCancel)
+// 监听挖掘事件
+this._handleMiningProgress = this._handleMiningProgress.bind(this)
+this._handleMiningCancel = this._handleMiningCancel.bind(this)
+emitter.on('game:mining-progress', this._handleMiningProgress)
+emitter.on('game:mining-cancel', this._handleMiningCancel)
+emitter.on('game:mining-complete', this._handleMiningCancel)
 ```
 
 **步骤 2: 添加挖掘事件处理函数**
@@ -507,8 +512,8 @@ export default class BlockMiningController {
 同时在文件顶部添加 Shader 导入：
 
 ```js
-import miningVertexShader from '../../shaders/blocks/mining.vert.glsl'
 import miningFragmentShader from '../../shaders/blocks/mining.frag.glsl'
+import miningVertexShader from '../../shaders/blocks/mining.vert.glsl'
 ```
 
 **步骤 4: 在 `dispose` 方法中移除事件监听**
@@ -516,9 +521,9 @@ import miningFragmentShader from '../../shaders/blocks/mining.frag.glsl'
 找到 `dispose()` 方法，在其中添加：
 
 ```js
-    emitter.off('game:mining-progress', this._handleMiningProgress)
-    emitter.off('game:mining-cancel', this._handleMiningCancel)
-    emitter.off('game:mining-complete', this._handleMiningCancel)
+emitter.off('game:mining-progress', this._handleMiningProgress)
+emitter.off('game:mining-cancel', this._handleMiningCancel)
+emitter.off('game:mining-complete', this._handleMiningCancel)
 ```
 
 **步骤 5: 验证修改**
@@ -547,11 +552,11 @@ import BlockMiningController from '../interaction/block-mining-controller.js'
 找到 `this.blockSelectionHelper = new BlockSelectionHelper(...)` 这一行后，添加：
 
 ```js
-      // 挖掘控制器
-      this.blockMiningController = new BlockMiningController({
-        enabled: true,
-        miningDuration: 2000, // 2 秒固定时长
-      })
+// 挖掘控制器
+this.blockMiningController = new BlockMiningController({
+  enabled: true,
+  miningDuration: 2000, // 2 秒固定时长
+})
 ```
 
 **步骤 3: 移除原有的即时破坏逻辑**
@@ -559,50 +564,50 @@ import BlockMiningController from '../interaction/block-mining-controller.js'
 找到这段代码：
 
 ```js
-      // ===== 交互事件绑定：删除/新增方块 =====
-      emitter.on('input:mouse_down', (event) => {
-        // 0 为左键
-        if (event.button === 0 && this.blockRaycaster?.current) {
-          const { worldBlock, face } = this.blockRaycaster.current
+// ===== 交互事件绑定：删除/新增方块 =====
+emitter.on('input:mouse_down', (event) => {
+  // 0 为左键
+  if (event.button === 0 && this.blockRaycaster?.current) {
+    const { worldBlock, face } = this.blockRaycaster.current
 
-          if (this.blockEditMode === 'remove') {
-            this.chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
-          }
-          // ... 其他逻辑
-        }
-      })
+    if (this.blockEditMode === 'remove') {
+      this.chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
+    }
+    // ... 其他逻辑
+  }
+})
 ```
 
 将其中 `remove` 模式的即时破坏逻辑注释或删除（因为现在由 `BlockMiningController` 管理）：
 
 ```js
-      // ===== 交互事件绑定：删除/新增方块 =====
-      emitter.on('input:mouse_down', (event) => {
-        // 0 为左键
-        if (event.button === 0 && this.blockRaycaster?.current) {
-          const { worldBlock, face } = this.blockRaycaster.current
+// ===== 交互事件绑定：删除/新增方块 =====
+emitter.on('input:mouse_down', (event) => {
+  // 0 为左键
+  if (event.button === 0 && this.blockRaycaster?.current) {
+    const { worldBlock, face } = this.blockRaycaster.current
 
-          // remove 模式现在由 BlockMiningController 管理，不再即时破坏
-          // if (this.blockEditMode === 'remove') {
-          //   this.chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
-          // }
+    // remove 模式现在由 BlockMiningController 管理，不再即时破坏
+    // if (this.blockEditMode === 'remove') {
+    //   this.chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
+    // }
 
-          if (this.blockEditMode === 'add') {
-            // 放置方块逻辑保持不变
-            if (face && face.normal) {
-              const nx = Math.round(face.normal.x)
-              const ny = Math.round(face.normal.y)
-              const nz = Math.round(face.normal.z)
+    if (this.blockEditMode === 'add') {
+      // 放置方块逻辑保持不变
+      if (face && face.normal) {
+        const nx = Math.round(face.normal.x)
+        const ny = Math.round(face.normal.y)
+        const nz = Math.round(face.normal.z)
 
-              const targetX = worldBlock.x + nx
-              const targetY = worldBlock.y + ny
-              const targetZ = worldBlock.z + nz
+        const targetX = worldBlock.x + nx
+        const targetY = worldBlock.y + ny
+        const targetZ = worldBlock.z + nz
 
-              this.chunkManager.addBlockWorld(targetX, targetY, targetZ, blocks.stone.id)
-            }
-          }
-        }
-      })
+        this.chunkManager.addBlockWorld(targetX, targetY, targetZ, blocks.stone.id)
+      }
+    }
+  }
+})
 ```
 
 **步骤 4: 在 `update` 方法中调用挖掘控制器的更新**
@@ -610,8 +615,8 @@ import BlockMiningController from '../interaction/block-mining-controller.js'
 找到 `update()` 方法，在其中添加：
 
 ```js
-    // 更新挖掘控制器
-    this.blockMiningController?.update()
+// 更新挖掘控制器
+this.blockMiningController?.update()
 ```
 
 **步骤 5: 验证修改**
@@ -642,19 +647,19 @@ const miningProgress = ref(0)
 在 `onMounted` 中添加：
 
 ```js
-  emitter.on('game:mining-start', onMiningStart)
-  emitter.on('game:mining-progress', onMiningProgress)
-  emitter.on('game:mining-cancel', onMiningCancel)
-  emitter.on('game:mining-complete', onMiningComplete)
+emitter.on('game:mining-start', onMiningStart)
+emitter.on('game:mining-progress', onMiningProgress)
+emitter.on('game:mining-cancel', onMiningCancel)
+emitter.on('game:mining-complete', onMiningComplete)
 ```
 
 在 `onUnmounted` 中添加：
 
 ```js
-  emitter.off('game:mining-start', onMiningStart)
-  emitter.off('game:mining-progress', onMiningProgress)
-  emitter.off('game:mining-cancel', onMiningCancel)
-  emitter.off('game:mining-complete', onMiningComplete)
+emitter.off('game:mining-start', onMiningStart)
+emitter.off('game:mining-progress', onMiningProgress)
+emitter.off('game:mining-cancel', onMiningCancel)
+emitter.off('game:mining-complete', onMiningComplete)
 ```
 
 **步骤 3: 实现事件处理函数**

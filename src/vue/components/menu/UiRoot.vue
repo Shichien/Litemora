@@ -1,12 +1,12 @@
 <script setup>
+import { useUiStore } from '@pinia/uiStore.js'
+import emitter from '@three/utils/event-bus.js'
 /**
  * UiRoot - Menu System Root Component
  * Manages screen transitions and overlay rendering
  */
 import { onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import emitter from '../../js/utils/event-bus.js'
-import { useUiStore } from '../../vue/uiStore.js'
 import HowToPlay from './HowToPlay.vue'
 import LoadingScreen from './LoadingScreen.vue'
 import MainMenu from './MainMenu.vue'
