@@ -1,11 +1,11 @@
 @charset "UTF-8";
 
+@use 'tokens';
+@use 'hud';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import './tokens';
-@import './hud';
 
 :root {
   --primary: #262626;

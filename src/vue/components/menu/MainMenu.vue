@@ -20,6 +20,11 @@ function toggleLanguage() {
   settings.setLanguage(newLang, { global: { locale } })
 }
 
+// Open GitHub
+function openGitHub() {
+  window.open('https://github.com/hexianWeb/Third-Person-MC', '_blank')
+}
+
 // Confirm dialog state
 const showConfirmDialog = ref(false)
 
@@ -79,10 +84,18 @@ function cancelOverwrite() {
       <span class="tagline">{{ randomTagline }}</span>
     </div>
 
-    <!-- Language Switcher -->
-    <button class="lang-btn" title="Switch Language" @click="toggleLanguage">
-      <img src="https://i.ibb.co/99187Lk/lang.png" alt="Language" class="lang-icon">
-    </button>
+    <!-- Top-Right Actions -->
+    <div class="top-right-actions">
+      <!-- GitHub Button -->
+      <button class="action-btn" title="GitHub Repository" @click="openGitHub">
+        <img src="/textures/hub/github.png" alt="GitHub" class="action-icon">
+      </button>
+
+      <!-- Language Switcher -->
+      <button class="action-btn" title="Switch Language" @click="toggleLanguage">
+        <img src="https://i.ibb.co/99187Lk/lang.png" alt="Language" class="action-icon">
+      </button>
+    </div>
 
     <!-- Root View -->
     <div v-if="ui.mainMenuView === 'root'" class="mc-menu">
@@ -327,23 +340,28 @@ function cancelOverwrite() {
   }
 }
 
-.lang-btn {
+.top-right-actions {
   position: absolute;
   top: 20px;
   right: 20px;
+  display: flex;
+  gap: 12px;
+  z-index: 100;
+}
+
+.action-btn {
   background: none;
   border: none;
   cursor: pointer;
   padding: 8px;
   transition: transform 0.2s;
-  z-index: 100;
 }
 
-.lang-btn:hover {
+.action-btn:hover {
   transform: scale(1.1);
 }
 
-.lang-icon {
+.action-icon {
   width: 32px;
   height: 32px;
   image-rendering: pixelated;
