@@ -122,6 +122,8 @@ export class PlayerAnimationController {
     // Update State Machine
     this.stateMachine.update(dt, {
       ...playerState,
+      // 透傳挖掘狀態給狀態機
+      isMining: playerState?.isMining,
       currentActionName: this.currentAction ? this.currentAction.getClip().name : null,
     })
   }

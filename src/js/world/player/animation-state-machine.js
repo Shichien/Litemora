@@ -156,6 +156,10 @@ export class PlayerAnimationStateMachine extends AnimationStateMachine {
         }
       },
       update: (dt, params) => {
+        // 挖掘中保持 Combat 狀態，不自動回到 Locomotion
+        if (params.isMining) {
+          return
+        }
         // 檢查動作是否結束
         if (!this.anim.isActionPlaying(params.currentActionName)) {
           this.setState(AnimationStates.LOCOMOTION)

@@ -66,7 +66,7 @@ export const animationSettings = {
   [AnimationClips.FALL]: { timeScale: 1.0, category: AnimationCategories.ACTION, loop: THREE.LoopRepeat },
   [AnimationClips.STRAIGHT_PUNCH]: { timeScale: 1.5, category: AnimationCategories.COMBAT, loop: THREE.LoopOnce },
   [AnimationClips.HOOK_PUNCH]: { timeScale: 1.5, category: AnimationCategories.COMBAT, loop: THREE.LoopOnce },
-  [AnimationClips.QUICK_COMBO]: { timeScale: 1.5, category: AnimationCategories.COMBAT, loop: THREE.LoopOnce },
+  [AnimationClips.QUICK_COMBO]: { timeScale: 1.5, category: AnimationCategories.COMBAT, loop: THREE.LoopRepeat },
   [AnimationClips.BLOCK]: { timeScale: 1.0, category: AnimationCategories.COMBAT, loop: THREE.LoopOnce },
   [AnimationClips.RIGHT_STRAIGHT_PUNCH]: { timeScale: 1.5, category: AnimationCategories.COMBAT, loop: THREE.LoopOnce },
   [AnimationClips.RIGHT_HOOK_PUNCH]: { timeScale: 1.5, category: AnimationCategories.COMBAT, loop: THREE.LoopOnce },

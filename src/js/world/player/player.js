@@ -49,6 +49,8 @@ export default class Player {
     // 攻击左右手交替状态（toggle）
     this._useLeftStraight = true // 直拳：true=左手, false=右手
     this._useLeftHook = true // 勾拳：true=左手, false=右手
+    // 挖掘状态
+    this.isMining = false
 
     // Resource
     this.resource = this.resources.items.playerModel
@@ -175,6 +177,10 @@ export default class Player {
     })
 
     emitter.on('input:jump', () => {
+      // 挖掘时阻断跳跃输入
+      if (this.isMining) {
+        return
+      }
       if (this.movement.isGrounded && this.animation.stateMachine.currentState.name !== AnimationStates.COMBAT) {
         this.movement.jump()
         this.animation.triggerJump()
@@ -206,6 +212,22 @@ export default class Player {
       if (isBlocking) {
         this.animation.triggerAttack(AnimationClips.BLOCK)
       }
+    })
+
+    // ==================== 挖掘事件 ====================
+    emitter.on('game:mining-start', () => {
+      this.isMining = true
+      this.animation.triggerAttack(AnimationClips.QUICK_COMBO)
+    })
+
+    emitter.on('game:mining-cancel', () => {
+      this.isMining = false
+      this.animation.stateMachine.setState(AnimationStates.LOCOMOTION)
+    })
+
+    emitter.on('game:mining-complete', () => {
+      this.isMining = false
+      this.animation.stateMachine.setState(AnimationStates.LOCOMOTION)
     })
 
     // ==================== 鼠标旋转（Pointer Lock 模式） ====================
@@ -243,8 +265,26 @@ export default class Player {
     // Resolve Input (Conflict & Normalize)
     const { resolvedInput, weights } = resolveDirectionInput(this.inputState)
 
+    // 挖掘时强制清空方向输入与水平速度，确保立即停下
+    const effectiveInput = this.isMining
+      ? {
+          forward: false,
+          backward: false,
+          left: false,
+          right: false,
+          shift: false,
+          v: false,
+          space: false,
+        }
+      : resolvedInput
+
+    if (this.isMining) {
+      this.movement.worldVelocity.x = 0
+      this.movement.worldVelocity.z = 0
+    }
+
     // Update Movement
-    this.movement.update(resolvedInput, isCombat)
+    this.movement.update(effectiveInput, isCombat)
 
     // ===== 平滑转向 =====
     if (Math.abs(this.config.facingAngle - this.targetFacingAngle) > 0.0001) {
@@ -258,18 +298,19 @@ export default class Player {
 
     // Prepare state for animation
     const playerState = {
-      inputState: resolvedInput,
-      directionWeights: weights, // Pass normalized weights
-      isMoving: this.movement.isMoving(resolvedInput),
+      inputState: effectiveInput,
+      directionWeights: this.isMining ? { forward: 0, backward: 0, left: 0, right: 0 } : weights, // Pass normalized weights
+      isMoving: this.isMining ? false : this.movement.isMoving(effectiveInput),
       isGrounded: this.movement.isGrounded,
-      speedProfile: this.movement.getSpeedProfile(resolvedInput),
+      speedProfile: this.movement.getSpeedProfile(effectiveInput),
+      isMining: this.isMining,
     }
 
     // Update Animation
     this.animation.update(this.time.delta, playerState)
 
     // ==================== 速度线控制 ====================
-    this.updateSpeedLines(resolvedInput)
+    this.updateSpeedLines(effectiveInput)
 
     // ==================== HUD 更新 ====================
 
