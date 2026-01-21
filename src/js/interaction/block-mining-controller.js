@@ -121,12 +121,18 @@ export default class BlockMiningController {
     if (!this.currentTarget)
       return
 
-    const { worldBlock } = this.currentTarget
+    const { worldBlock, blockId } = this.currentTarget
     const chunkManager = this.experience.terrainDataManager
 
     if (chunkManager) {
       chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
     }
+
+    // Emit complete event with blockId and position for pickup animator
+    emitter.emit('game:block-break-complete', {
+      blockId,
+      worldPos: { x: worldBlock.x, y: worldBlock.y, z: worldBlock.z },
+    })
 
     emitter.emit('game:mining-complete', {
       target: this.currentTarget,

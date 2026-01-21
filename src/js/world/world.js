@@ -12,6 +12,7 @@ import BlockMiningController from '../interaction/block-mining-controller.js'
 import BlockMiningOverlay from '../interaction/block-mining-overlay.js'
 import BlockRaycaster from '../interaction/block-raycaster.js'
 import BlockSelectionHelper from '../interaction/block-selection-helper.js'
+import ItemPickupAnimator from '../interaction/item-pickup-animator.js'
 import emitter from '../utils/event-bus.js'
 import Environment from './environment.js'
 import Player from './player/player.js'
@@ -88,6 +89,9 @@ export default class World {
 
       // ===== 方块破碎粒子效果 =====
       this.blockBreakParticles = new BlockBreakParticles()
+
+      // ===== 物品拾取动画效果 =====
+      this.itemPickupAnimator = new ItemPickupAnimator()
 
       // ===== Settings Listeners =====
       emitter.on('settings:chunks-changed', (data) => {
@@ -181,6 +185,7 @@ export default class World {
     this.blockInteractionManager?.destroy()
     this.blockMiningController?.destroy()
     this.blockBreakParticles?.destroy()
+    this.itemPickupAnimator?.destroy()
     this.blockSelectionHelper?.dispose()
     this.blockRaycaster?.destroy()
     this.environment?.destroy()

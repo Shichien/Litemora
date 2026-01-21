@@ -28,12 +28,18 @@ export const useHudStore = defineStore('hud', () => {
   // Hotbar
   // ========================================
 
+  /** Maximum stack size per slot */
+  const MAX_STACK = 64
+
   /** Selected hotbar slot: 0-8 */
   const selectedSlot = ref(0)
 
-  /** Hotbar items (9 slots) - currently empty for mock */
+  /**
+   * Hotbar items (9 slots)
+   * Each slot: { blockId: number, count: number } | null
+   */
   const hotbarItems = ref([
-    null,
+    { blockId: 2, count: 30 }, // Initial: 30 dirt blocks
     null,
     null,
     null,
@@ -130,6 +136,8 @@ export const useHudStore = defineStore('hud', () => {
   function selectSlot(slot) {
     if (slot >= 0 && slot <= 8) {
       selectedSlot.value = slot
+      // Notify Three.js interaction manager of the new selected block
+      emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
     }
   }
 
@@ -144,6 +152,61 @@ export const useHudStore = defineStore('hud', () => {
     if (newSlot > 8)
       newSlot = 0
     selectedSlot.value = newSlot
+    // Notify Three.js interaction manager of the new selected block
+    emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+  }
+
+  /**
+   * Add item to hotbar (prioritize stacking same type)
+   * @param {number} blockId - Block type ID
+   * @param {number} amount - Amount to add (default: 1)
+   * @returns {boolean} - True if successfully added
+   */
+  function addItemToHotbar(blockId, amount = 1) {
+    // 1. Prioritize stacking on existing same-type slots
+    for (const slot of hotbarItems.value) {
+      if (slot?.blockId === blockId && slot.count < MAX_STACK) {
+        const canAdd = Math.min(amount, MAX_STACK - slot.count)
+        slot.count += canAdd
+        amount -= canAdd
+        if (amount <= 0)
+          return true
+      }
+    }
+    // 2. Find empty slots for remaining
+    for (let i = 0; i < 9; i++) {
+      if (!hotbarItems.value[i] && amount > 0) {
+        hotbarItems.value[i] = { blockId, count: Math.min(amount, MAX_STACK) }
+        amount -= MAX_STACK
+        if (amount <= 0)
+          return true
+      }
+    }
+    // 3. Hotbar full
+    return false
+  }
+
+  /**
+   * Consume one item from currently selected slot
+   * @returns {boolean} - True if successfully consumed
+   */
+  function consumeSelectedItem() {
+    const item = hotbarItems.value[selectedSlot.value]
+    if (!item)
+      return false
+    item.count--
+    if (item.count <= 0) {
+      hotbarItems.value[selectedSlot.value] = null
+    }
+    return true
+  }
+
+  /**
+   * Get the block ID of currently selected slot
+   * @returns {number|null} - Block ID or null if empty
+   */
+  function getSelectedBlockId() {
+    return hotbarItems.value[selectedSlot.value]?.blockId ?? null
   }
 
   /**
@@ -172,12 +235,26 @@ export const useHudStore = defineStore('hud', () => {
     emitter.on('hud:update', updatePlayerInfo)
     emitter.on('hud:select-slot', selectSlot)
     emitter.on('hud:cycle-slot', cycleSlot)
+    emitter.on('hud:add-item', ({ blockId, amount }) => addItemToHotbar(blockId, amount))
+
+    // Hotbar communication with Three.js interaction manager
+    emitter.on('hud:request-selected-block', () => {
+      emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+    })
+    emitter.on('hud:consume-selected-item', () => {
+      consumeSelectedItem()
+      // Notify interaction manager of the updated selected block
+      emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+    })
   }
 
   function cleanupListeners() {
     emitter.off('hud:update', updatePlayerInfo)
     emitter.off('hud:select-slot', selectSlot)
     emitter.off('hud:cycle-slot', cycleSlot)
+    emitter.off('hud:add-item')
+    emitter.off('hud:request-selected-block')
+    emitter.off('hud:consume-selected-item')
   }
 
   // ========================================
@@ -220,6 +297,9 @@ export const useHudStore = defineStore('hud', () => {
     toggleChat,
     closeChat,
     sendMessage,
+    addItemToHotbar,
+    consumeSelectedItem,
+    getSelectedBlockId,
 
     // Lifecycle
     setupListeners,

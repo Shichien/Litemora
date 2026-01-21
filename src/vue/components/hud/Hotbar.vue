@@ -1,13 +1,24 @@
 <script setup>
 import { useHudStore } from '@pinia/hudStore.js'
+import sources from '@three/sources.js'
 import emitter from '@three/utils/event-bus.js'
+import { blocks as blocksConfig } from '@three/world/terrain/blocks-config.js'
 /**
  * Hotbar - Minecraft Style Hotbar (9 slots)
+ * Displays CSS 3D block icons with count badges
  * Keyboard 1-9 and mouse wheel to select
  */
 import { computed, onMounted, onUnmounted } from 'vue'
 
 const hud = useHudStore()
+
+// Build texture name -> path mapping from sources.js
+const texturePathMap = sources.reduce((map, source) => {
+  if (source.type === 'texture') {
+    map[source.name] = `/${source.path}`
+  }
+  return map
+}, {})
 
 // Calculate selector position (20px per slot + 3px offset)
 const selectorLeft = computed(() => {
@@ -15,6 +26,53 @@ const selectorLeft = computed(() => {
   const offset = -1 // Selector offset
   return `calc(${offset + hud.selectedSlot * slotWidth}px * var(--hud-scale))`
 })
+
+/**
+ * Get block config by ID
+ */
+function getBlockConfigById(blockId) {
+  for (const key of Object.keys(blocksConfig)) {
+    if (blocksConfig[key].id === blockId) {
+      return blocksConfig[key]
+    }
+  }
+  return null
+}
+
+/**
+ * Get texture URL for a block face
+ * Uses sources.js path mapping to get correct URL
+ */
+function getBlockTexture(blockId, face = 'side') {
+  const config = getBlockConfigById(blockId)
+  if (!config?.textureKeys)
+    return null
+
+  // Get texture key from block config
+  const textureKey = config.textureKeys[face]
+    || config.textureKeys.side
+    || config.textureKeys.all
+  if (!textureKey)
+    return null
+
+  // Map texture key to actual path from sources.js
+  return texturePathMap[textureKey] || null
+}
+
+/**
+ * Get top texture URL for a block
+ */
+function getBlockTopTexture(blockId) {
+  const config = getBlockConfigById(blockId)
+  if (!config?.textureKeys)
+    return null
+
+  const textureKey = config.textureKeys.top || config.textureKeys.all
+  if (!textureKey)
+    return null
+
+  return texturePathMap[textureKey] || null
+}
 
 // Handle keyboard 1-9 for slot selection
 function handleKeyDown(e) {
@@ -55,12 +113,23 @@ onUnmounted(() => {
         :key="index"
         class="hotbar-slot"
       >
-        <img
-          v-if="item?.icon"
-          :src="item.icon"
-          :alt="item.name"
-          class="item-icon"
-        >
+        <!-- CSS 3D Block Icon -->
+        <div v-if="item" class="slot-block-3d">
+          <div
+            class="block-face block-top"
+            :style="{ backgroundImage: `url(${getBlockTopTexture(item.blockId)})` }"
+          />
+          <div
+            class="block-face block-front"
+            :style="{ backgroundImage: `url(${getBlockTexture(item.blockId, 'side')})` }"
+          />
+          <div
+            class="block-face block-right"
+            :style="{ backgroundImage: `url(${getBlockTexture(item.blockId, 'side')})` }"
+          />
+        </div>
+        <!-- Item Count Badge -->
+        <span v-if="item?.count > 1" class="slot-count">{{ item.count }}</span>
       </div>
     </div>
   </div>
