@@ -110,6 +110,9 @@ function cancelOverwrite() {
         <button class="mc-button" @click="ui.toHowToPlay()">
           <span class="title">{{ $t('menu.howToPlay') }}</span>
         </button>
+        <button class="mc-button" @click="ui.toSkinSelector()">
+          <span class="title">{{ $t('menu.skins') }}</span>
+        </button>
       </template>
 
       <!-- World exists -->
@@ -127,8 +130,8 @@ function cancelOverwrite() {
           <button class="mc-button half" @click="ui.toHowToPlay()">
             <span class="title">{{ $t('menu.howToPlay') }}</span>
           </button>
-          <button class="mc-button half disabled">
-            <span class="title">{{ $t('menu.credits') }}</span>
+          <button class="mc-button half" @click="ui.toSkinSelector()">
+            <span class="title">{{ $t('menu.skins') }}</span>
           </button>
         </div>
       </template>

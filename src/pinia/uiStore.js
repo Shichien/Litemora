@@ -31,7 +31,7 @@ export const useUiStore = defineStore('ui', () => {
   /** Current screen: 'loading' | 'mainMenu' | 'playing' | 'pauseMenu' | 'settings' */
   const screen = ref('loading')
 
-  /** Main menu sub-view: 'root' | 'worldSetup' | 'howToPlay' */
+  /** Main menu sub-view: 'root' | 'worldSetup' | 'howToPlay' | 'skinSelector' */
   const mainMenuView = ref('root')
 
   /** Whether a new world creation is pending (for overwrite confirmation) */
@@ -242,6 +242,26 @@ export const useUiStore = defineStore('ui', () => {
     backToMainRoot()
   }
 
+  /**
+   * Enter Skin Selector view
+   */
+  function toSkinSelector() {
+    mainMenuView.value = 'skinSelector'
+  }
+
+  /**
+   * Exit Skin Selector back to previous view
+   */
+  function exitSkinSelector() {
+    if (screen.value === 'pauseMenu') {
+      // 从暂停菜单进入，返回暂停菜单
+      mainMenuView.value = 'root'
+    }
+    else {
+      backToMainRoot()
+    }
+  }
+
   // ----------------------------------------
   // Actions: WorldGen Draft
   // ----------------------------------------
@@ -359,7 +379,7 @@ export const useUiStore = defineStore('ui', () => {
         toPauseMenu()
         break
       case 'mainMenu':
-        // 在 mainMenu 的子视图中（worldSetup/howToPlay）统一返回 root
+        // 在 mainMenu 的子视图中（worldSetup/howToPlay/skinSelector）统一返回 root
         if (mainMenuView.value !== 'root')
           backToMainRoot()
         break
@@ -405,6 +425,8 @@ export const useUiStore = defineStore('ui', () => {
     backToMainRoot,
     toHowToPlay,
     exitHowToPlay,
+    toSkinSelector,
+    exitSkinSelector,
 
     // WorldGen
     applyWorldGenPreset,

@@ -1,6 +1,8 @@
 import * as THREE from 'three'
+import { useSkinStore } from '../../../pinia/skinStore.js'
 import { PLAYER_CONFIG } from '../../config/player-config.js'
 import { SHADOW_QUALITY } from '../../config/shadow-config.js'
+import { SKIN_LIST } from '../../config/skin-config.js'
 import Experience from '../../experience.js'
 import emitter from '../../utils/event-bus.js'
 import {
@@ -52,8 +54,9 @@ export default class Player {
     // 挖掘状态
     this.isMining = false
 
-    // Resource
-    this.resource = this.resources.items.playerModel
+    // Resource - 使用当前选中的皮肤
+    const skinStore = useSkinStore()
+    this.resource = this._getModelResource(skinStore.currentSkinId)
 
     // Controllers
     this.movement = new PlayerMovementController(this.config)
@@ -64,6 +67,9 @@ export default class Player {
     this.animation = new PlayerAnimationController(this.model, this.resource.animations)
 
     this.setupInputListeners()
+
+    // 监听皮肤变更事件
+    emitter.on('skin:changed', this._handleSkinChange.bind(this))
 
     // Shadow quality event listener
     this._handleShadowQuality = this._handleShadowQuality.bind(this)
@@ -90,6 +96,40 @@ export default class Player {
         child.castShadow = shouldCastShadow
       }
     })
+  }
+
+  /**
+   * 根据 skinId 获取模型资源
+   * @param {string} skinId - 皮肤 ID
+   * @returns {object} GLTF resource
+   */
+  _getModelResource(skinId) {
+    const skinConfig = SKIN_LIST.find(s => s.id === skinId)
+    if (!skinConfig)
+      return this.resources.items.playerModel
+
+    // 资源名称约定：skinId + 'Model' (如 steveModel, alexModel)
+    const resourceName = `${skinId}Model`
+    return this.resources.items[resourceName] || this.resources.items.playerModel
+  }
+
+  /**
+   * 切换皮肤模型
+   * @param {{ skinId: string }} payload - 皮肤变更事件参数
+   */
+  _handleSkinChange({ skinId }) {
+    const resource = this._getModelResource(skinId)
+
+    // 移除旧模型
+    this.movement.group.remove(this.model)
+
+    // 设置新模型资源
+    this.resource = resource
+    this.setModel()
+
+    // 重新初始化动画控制器
+    this.animation.dispose()
+    this.animation = new PlayerAnimationController(this.model, this.resource.animations)
   }
 
   setModel() {

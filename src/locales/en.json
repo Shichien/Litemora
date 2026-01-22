@@ -6,6 +6,11 @@
     "continue": "Continue",
     "settings": "Settings",
     "howToPlay": "How to Play",
+    "selectSkin": "Select Skin",
+    "skins": "Skins",
+    "paused": "Game Paused",
+    "resume": "Resume",
+    "mainMenu": "Main Menu",
     "credits": "Credits",
     "back": "Back",
     "randomSeed": "Random Seed",
@@ -46,5 +51,26 @@
     "next": "Next",
     "done": "Done",
     "mainMenu": "Main Menu"
+  },
+  "skin": {
+    "steve": "Steve",
+    "alex": "Alex",
+    "player": "Classic",
+    "equipped": "Equipped",
+    "credits": "Special thanks to skin creators:"
+  },
+  "anim": {
+    "idle": "Idle",
+    "walk": "Walk",
+    "run": "Run",
+    "tpose": "T-Pose",
+    "mine": "Mine",
+    "jump": "Jump",
+    "attack": "Attack",
+    "block": "Block"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "apply": "Apply"
   }
 }

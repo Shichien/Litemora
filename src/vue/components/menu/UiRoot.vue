@@ -12,6 +12,7 @@ import LoadingScreen from './LoadingScreen.vue'
 import MainMenu from './MainMenu.vue'
 import PauseMenu from './PauseMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
+import SkinSelector from './SkinSelector.vue'
 
 const ui = useUiStore()
 const { locale } = useI18n()
@@ -63,6 +64,7 @@ function handleWindowBlur() {
       <!-- Main Menu -->
       <template v-else-if="ui.screen === 'mainMenu'">
         <HowToPlay v-if="ui.mainMenuView === 'howToPlay'" />
+        <SkinSelector v-else-if="ui.mainMenuView === 'skinSelector'" />
         <MainMenu v-else />
       </template>
 

@@ -10,18 +10,21 @@ const ui = useUiStore()
 <template>
   <div class="pause-menu">
     <h2 class="menu-title">
-      Game Paused
+      {{ $t('menu.paused') }}
     </h2>
 
     <div class="mc-menu">
       <button class="mc-button" @click="ui.toPlaying()">
-        <span class="title">Resume</span>
+        <span class="title">{{ $t('menu.resume') }}</span>
       </button>
       <button class="mc-button" @click="ui.toMainMenu({ preservePause: true })">
-        <span class="title">Main Menu</span>
+        <span class="title">{{ $t('menu.mainMenu') }}</span>
       </button>
       <button class="mc-button" @click="ui.toSettings('pauseMenu')">
-        <span class="title">Settings</span>
+        <span class="title">{{ $t('menu.settings') }}</span>
+      </button>
+      <button class="mc-button" @click="ui.toSkinSelector()">
+        <span class="title">{{ $t('menu.skins') }}</span>
       </button>
     </div>
   </div>

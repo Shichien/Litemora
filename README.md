@@ -137,7 +137,11 @@ E:\圖形學\Third-Person-MC\
 ```
 
 ## 素材出处
-- **模型**: 基于 Minecraft 风格自定义建模 ( character.glb ), 皮肤来自[https://www.minecraftskins.com/](https://www.minecraftskins.com/)
+- **模型**: 基于 Minecraft 风格自定义建模 ( character.glb )
+- **皮肤**: 
+  - **Steve & Alex**: 由 [hibiki_ekko](https://www.planetminecraft.com/member/hibiki_ekko/) 创作，来源 [Planet Minecraft](https://www.planetminecraft.com/member/hibiki_ekko/)
+  - **Classic (Player)**: 由 [holland0519](https://www.minecraftskins.com/profile/5521971/holland0519) 创作，来源 [Minecraft Skins](https://www.minecraftskins.com/profile/5521971/holland0519)
+  - 特别感谢 **hibiki_ekko** 和 **holland0519** 为项目提供的精美皮肤资源！
 - **贴图**: 提取自 Minecraft[Mojang/bedrock-samples](Mojang/bedrock-samples) 游戏资源包，由 [hexianWeb](https://github.com/hexianWeb) 优化。
 - **字体**: [Minecraftia-Regular.ttf](https://www.dafont.com/minecraftia.font) & [TakWolf/fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font)
 - **音效**: 计划由 Suno AI 生成 ( 命中、环境音 **还没生成**)

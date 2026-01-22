@@ -355,4 +355,27 @@ export class PlayerAnimationController {
     // 允許 Combat -> Combat (Combo)
     this.stateMachine.setState(AnimationStates.COMBAT, { actionName: name })
   }
+
+  /**
+   * 清理动画控制器资源
+   * 在切换皮肤模型时调用
+   */
+  dispose() {
+    // 停止所有动画
+    for (const action of Object.values(this.actions)) {
+      if (action) {
+        action.stop()
+      }
+    }
+
+    // 清理 AnimationMixer
+    if (this.mixer) {
+      this.mixer.stopAllAction()
+      this.mixer.uncacheRoot(this.model)
+    }
+
+    // 清空引用
+    this.actions = {}
+    this.currentAction = null
+  }
 }

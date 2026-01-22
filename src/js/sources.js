@@ -27,10 +27,21 @@ export default [
     type: 'texture',
     path: 'textures/background/background.png',
   },
+  // ===== 玩家皮肤模型 =====
+  {
+    name: 'steveModel',
+    type: 'gltfModel',
+    path: 'models/character/steve.glb',
+  },
+  {
+    name: 'alexModel',
+    type: 'gltfModel',
+    path: 'models/character/alex.glb',
+  },
   {
     name: 'playerModel',
     type: 'gltfModel',
-    path: 'models/character/alex.glb',
+    path: 'models/character/player.glb',
   },
   {
     name: 'grass_block_top_texture',
