@@ -58,13 +58,14 @@ pnpm clean:report     # Remove Playwright test reports
 - Use `.js` extensions explicitly in imports
 - Use JSDoc comments for type hints where beneficial
 
-### Formatting (Prettier)
+### Formatting (ESLint - Antfu)
 
+- **Style Guide:** Follows `@antfu/eslint-config` defaults
 - **Print width:** 80 characters
 - **Indentation:** 2 spaces (no tabs)
-- **Semicolons:** Required
+- **Semicolons:** None (Never use semicolons)
 - **Quotes:** Single quotes (`'`) for JS/Vue, single for JSX
-- **Trailing commas:** None
+- **Trailing commas:** All (Multi-line objects/arrays)
 - **Arrow parens:** Always
 - **Line endings:** CRLF (Windows)
 - **Plugins:** `prettier-plugin-tailwindcss` for class sorting
@@ -98,11 +99,16 @@ pnpm clean:report     # Remove Playwright test reports
 Example:
 
 ```javascript
-import * as THREE from 'three'
-import { onMounted, ref } from 'vue'
-import { useUiStore } from '@pinia/uiStore.js'
-import Experience from '@three/experience.js'
-import vertexShader from '@/shaders/ao.vert.glsl'
+import i18n from '@three/i18n.js'
+import { createPinia } from 'pinia'
+import { createApp } from 'vue'
+import App from './App.vue'
+import '@styles/main.scss'
+
+const app = createApp(App)
+app.use(createPinia())
+app.use(i18n)
+app.mount('#app')
 ```
 
 ### Type Annotations
@@ -208,7 +214,7 @@ emitter.emit('ui:pause-changed', isPaused)
 emitter.emit('core:resize', { width, height })
 
 // Listen to event
-emitter.on('core:resize', data => this.resize())
+emitter.on('core:resize', (data) => this.resize())
 ```
 
 **When to use Pinia vs mitt:**
@@ -228,7 +234,9 @@ class MyComponent {
     // Tweakpane debug UI (dev mode only)
     if (this.debug.active) {
       this.debug.ui.addBinding(this.params, 'intensity', {
-        min: 0, max: 1, step: 0.01
+        min: 0,
+        max: 1,
+        step: 0.01,
       })
     }
   }
