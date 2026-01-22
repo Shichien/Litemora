@@ -289,6 +289,7 @@ export default class ChunkManager {
         // 只有在 chunk 范围内的邻居才处理（跨 chunk 揭示暂不考虑，逻辑会变复杂）
         if (n.x >= 0 && n.x < this.chunkWidth && n.z >= 0 && n.z < this.chunkWidth && n.y >= 0 && n.y < this.chunkHeight) {
           const neighborBlock = chunk.container.getBlock(n.x, n.y, n.z)
+
           // 如果邻居非空、没有实例，且现在不再被遮挡
           if (neighborBlock.id !== blocks.empty.id && neighborBlock.instanceId === null) {
             if (!chunk.container.isBlockObscured(n.x, n.y, n.z)) {
@@ -341,6 +342,36 @@ export default class ChunkManager {
       // 3a. 如果自身不被遮挡，添加实例
       if (!chunk.container.isBlockObscured(localX, y, localZ)) {
         renderer.addBlockInstance(localX, y, localZ)
+      }
+
+      // 3b. 隐藏现在被遮挡的邻居方块
+      const neighbors = [
+        { x: localX + 1, y, z: localZ },
+        { x: localX - 1, y, z: localZ },
+        { x: localX, y: y + 1, z: localZ },
+        { x: localX, y: y - 1, z: localZ },
+        { x: localX, y, z: localZ + 1 },
+        { x: localX, y, z: localZ - 1 },
+      ]
+
+      for (const n of neighbors) {
+        // 只处理 chunk 范围内的邻居
+        if (n.x >= 0 && n.x < this.chunkWidth && n.z >= 0 && n.z < this.chunkWidth && n.y >= 0 && n.y < this.chunkHeight) {
+          const neighborBlock = chunk.container.getBlock(n.x, n.y, n.z)
+
+          // 如果邻居非空、有实例、且现在被完全遮挡
+          if (neighborBlock.id !== blocks.empty.id && neighborBlock.instanceId !== null) {
+            if (chunk.container.isBlockObscured(n.x, n.y, n.z)) {
+              // 移除实例
+              const mesh = renderer._blockMeshes.get(neighborBlock.id)
+              if (mesh) {
+                renderer.removeInstance(mesh, neighborBlock.instanceId)
+              }
+              // 清空 instanceId（关键：这样被挖掘后才能正确揭露）
+              chunk.container.setBlockInstanceId(n.x, n.y, n.z, null)
+            }
+          }
+        }
       }
     }
 
