@@ -61,6 +61,7 @@ export default class SkinPreviewScene {
     this._setupScene()
     this._setupLights()
     this._setupBackground()
+    this._setupShadow()
     this._setupDragControls()
     this._startRenderLoop()
   }
@@ -124,10 +125,10 @@ export default class SkinPreviewScene {
 
     // 渐变：天空蓝 → 草地绿
     const gradient = ctx.createLinearGradient(0, 0, 0, 256)
-    gradient.addColorStop(0, '#87CEEB') // 天空蓝
-    gradient.addColorStop(0.5, '#7CB87C') // 浅草绿
+    gradient.addColorStop(0, '#ced8df') // 天空蓝
+    gradient.addColorStop(0.5, '#d0ddd9') // 浅草绿
     gradient.addColorStop(0.7, '#5BA85B') // 草地绿
-    gradient.addColorStop(1, '#3A7A3A') // 深草绿
+    gradient.addColorStop(1, '#3A7A3A') // 深绿
 
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, 256, 256)
@@ -135,6 +136,46 @@ export default class SkinPreviewScene {
     // 创建纹理并设置为场景背景
     const bgTexture = new THREE.CanvasTexture(bgCanvas)
     this.scene.background = bgTexture
+  }
+
+  /**
+   * 创建并设置角色脚底的圆形假阴影
+   */
+  _setupShadow() {
+    // 创建径向渐变纹理
+    const canvas = document.createElement('canvas')
+    canvas.width = 128
+    canvas.height = 128
+    const ctx = canvas.getContext('2d')
+
+    // 径向渐变：中心黑(半透明) -> 边缘透明
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64)
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0.5)') // 中心透明度 0.7
+    gradient.addColorStop(0.5, 'rgba(0, 0, 0, 0.45)') // 中心透明度 0.5
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)') // 边缘完全透明
+
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, 128, 128)
+
+    const shadowTexture = new THREE.CanvasTexture(canvas)
+
+    // 创建阴影平面
+    // 大小设置为 1.2，略大于一般角色站立面积
+    const geometry = new THREE.PlaneGeometry(1.2, 1.2)
+    const material = new THREE.MeshBasicMaterial({
+      map: shadowTexture,
+      transparent: true,
+      depthWrite: false, // 防止遮挡模型
+      opacity: 0.8,
+    })
+
+    this.shadowMesh = new THREE.Mesh(geometry, material)
+
+    // 旋转至水平并稍微抬高以避免 z-fighting
+    this.shadowMesh.rotation.x = -Math.PI / 2
+    this.shadowMesh.position.y = 0.01
+
+    this.scene.add(this.shadowMesh)
   }
 
   /**
@@ -266,9 +307,10 @@ export default class SkinPreviewScene {
       return
 
     // 查找匹配的动画 clip（模糊匹配，不区分大小写）
-    const clip = this.animations.find(a =>
-      a.name.toLowerCase().includes(clipName.toLowerCase()),
-    ) || this.animations[0]
+    const clip
+      = this.animations.find(a =>
+        a.name.toLowerCase().includes(clipName.toLowerCase()),
+      ) || this.animations[0]
 
     if (!clip) {
       console.warn(`未找到动画: ${clipName}`)
@@ -382,7 +424,9 @@ export default class SkinPreviewScene {
         // 释放材质
         if (child.material) {
           if (Array.isArray(child.material)) {
-            child.material.forEach(material => this._disposeMaterial(material))
+            child.material.forEach(material =>
+              this._disposeMaterial(material),
+            )
           }
           else {
             this._disposeMaterial(child.material)
@@ -450,6 +494,16 @@ export default class SkinPreviewScene {
     // 释放背景纹理
     if (this.scene.background && this.scene.background.isTexture) {
       this.scene.background.dispose()
+    }
+
+    // 释放阴影资源
+    if (this.shadowMesh) {
+      this.shadowMesh.geometry.dispose()
+      if (this.shadowMesh.material.map) {
+        this.shadowMesh.material.map.dispose()
+      }
+      this.shadowMesh.material.dispose()
+      this.shadowMesh = null
     }
 
     // 清空场景
