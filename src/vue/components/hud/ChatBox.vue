@@ -20,8 +20,7 @@ const inputValue = ref('')
 // Check if message should be fading
 function isMessageFading(msg) {
   // If chat is OPEN, show all messages fully opaque
-  if (hud.isChatOpen)
-    return false
+  if (hud.isChatOpen) return false
   return Date.now() - msg.timestamp > FADE_TIMEOUT
 }
 
@@ -33,14 +32,17 @@ const visibleMessages = computed(() => {
 })
 
 // Auto-focus input when chat opens
-watch(() => hud.isChatOpen, (isOpen) => {
-  if (isOpen) {
-    inputValue.value = ''
-    nextTick(() => {
-      chatInput.value?.focus()
-    })
-  }
-})
+watch(
+  () => hud.isChatOpen,
+  (isOpen) => {
+    if (isOpen) {
+      inputValue.value = ''
+      nextTick(() => {
+        chatInput.value?.focus()
+      })
+    }
+  },
+)
 
 function handleSend() {
   hud.sendMessage(inputValue.value)
@@ -86,7 +88,9 @@ onUnmounted(() => {
         class="chat-message mc-text"
         :class="[msg.type, { fading: fadingMessages.has(msg.id) }]"
       >
-        <span v-if="msg.type === 'chat'" class="chat-prefix mc-text">&lt;Player&gt; </span>
+        <span v-if="msg.type === 'chat'" class="chat-prefix mc-text"
+          >&lt;Player&gt;
+        </span>
         {{ msg.text }}
       </div>
     </div>
@@ -102,7 +106,7 @@ onUnmounted(() => {
         @keydown.enter="handleSend"
         @keydown.esc="handleClose"
         @blur="handleClose"
-      >
+      />
     </div>
   </div>
 </template>
@@ -110,7 +114,8 @@ onUnmounted(() => {
 <style scoped>
 .chat-container {
   position: absolute;
-  bottom: calc(40px * var(--hud-scale));
+  top: 50%;
+  transform: translateY(-50%);
   left: calc(10px * var(--hud-scale));
   width: calc(200px * var(--hud-scale));
   display: flex;
