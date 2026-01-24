@@ -14,6 +14,7 @@ import Hotbar from './Hotbar.vue'
 import HungerBar from './HungerBar.vue'
 import InfoPanel from './InfoPanel.vue'
 import KeyFeedbackPanel from './KeyFeedbackPanel.vue'
+import PlayerPreview from './PlayerPreview.vue'
 import TopInfoBar from './TopInfoBar.vue'
 
 const ui = useUiStore()
@@ -21,8 +22,7 @@ const hud = useHudStore()
 
 function handleKeyDown(e) {
   // If user is typing in an input, ignore logic
-  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName))
-    return
+  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return
 
   if (e.code === 'KeyT') {
     e.preventDefault()
@@ -83,5 +83,8 @@ onUnmounted(() => {
 
     <!-- Chat Box: System messages -->
     <ChatBox />
+
+    <!-- Player Preview -->
+    <PlayerPreview />
   </div>
 </template>

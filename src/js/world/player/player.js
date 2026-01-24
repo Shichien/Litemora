@@ -143,6 +143,8 @@ export default class Player {
         child.castShadow = true
         child.material.side = THREE.FrontSide
         child.material.transparent = true
+        // 启用 Layer 1，用于预览相机渲染
+        child.layers.enable(1)
       }
     })
 

@@ -110,6 +110,9 @@ export default class World {
           const pos = this.player.getPosition()
           this.chunkManager.updateStreaming({ x: pos.x, z: pos.z }, true)
         }
+
+        // Initialize player preview
+        this.experience.renderer.initPlayerPreview(this.player)
       })
     })
   }

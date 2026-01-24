@@ -69,7 +69,10 @@ function handleWindowBlur() {
       </template>
 
       <!-- Pause Menu -->
-      <PauseMenu v-else-if="ui.screen === 'pauseMenu'" />
+      <template v-else-if="ui.screen === 'pauseMenu'">
+        <SkinSelector v-if="ui.mainMenuView === 'skinSelector'" />
+        <PauseMenu v-else />
+      </template>
 
       <!-- Settings Menu -->
       <SettingsMenu v-else-if="ui.screen === 'settings'" />

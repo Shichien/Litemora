@@ -12,6 +12,7 @@ import speedLinesVertexShader from '../shaders/speedlines/vertex.glsl'
 import { SHADOW_CONFIG, SHADOW_QUALITY } from './config/shadow-config.js'
 import Experience from './experience.js'
 import emitter from './utils/event-bus.js'
+import PlayerPreviewCamera from './world/player/player-preview-camera.js'
 
 export default class Renderer {
   constructor() {
@@ -21,6 +22,8 @@ export default class Renderer {
     this.scene = this.experience.scene
     this.camera = this.experience.camera
     this.debug = this.experience.debug
+
+    this.playerPreview = null
 
     // 后期处理配置参数
     this.postProcessConfig = {
@@ -109,14 +112,16 @@ export default class Renderer {
     this.instance = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: false, // 关闭抗锯齿：低端机优先保帧率
+      alpha: true,
     })
     this.instance.toneMapping = THREE.ACESFilmicToneMapping
     this.instance.toneMappingExposure = 1
     this.instance.shadowMap.enabled = true
     this.instance.shadowMap.type = THREE.PCFSoftShadowMap
-    this.instance.setClearColor('#000000')
+    this.instance.setClearColor('#000000', 0)
     this.instance.setSize(this.sizes.width, this.sizes.height)
     this.instance.setPixelRatio(this.sizes.pixelRatio)
+    this.instance.autoClear = false
   }
 
   /**
@@ -171,6 +176,7 @@ export default class Renderer {
     this.composer.addPass(this.outputPass)
   }
 
+  // #region 调试面板初始化
   /**
    * 调试面板初始化
    */
@@ -327,6 +333,7 @@ export default class Renderer {
     emitter.emit('shadow:quality-changed', { quality: SHADOW_CONFIG.quality })
   }
 
+  // #endregion
   resize() {
     this.instance.setSize(this.sizes.width, this.sizes.height)
     this.instance.setPixelRatio(this.sizes.pixelRatio)
@@ -347,10 +354,69 @@ export default class Renderer {
 
   update() {
     // 更新速度线时间 uniform
-    this.speedLinePass.uniforms.uTime.value = this.experience.time.elapsed * 0.001
+    this.speedLinePass.uniforms.uTime.value
+      = this.experience.time.elapsed * 0.001
 
     // 使用 EffectComposer 渲染（包含所有后期处理）
     this.composer.render()
+
+    // 在主场景渲染完成后，渲染玩家预览覆盖层
+    this._renderPlayerPreview()
+  }
+
+  /**
+   * 初始化玩家预览系统
+   * @param {Player} player
+   */
+  initPlayerPreview(player) {
+    this.playerPreview = new PlayerPreviewCamera()
+    this.playerPreview.setPlayer(player)
+  }
+
+  /**
+   * 渲染玩家预览（使用 Viewport 直接渲染到主画布左下角）
+   * 采用 setViewport + setScissor 方案，避免 GPU→CPU 回读
+   */
+  _renderPlayerPreview() {
+    if (!this.playerPreview?.enabled)
+      return
+
+    const preview = this.playerPreview
+    preview.update()
+
+    // 获取预览配置
+    const size = preview.config.size
+    const margin = preview.config.margin
+    const pixelRatio = this.sizes.pixelRatio
+
+    // 计算实际像素位置（考虑 pixelRatio）
+    // WebGL viewport 使用左下角为原点
+    const x = Math.floor(margin.left * pixelRatio)
+    const y = Math.floor(margin.bottom * pixelRatio)
+    const width = Math.floor(size * pixelRatio)
+    const height = Math.floor(size * pixelRatio)
+
+    // 保存当前状态
+    const currentSceneBackground = this.scene.background
+
+    // 临时移除场景背景
+    this.scene.background = null
+
+    // 启用裁剪测试，限制渲染区域
+    this.instance.setScissorTest(true)
+    this.instance.setScissor(x, y, width, height)
+    this.instance.setViewport(x, y, width, height)
+
+    // this.instance.setClearColor(0x000000, 0)
+    this.instance.clear(false, true, false)
+    // 渲染预览场景
+    this.instance.render(this.scene, preview.getCamera())
+
+    // 恢复状态
+    this.instance.setScissorTest(false)
+    this.instance.setViewport(0, 0, this.sizes.width * pixelRatio, this.sizes.height * pixelRatio)
+
+    this.scene.background = currentSceneBackground
   }
 
   /**

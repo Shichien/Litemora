@@ -49,6 +49,9 @@ const DEFAULT_SETTINGS = {
   // Chunks
   chunkViewDistance: 2,
   chunkUnloadPadding: 1,
+
+  // Front View Preview
+  frontViewEnabled: true,
 }
 
 // ========================================
@@ -84,6 +87,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const chunkViewDistance = ref(DEFAULT_SETTINGS.chunkViewDistance)
   const chunkUnloadPadding = ref(DEFAULT_SETTINGS.chunkUnloadPadding)
 
+  // Front View Preview
+  const frontViewEnabled = ref(DEFAULT_SETTINGS.frontViewEnabled)
+
   // ----------------------------------------
   // Initialize from localStorage
   // ----------------------------------------
@@ -92,18 +98,15 @@ export const useSettingsStore = defineStore('settings', () => {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
         const parsed = JSON.parse(saved)
-        if (parsed.language)
-          language.value = parsed.language
-        if (parsed.shadowQuality)
-          shadowQuality.value = parsed.shadowQuality
+        if (parsed.language) language.value = parsed.language
+        if (parsed.shadowQuality) shadowQuality.value = parsed.shadowQuality
         if (parsed.mouseSensitivity)
           mouseSensitivity.value = parsed.mouseSensitivity
         if (parsed.masterVolume !== undefined)
           masterVolume.value = parsed.masterVolume
         if (parsed.musicVolume !== undefined)
           musicVolume.value = parsed.musicVolume
-        if (parsed.sfxVolume !== undefined)
-          sfxVolume.value = parsed.sfxVolume
+        if (parsed.sfxVolume !== undefined) sfxVolume.value = parsed.sfxVolume
 
         // Camera preset
         if (parsed.cameraPreset) {
@@ -118,8 +121,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
 
         // Environment
-        if (parsed.envSkyMode)
-          envSkyMode.value = parsed.envSkyMode
+        if (parsed.envSkyMode) envSkyMode.value = parsed.envSkyMode
         if (parsed.envSunIntensity !== undefined)
           envSunIntensity.value = parsed.envSunIntensity
         if (parsed.envAmbientIntensity !== undefined)
@@ -130,9 +132,10 @@ export const useSettingsStore = defineStore('settings', () => {
           chunkViewDistance.value = parsed.chunkViewDistance
         if (parsed.chunkUnloadPadding !== undefined)
           chunkUnloadPadding.value = parsed.chunkUnloadPadding
+        if (parsed.frontViewEnabled !== undefined)
+          frontViewEnabled.value = parsed.frontViewEnabled
       }
-    }
-    catch {
+    } catch {
       console.warn('[Settings] Failed to load settings from localStorage')
     }
   }
@@ -157,10 +160,10 @@ export const useSettingsStore = defineStore('settings', () => {
         envFogDensity: envFogDensity.value,
         chunkViewDistance: chunkViewDistance.value,
         chunkUnloadPadding: chunkUnloadPadding.value,
+        frontViewEnabled: frontViewEnabled.value,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    }
-    catch {
+    } catch {
       console.warn('[Settings] Failed to save settings to localStorage')
     }
   }
@@ -275,13 +278,26 @@ export const useSettingsStore = defineStore('settings', () => {
   // ----------------------------------------
   function setChunkViewDistance(value) {
     chunkViewDistance.value = Math.round(value)
-    emitter.emit('settings:chunks-changed', { viewDistance: chunkViewDistance.value })
+    emitter.emit('settings:chunks-changed', {
+      viewDistance: chunkViewDistance.value,
+    })
     saveSettings()
   }
 
   function setChunkUnloadPadding(value) {
     chunkUnloadPadding.value = Math.round(value)
-    emitter.emit('settings:chunks-changed', { unloadPadding: chunkUnloadPadding.value })
+    emitter.emit('settings:chunks-changed', {
+      unloadPadding: chunkUnloadPadding.value,
+    })
+    saveSettings()
+  }
+
+  // ----------------------------------------
+  // Actions - Front View
+  // ----------------------------------------
+  function setFrontViewEnabled(enabled) {
+    frontViewEnabled.value = enabled
+    emitter.emit('settings:front-view-changed', { enabled })
     saveSettings()
   }
 
@@ -322,6 +338,11 @@ export const useSettingsStore = defineStore('settings', () => {
     // Reset chunks
     chunkViewDistance.value = CHUNK_DEFAULTS.viewDistance
     chunkUnloadPadding.value = CHUNK_DEFAULTS.unloadPadding
+
+    frontViewEnabled.value = DEFAULT_SETTINGS.frontViewEnabled
+    emitter.emit('settings:front-view-changed', {
+      enabled: frontViewEnabled.value,
+    })
 
     // Emit events for all settings
     emitter.emit('shadow:quality-changed', shadowQuality.value)
@@ -393,6 +414,7 @@ export const useSettingsStore = defineStore('settings', () => {
     // State - Chunks
     chunkViewDistance,
     chunkUnloadPadding,
+    frontViewEnabled,
 
     // Actions - Basic
     setLanguage,
@@ -418,6 +440,9 @@ export const useSettingsStore = defineStore('settings', () => {
     // Actions - Chunks
     setChunkViewDistance,
     setChunkUnloadPadding,
+
+    // Actions - Front View
+    setFrontViewEnabled,
 
     // Utils
     resetToDefaults,

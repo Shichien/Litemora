@@ -45,7 +45,10 @@ const sensitivityPercent = computed(() => {
 })
 
 function adjustSensitivity(delta) {
-  const newValue = Math.max(0.01, Math.min(0.1, settings.mouseSensitivity + delta))
+  const newValue = Math.max(
+    0.01,
+    Math.min(0.1, settings.mouseSensitivity + delta),
+  )
   settings.setMouseSensitivity(newValue)
 }
 </script>
@@ -117,6 +120,27 @@ function adjustSensitivity(delta) {
         <h3 class="section-title">
           {{ $t('settings.visual') }}
         </h3>
+
+        <!-- Front View Toggle -->
+        <div class="setting-row">
+          <span class="setting-label">{{ $t('settings.frontView') }}</span>
+          <div class="setting-control">
+            <button
+              class="option-btn"
+              :class="{ active: !settings.frontViewEnabled }"
+              @click="settings.setFrontViewEnabled(false)"
+            >
+              Off
+            </button>
+            <button
+              class="option-btn"
+              :class="{ active: settings.frontViewEnabled }"
+              @click="settings.setFrontViewEnabled(true)"
+            >
+              On
+            </button>
+          </div>
+        </div>
 
         <!-- SpeedLines Preset -->
         <div class="setting-row">
