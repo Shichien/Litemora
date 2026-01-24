@@ -21,8 +21,8 @@ export const MOVEMENT_CONSTANTS = {
 export const PLAYER_CONFIG = {
   speed: {
     crouch: 1.3,
-    walk: 2.3,
-    run: 4.56,
+    walk: 3.00,
+    run: 5.00,
   },
   // 方向速率倍率：区分档位以便精细调参
   directionMultiplier: {

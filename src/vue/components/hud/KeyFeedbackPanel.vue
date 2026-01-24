@@ -12,10 +12,13 @@ const keys = reactive({
   a: false,
   s: false,
   d: false,
+  shift: false,
   z: false,
   x: false,
   c: false,
   v: false,
+  q: false,
+  r: false,
 })
 
 /**
@@ -26,10 +29,13 @@ function handleInputUpdate(inputKeys) {
   keys.a = inputKeys.left
   keys.s = inputKeys.backward
   keys.d = inputKeys.right
+  keys.shift = inputKeys.shift || false
   keys.z = inputKeys.z || false
   keys.x = inputKeys.x || false
   keys.c = inputKeys.c || false
   keys.v = inputKeys.v || false
+  keys.q = inputKeys.q || false
+  keys.r = inputKeys.r || false
 }
 
 /**
@@ -40,10 +46,13 @@ function resetKeys() {
   keys.a = false
   keys.s = false
   keys.d = false
+  keys.shift = false
   keys.z = false
   keys.x = false
   keys.c = false
   keys.v = false
+  keys.q = false
+  keys.r = false
 }
 
 onMounted(() => {
@@ -63,8 +72,14 @@ onUnmounted(() => {
   <div class="key-feedback mc-text">
     <!-- Movement Keys -->
     <div class="key-row">
+      <div class="key-cap" :class="{ pressed: keys.q }">
+        Q
+      </div>
       <div class="key-cap" :class="{ pressed: keys.w }">
         W
+      </div>
+      <div class="key-cap" :class="{ pressed: keys.r }">
+        R
       </div>
     </div>
     <div class="key-row">
@@ -76,6 +91,12 @@ onUnmounted(() => {
       </div>
       <div class="key-cap" :class="{ pressed: keys.d }">
         D
+      </div>
+    </div>
+    <!-- Shift (Sprint) -->
+    <div class="key-row">
+      <div class="key-cap wide" :class="{ pressed: keys.shift }" style="font-family: Minecraft;">
+        ⇧
       </div>
     </div>
 
@@ -131,6 +152,10 @@ onUnmounted(() => {
   text-shadow: 1px 1px 0 #3f3f3f;
   transition: all 0.05s ease;
   border-radius: calc(1px * var(--hud-scale));
+}
+
+.key-cap.wide {
+  width: calc(52px * var(--hud-scale));
 }
 
 .key-cap.pressed {

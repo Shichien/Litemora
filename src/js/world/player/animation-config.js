@@ -138,9 +138,9 @@ export const timeScaleConfig = {
   },
   subGroups: {
     // Locomotion
-    walk: 1.2,
+    walk: 1.6,
     sneak: 0.9,
-    run: 1.2,
+    run: 1.5,
     idle: 1.8,
     // Combat
     punch: 1.5,
