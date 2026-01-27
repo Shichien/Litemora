@@ -95,8 +95,8 @@ onUnmounted(() => {
     </div>
     <!-- Shift (Sprint) -->
     <div class="key-row">
-      <div class="key-cap wide" :class="{ pressed: keys.shift }" style="font-family: Minecraft;">
-        ⇧
+      <div class="key-cap wide" :class="{ pressed: keys.shift }">
+        <span>SHIFT</span> ⇧
       </div>
     </div>
 
