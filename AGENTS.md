@@ -61,7 +61,7 @@ pnpm clean:report     # Remove Playwright test reports
 ### Formatting (ESLint - Antfu)
 
 - **Style Guide:** Follows `@antfu/eslint-config` defaults
-- **Print width:** 80 characters
+- **Print width:** 120 characters
 - **Indentation:** 2 spaces (no tabs)
 - **Semicolons:** None (Never use semicolons)
 - **Quotes:** Single quotes (`'`) for JS/Vue, single for JSX
@@ -69,6 +69,13 @@ pnpm clean:report     # Remove Playwright test reports
 - **Arrow parens:** Always
 - **Line endings:** CRLF (Windows)
 - **Plugins:** `prettier-plugin-tailwindcss` for class sorting
+
+**CRITICAL FORMATTING RULES:**
+
+1. **Respect Existing Style:** When modifying a file, mimic the existing formatting (braces, blank lines, sorting) exactly.
+2. **Vue SFC:** Do NOT indent top-level content inside `<script setup>` or `<style>`.
+3. **Minimal Changes:** Do NOT reformat the entire file. Only apply formatting to your specific changes.
+4. **Antfu Nuances:** Allow single-line `if` statements without braces.
 
 ### Linting (ESLint)
 
