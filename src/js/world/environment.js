@@ -2,6 +2,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import emitter from '../utils/event-bus.js'
+import DayCycle from './day-cycle.js'
 
 export default class Environment {
   constructor() {
@@ -23,7 +24,7 @@ export default class Environment {
       ambientIntensity: 0.75,
       fogColor: '#989490',
       fogDensity: 0.01,
-      background: 'Image',
+      background: 'DayCycle',
     }
 
     // Axes Helper
@@ -35,6 +36,10 @@ export default class Environment {
     this.setSunLight()
     this.setEnvironmentMap()
     this.setFog()
+
+    // 初始化昼夜循环系统
+    this.dayCycle = new DayCycle()
+
     this.debuggerInit()
 
     // Listen for settings changes from Settings UI
@@ -133,7 +138,7 @@ export default class Environment {
     this.environmentMap.texture.mapping = THREE.EquirectangularReflectionMapping
     // this.environmentMap.texture.colorSpace = THREE.SRGBColorSpace // RGBELoader usually handles this, or it might be Linear. Let's check standard implementation.
 
-    // 背景贴图
+    // 背景贴图（保留引用，但不设置 scene.background，由 SkyDome 管理）
     this.backgroundTexture = this.resources.items.backgroundTexture
     if (this.backgroundTexture) {
       this.backgroundTexture.colorSpace = THREE.SRGBColorSpace
@@ -141,15 +146,21 @@ export default class Environment {
     }
 
     this.scene.environment = this.environmentMap.texture
-    this.updateBackground()
+    // 注意：不再调用 updateBackground()，天空由 DayCycle 的 SkyDome 管理
   }
 
   updateBackground() {
+    // 此方法保留用于调试面板切换，但默认由 SkyDome 管理天空
+    // 仅在需要强制使用 HDR/Image 时启用
     if (this.params.background === 'HDR') {
       this.scene.background = this.environmentMap.texture
     }
     else if (this.params.background === 'Image' && this.backgroundTexture) {
       this.scene.background = this.backgroundTexture
+    }
+    else {
+      // DayCycle 模式：清除 scene.background，让 SkyDome 显示
+      this.scene.background = null
     }
   }
 
@@ -231,6 +242,11 @@ export default class Environment {
         this.helper.update()
       }
     }
+
+    // 更新昼夜循环系统
+    if (this.dayCycle) {
+      this.dayCycle.update(this)
+    }
   }
 
   debuggerInit() {
@@ -243,6 +259,7 @@ export default class Environment {
       environmentFolder.addBinding(this.params, 'background', {
         label: 'Background',
         options: {
+          DayCycle: 'DayCycle',
           HDR: 'HDR',
           Image: 'Image',
         },
@@ -369,6 +386,11 @@ export default class Environment {
   }
 
   destroy() {
+    // 销毁昼夜循环系统
+    if (this.dayCycle) {
+      this.dayCycle.destroy()
+    }
+
     // Remove lights from scene
     if (this.sunLight) {
       this.scene.remove(this.sunLight)

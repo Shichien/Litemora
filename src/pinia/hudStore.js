@@ -84,6 +84,10 @@ export const useHudStore = defineStore('hud', () => {
   const playerCount = ref(1)
   const serverName = ref('Local server')
 
+  // ==================== Day/Night Cycle State ====================
+  /** 一天中的时间点 (0-1, 0=midnight, 0.5=noon) */
+  const timeOfDay = ref(0.25)
+
   // ========================================
   // Actions
   // ========================================
@@ -109,6 +113,78 @@ export const useHudStore = defineStore('hud', () => {
       addMessage(text, 'chat') // Type 'chat' for user messages
     }
     closeChat()
+  }
+
+  /**
+   * 时段定义（基于 timeOfDay 0-1，共 7 个时段）
+   *
+   * 时间段范围（timeOfDay 0-1）：
+   * 1. midnight（午夜）: 0.00 - 0.22 和 0.85 - 1.00
+   * 2. sunrise（日出）: 0.22 - 0.28
+   * 3. morning（早晨）: 0.28 - 0.40
+   * 4. noon（正午）: 0.40 - 0.55
+   * 5. afternoon（下午）: 0.55 - 0.70
+   * 6. sunset（日落）: 0.70 - 0.78
+   * 7. dusk（黄昏）: 0.78 - 0.85
+   *
+   * 转换为24小时制：
+   * - midnight: 00:00 - 05:15 和 20:20 - 24:00
+   * - sunrise: 05:15 - 06:40
+   * - morning: 06:40 - 09:40
+   * - noon: 09:40 - 13:15
+   * - afternoon: 13:15 - 16:45
+   * - sunset: 16:45 - 18:45
+   * - dusk: 18:45 - 20:20
+   */
+  const DAY_PHASES = [
+    { name: 'midnight', start: 0.00, end: 0.22 },
+    { name: 'sunrise', start: 0.22, end: 0.28 },
+    { name: 'morning', start: 0.28, end: 0.40 },
+    { name: 'noon', start: 0.40, end: 0.55 },
+    { name: 'afternoon', start: 0.55, end: 0.70 },
+    { name: 'sunset', start: 0.70, end: 0.78 },
+    { name: 'dusk', start: 0.78, end: 0.85 },
+    { name: 'midnight', start: 0.85, end: 1.00 },
+  ]
+
+  /**
+   * 获取当前时段名称
+   * @returns {string} 时段名称
+   */
+  function getCurrentPhase() {
+    const t = timeOfDay.value
+    for (const phase of DAY_PHASES) {
+      if (t >= phase.start && t < phase.end) {
+        return phase.name
+      }
+    }
+    return 'midnight'
+  }
+
+  /**
+   * 根据 timeOfDay 更新游戏时间显示
+   * @param {number} time - 0-1 的时间值
+   */
+  function updateGameTime(time) {
+    // 更新 timeOfDay
+    timeOfDay.value = time
+
+    // 计算小时和分钟 (timeOfDay 0 = 00:00, 0.5 = 12:00, 1 = 24:00)
+    const totalMinutes = Math.floor(time * 24 * 60)
+    const hours = Math.floor(totalMinutes / 60) % 24
+    const minutes = totalMinutes % 60
+
+    // 格式化为 12 小时制
+    const period = hours >= 12 ? 'PM' : 'AM'
+    const displayHours = hours % 12 || 12
+    gameTime.value = `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`
+  }
+
+  /**
+   * 增加游戏天数
+   */
+  function incrementGameDay() {
+    gameDay.value += 1
   }
 
   /**
@@ -288,6 +364,12 @@ export const useHudStore = defineStore('hud', () => {
     fps,
     playerCount,
     serverName,
+
+    // Day/Night Cycle
+    timeOfDay,
+    getCurrentPhase,
+    updateGameTime,
+    incrementGameDay,
 
     // Actions
     updatePlayerInfo,

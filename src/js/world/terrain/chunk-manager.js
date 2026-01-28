@@ -603,7 +603,7 @@ export default class ChunkManager {
   debugInit() {
     this.debugFolder = this.debug.ui.addFolder({
       title: 'Chunk 地形',
-      expanded: true,
+      expanded: false,
     })
 
     const renderFolder = this.debugFolder.addFolder({
