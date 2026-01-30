@@ -30,7 +30,7 @@ onBeforeUnmount(() => {
     <!-- 准星（仅在 Pointer Lock 激活时显示） -->
     <Crosshair />
     <!-- 小地图 -->
-    <MiniMap />
+    <!-- <MiniMap /> -->
   </div>
 </template>
 

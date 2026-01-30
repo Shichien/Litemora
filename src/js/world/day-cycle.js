@@ -38,67 +38,7 @@ export default class DayCycle {
       timeSpeed: 1.0, // 调试用倍速
     }
 
-    // // 时段配置（与贴图对应，共 7 个时段）
-    // this.phaseConfig = {
-    //   sunrise: {
-    //     texture: 'sky_sunriseTexture',
-    //     sunIntensity: 0.8,
-    //     sunColor: '#ffcc88',
-    //     ambientIntensity: 0.5,
-    //     ambientColor: '#ffd4a3',
-    //     fog: { color: '#af7a4c', density: 0.015 },
-    //   },
-    //   morning: {
-    //     texture: 'sky_morningTexture',
-    //     sunIntensity: 1.2,
-    //     sunColor: '#fff0d0',
-    //     ambientIntensity: 0.65,
-    //     ambientColor: '#fffaf0',
-    //     fog: { color: '#91c7ed', density: 0.010 },
-    //   },
-    //   noon: {
-    //     texture: 'sky_noonTexture',
-    //     sunIntensity: 1.75,
-    //     sunColor: '#ffffff',
-    //     ambientIntensity: 0.75,
-    //     ambientColor: '#ffffff',
-    //     fog: { color: '#989490', density: 0.006 },
-    //   },
-    //   afternoon: {
-    //     texture: 'sky_afternoonTexture',
-    //     sunIntensity: 1.4,
-    //     sunColor: '#fff5e0',
-    //     ambientIntensity: 0.7,
-    //     ambientColor: '#9a754b',
-    //     fog: { color: '#97703b', density: 0.008 },
-    //   },
-    //   sunset: {
-    //     texture: 'sky_sunsetTexture',
-    //     sunIntensity: 0.9,
-    //     sunColor: '#ff9966',
-    //     ambientIntensity: 0.4,
-    //     ambientColor: '#ffaa77',
-    //     fog: { color: '#e8a87c', density: 0.012 },
-    //   },
-    //   dusk: {
-    //     texture: 'sky_duskTexture',
-    //     sunIntensity: 0.4,
-    //     sunColor: '#9988aa',
-    //     ambientIntensity: 0.4,
-    //     ambientColor: '#7788aa',
-    //     fog: { color: '#5c6080', density: 0.015 },
-    //   },
-    //   midnight: {
-    //     texture: 'sky_midnightTexture',
-    //     sunIntensity: 0.1,
-    //     sunColor: '#334455',
-    //     ambientIntensity: 0.35,
-    //     ambientColor: '#445566',
-    //     fog: { color: '#1a1a2e', density: 0.018 },
-    //   },
-    // }
     // 时段配置（与贴图对应，共 7 个时段）
-    // Director-grade, skybox-calibrated preset
     this.phaseConfig = {
       sunrise: {
         texture: 'sky_sunriseTexture',

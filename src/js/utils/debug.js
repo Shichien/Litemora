@@ -1,3 +1,5 @@
+import * as EssentialsPlugin from '@tweakpane/plugin-essentials'
+
 import { Pane } from 'tweakpane'
 
 export default class Debug {
@@ -5,7 +7,7 @@ export default class Debug {
     this.active = window.location.hash === '#debug'
 
     if (this.active) {
-      this.ui = new Pane()
+      this.ui = new Pane(EssentialsPlugin)
     }
   }
 

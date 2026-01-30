@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
       '@vitejs/plugin-legacy':
         specifier: ^5.4.1
         version: 5.4.3(terser@5.37.0)(vite@5.4.11(@types/node@22.10.2)(sass@1.83.0)(terser@5.37.0))
@@ -1316,6 +1319,11 @@ packages:
   '@trysound/sax@0.2.0':
     resolution: {integrity: sha512-L7z9BgrNEcYyUYtF+HaEfiS5ebkh9jXqbszz7pC0hRBPaatV0XjSD3+eHrpqFemQfgwiFF0QPIarnIihIDn7OA==}
     engines: {node: '>=10.13.0'}
+
+  '@tweakpane/plugin-essentials@0.2.1':
+    resolution: {integrity: sha512-VbFU1/uD+CJNFQdfLXUOLjeG5HyUZH97Ox9CxmyVetg1hqjVun3C83HAGFULyhKzl8tSgii8jr304r8QpdHwzQ==}
+    peerDependencies:
+      tweakpane: ^4.0.0
 
   '@tybys/wasm-util@0.9.0':
     resolution: {integrity: sha512-6+7nlbMVX/PVDCwaIQ8nTOPveOcFLSt8GcXdx8hD0bt39uWxYT88uXzqTd4fTvqta7oeUJqudepapKNt2DYJFw==}
@@ -5372,6 +5380,10 @@ snapshots:
       - typescript
 
   '@trysound/sax@0.2.0': {}
+
+  '@tweakpane/plugin-essentials@0.2.1(tweakpane@4.0.5)':
+    dependencies:
+      tweakpane: 4.0.5
 
   '@tybys/wasm-util@0.9.0':
     dependencies:
