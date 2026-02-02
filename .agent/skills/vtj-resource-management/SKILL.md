@@ -1,6 +1,6 @@
 ---
 name: vtj-resource-management
-description: Use when loading models, textures, fonts, or other assets in this vite-threejs project. Covers sources.js declaration, resource types, accessing loaded items, and the core:ready event.
+description: Loads and manages 3D assets via the Resources system. Use when adding models, textures, or fonts; declare in sources.js and access via core:ready event.
 ---
 
 # vite-threejs Resource Management

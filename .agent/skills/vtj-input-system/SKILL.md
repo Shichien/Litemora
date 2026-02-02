@@ -1,6 +1,6 @@
 ---
 name: vtj-input-system
-description: Use when handling mouse, keyboard, or touch input in Three.js components. Covers IMouse, InputManager, PointerLock, normalized coordinates, and event patterns.
+description: Handles mouse, keyboard, and touch input via the IMouse and InputManager systems. Use when implementing controls, raycasting, or FPS-style PointerLock.
 ---
 
 # vite-threejs Input System

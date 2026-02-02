@@ -1,6 +1,6 @@
 ---
 name: vtj-camera-system
-description: Use when working with camera control, third-person following, camera collision, or camera settings. Covers CameraRig, mode switching, cave detection, and shoulder toggle.
+description: Configures third-person camera systems with collision avoidance. Use when adjusting follow behavior, implementing camera modes, or handling cave/obstacle detection.
 ---
 
 # vite-threejs Camera System

@@ -1,6 +1,6 @@
 ---
 name: vtj-state-management
-description: Use when managing state between Vue UI and Three.js layers. Covers Pinia for persistent state, mitt for events, event naming conventions, and the Vue/Three.js communication pattern.
+description: Manages state between Vue and Three.js via Pinia and mitt. Use when synchronizing UI state, emitting events, or implementing cross-layer communication.
 ---
 
 # vite-threejs State Management (Pinia + mitt)

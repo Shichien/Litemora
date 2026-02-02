@@ -1,6 +1,6 @@
 ---
 name: vtj-component-model
-description: Use when creating new 3D components in this vite-threejs project. Covers Experience singleton pattern, class structure, dependency injection, and lifecycle methods (debugInit/update/resize/destroy).
+description: Creates 3D components using the Experience singleton pattern. Use when building new classes in src/js/, implementing lifecycle methods, or managing Three.js objects.
 ---
 
 # vite-threejs 3D Component Model
@@ -20,9 +20,9 @@ All 3D components in this project follow a **class-based singleton pattern**. Co
 ## Component Template
 
 ```javascript
+import Experience from '@/js/experience.js'
+import emitter from '@/js/utils/event-bus.js'
 import * as THREE from 'three'
-import Experience from './experience.js'
-import emitter from './utils/event-bus.js'
 
 export default class YourComponent {
   constructor(options = {}) {
@@ -209,7 +209,7 @@ class BadComponent {
 
 ```javascript
 // BAD: 使用其他命名
-debugInit() { }      // ❌
+debuggerInit() { }      // ❌
 setDebug() { }       // ❌
 
 // GOOD: 统一命名

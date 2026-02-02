@@ -1,6 +1,6 @@
 ---
 name: vtj-raycasting-system
-description: Use when implementing picking, selection, or collision detection with rays. Covers Raycaster setup, IMouse integration, block interaction patterns, and optimization tips.
+description: Implements ray picking and collision detection. Use when selecting objects, detecting block interactions, or optimizing raycaster performance.
 ---
 
 # vite-threejs Raycasting System

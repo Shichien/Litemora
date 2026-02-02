@@ -1,6 +1,6 @@
 ---
 name: vtj-ui-integration
-description: Use when building Vue components that interact with Three.js, or when Three.js needs to communicate with UI. Covers strict layer separation, communication patterns, and forbidden practices.
+description: Integrates Vue UI with Three.js while maintaining strict separation. Use when building HUDs, menus, or handling UI-to-scene communication via events.
 ---
 
 # vite-threejs UI Integration (Vue ↔ Three.js)

@@ -1,6 +1,6 @@
 ---
 name: vtj-anti-patterns
-description: Use before writing any code in this project. Lists prohibited practices, common mistakes, and violations that will cause bugs or maintenance issues.
+description: Prevents common mistakes and prohibited practices in vite-threejs projects. Use before writing code to avoid bugs, memory leaks, and maintenance issues.
 ---
 
 # vite-threejs Anti-Patterns (禁止事项)

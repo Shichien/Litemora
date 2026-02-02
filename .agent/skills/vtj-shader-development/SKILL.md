@@ -1,6 +1,6 @@
 ---
 name: vtj-shader-development
-description: Use when creating or modifying shaders. Covers GLSL file organization, vite-plugin-glsl imports, ShaderMaterial patterns, uniform management, and debug panel requirements.
+description: Creates custom GLSL shaders with vite-plugin-glsl. Use when writing vertex/fragment shaders, managing uniforms, or adding ShaderMaterial debug panels.
 ---
 
 # vite-threejs Shader Development
