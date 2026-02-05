@@ -40,6 +40,12 @@ function handleEscape() {
 }
 
 function handleWindowBlur() {
+  // 在 debugMode 下禁用 blur 处理
+  const isDebugMode = window.location.hash === '#debug'
+  if (isDebugMode) {
+    return
+  }
+
   if (ui.screen === 'playing') {
     ui.toPauseMenu()
   }
