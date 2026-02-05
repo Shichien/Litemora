@@ -16,9 +16,12 @@ import ItemPickupAnimator from '../interaction/item-pickup-animator.js'
 import emitter from '../utils/event-bus.js'
 import Environment from './environment.js'
 import Player from './player/player.js'
-
 import ChunkManager from './terrain/chunk-manager.js'
 
+/**
+ * World 场景编排器：只负责在 core:ready 后按依赖顺序创建组件、编排 update/destroy。
+ * 具体职责见 .agent/skills/vtj-scene-management/SKILL.md
+ */
 export default class World {
   constructor() {
     this.experience = new Experience()
@@ -28,127 +31,111 @@ export default class World {
     this.scene.add(new THREE.AxesHelper(5))
 
     emitter.on('core:ready', () => {
-      // ===== Step1：初始化 3×3 chunk 管理器（渲染依赖资源 ready）=====
-      this.chunkManager = new ChunkManager({
-        chunkWidth: CHUNK_BASIC_CONFIG.chunkWidth,
-        chunkHeight: CHUNK_BASIC_CONFIG.chunkHeight,
-        viewDistance: CHUNK_BASIC_CONFIG.viewDistance, // 3×3
-        seed: 1265, // 使用自定义 seed，覆盖默认值
-        terrain: {
-          // 与 TerrainGenerator 默认保持一致，可后续接 Debug/Pinia
-          scale: TERRAIN_PARAMS.scale,
-          magnitude: TERRAIN_PARAMS.magnitude, // 振幅 (0-32)，覆盖默认值
-          // offset 为"高度偏移（方块层数）"
-          offset: TERRAIN_PARAMS.offset, // 覆盖默认值
-          rockExpose: TERRAIN_PARAMS.rockExpose, // 覆盖默认值
-          fbm: TERRAIN_PARAMS.fbm, // 覆盖默认值
-        },
-      })
-
-      // 暴露给 Experience，供玩家碰撞/贴地等使用
-      this.experience.terrainDataManager = this.chunkManager
-      // ===== 创建并渲染初始 3×3 chunks =====
-      this.chunkManager.initInitialGrid()
-
-      // Setup
-      this.player = new Player()
-
-      // Setup Camera Rig
-      this.cameraRig = new CameraRig()
-      this.cameraRig.attachPlayer(this.player)
-      this.experience.camera.attachRig(this.cameraRig)
-
-      this.environment = new Environment()
-
-      // ===== 射线拾取 + 选中辅助 =====
-      // 注意：此模块仅用于“指向提示/后续交互”，不会直接改动地形数据
-      this.blockRaycaster = new BlockRaycaster({
-        chunkManager: this.chunkManager,
-        maxDistance: INTERACTION_CONFIG.raycast.maxDistance,
-        useMouse: false, // 默认屏幕中心（PointerLock/FPS 交互）
-      })
-      this.blockSelectionHelper = new BlockSelectionHelper({
-        enabled: true,
-      })
-
-      // Block mining controller (handles progressive mining with VFX)
-      this.blockMiningController = new BlockMiningController({
-        enabled: true,
-        miningDuration: INTERACTION_CONFIG.mining.duration,
-      })
-
-      // Block mining overlay (displays crack texture on target block)
-      this.blockMiningOverlay = new BlockMiningOverlay()
-
-      // ===== 交互管理器 (Build/Destroy Mode) =====
-      this.blockInteractionManager = new BlockInteractionManager({
-        chunkManager: this.chunkManager,
-        blockRaycaster: this.blockRaycaster,
-        blockMiningController: this.blockMiningController,
-      })
-
-      // ===== 方块破碎粒子效果 =====
-      this.blockBreakParticles = new BlockBreakParticles()
-
-      // ===== 物品拾取动画效果 =====
-      this.itemPickupAnimator = new ItemPickupAnimator()
-
-      // ===== Settings Listeners =====
-      emitter.on('settings:chunks-changed', (data) => {
-        if (!this.chunkManager)
-          return
-
-        if (data.viewDistance !== undefined) {
-          this.chunkManager.viewDistance = data.viewDistance
-        }
-        if (data.unloadPadding !== undefined) {
-          this.chunkManager.unloadPadding = data.unloadPadding
-        }
-
-        // Trigger a streaming update to apply new distance rules immediately
-        if (this.player) {
-          const pos = this.player.getPosition()
-          this.chunkManager.updateStreaming({ x: pos.x, z: pos.z }, true)
-        }
-
-        // Initialize player preview
-        this.experience.renderer.initPlayerPreview(this.player)
-      })
+      this._initTerrain()
+      this._initPlayerAndCamera()
+      this._initEnvironment()
+      this._initBlockInteraction()
+      this._initEffects()
+      this._setupSettingsListeners()
     })
   }
 
+  /** 地形：ChunkManager + 暴露 terrainDataManager + 初始网格 */
+  _initTerrain() {
+    this.chunkManager = new ChunkManager({
+      chunkWidth: CHUNK_BASIC_CONFIG.chunkWidth,
+      chunkHeight: CHUNK_BASIC_CONFIG.chunkHeight,
+      viewDistance: CHUNK_BASIC_CONFIG.viewDistance,
+      seed: 1265,
+      terrain: {
+        scale: TERRAIN_PARAMS.scale,
+        magnitude: TERRAIN_PARAMS.magnitude,
+        offset: TERRAIN_PARAMS.offset,
+        rockExpose: TERRAIN_PARAMS.rockExpose,
+        fbm: TERRAIN_PARAMS.fbm,
+      },
+    })
+    this.experience.terrainDataManager = this.chunkManager
+    this.chunkManager.initInitialGrid()
+  }
+
+  /** 玩家 + 相机 Rig，依赖地形（贴地/碰撞用 terrainDataManager） */
+  _initPlayerAndCamera() {
+    this.player = new Player()
+    this.cameraRig = new CameraRig()
+    this.cameraRig.attachPlayer(this.player)
+    this.experience.camera.attachRig(this.cameraRig)
+  }
+
+  /** 环境（天空、光照等） */
+  _initEnvironment() {
+    this.environment = new Environment()
+  }
+
+  /** 方块交互链：射线、选中框、挖矿控制器/覆盖层、交互管理器 */
+  _initBlockInteraction() {
+    this.blockRaycaster = new BlockRaycaster({
+      chunkManager: this.chunkManager,
+      maxDistance: INTERACTION_CONFIG.raycast.maxDistance,
+      useMouse: false,
+    })
+    this.blockSelectionHelper = new BlockSelectionHelper({ enabled: true })
+    this.blockMiningController = new BlockMiningController({
+      enabled: true,
+      miningDuration: INTERACTION_CONFIG.mining.duration,
+    })
+    this.blockMiningOverlay = new BlockMiningOverlay()
+    this.blockInteractionManager = new BlockInteractionManager({
+      chunkManager: this.chunkManager,
+      blockRaycaster: this.blockRaycaster,
+      blockMiningController: this.blockMiningController,
+    })
+  }
+
+  /** 视觉效果：破碎粒子、拾取动画 */
+  _initEffects() {
+    this.blockBreakParticles = new BlockBreakParticles()
+    this.itemPickupAnimator = new ItemPickupAnimator()
+  }
+
+  /** 设置变更监听（视距等） */
+  _setupSettingsListeners() {
+    emitter.on('settings:chunks-changed', (data) => {
+      if (!this.chunkManager)
+        return
+      if (data.viewDistance !== undefined)
+        this.chunkManager.viewDistance = data.viewDistance
+      if (data.unloadPadding !== undefined)
+        this.chunkManager.unloadPadding = data.unloadPadding
+      if (this.player) {
+        const pos = this.player.getPosition()
+        this.chunkManager.updateStreaming({ x: pos.x, z: pos.z }, true)
+      }
+      this.experience.renderer.initPlayerPreview(this.player)
+    })
+  }
+
+  /**
+   * 每帧更新，顺序与依赖一致：地形流式 → 地形动画 → 挖矿 → 玩家/环境 → 射线/选中框 → 粒子
+   */
   update() {
-    // Step2：先做 chunk streaming，确保玩家碰撞查询能尽量命中已加载 chunk
     if (this.chunkManager && this.player) {
       const pos = this.player.getPosition()
       this.chunkManager.updateStreaming({ x: pos.x, z: pos.z })
       this.chunkManager.pumpIdleQueue()
     }
-
-    // 更新动画材质（树叶摇摆等）
     if (this.chunkManager)
       this.chunkManager.update()
-
-    // Update mining controller
     if (this.blockMiningController)
       this.blockMiningController.update()
-
     if (this.player)
       this.player.update()
-    if (this.floor)
-      this.floor.update()
     if (this.environment)
       this.environment.update()
-
-    // 每帧射线检测：用于 hover 提示与后续交互
     if (this.blockRaycaster)
       this.blockRaycaster.update()
-
-    // 更新辅助框位置
     if (this.blockSelectionHelper)
       this.blockSelectionHelper.update()
-
-    // 更新粒子系统
     if (this.blockBreakParticles)
       this.blockBreakParticles.update()
   }
