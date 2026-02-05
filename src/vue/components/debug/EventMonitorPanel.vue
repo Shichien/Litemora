@@ -1,5 +1,6 @@
 <script setup>
-import debugEventFilter, { DEFAULT_BLACKLIST } from '@three/utils/debug/debug-event-filter.js'
+import { DEFAULT_BLACKLIST } from '@three/utils/debug/debug-config.js'
+import debugEventFilter from '@three/utils/debug/debug-event-filter.js'
 import debugStateMonitor from '@three/utils/debug/debug-state-monitor.js'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import EventLogItem from './EventLogItem.vue'
@@ -31,7 +32,7 @@ watch(searchQuery, (val) => {
 // 黑名单
 const enableBlacklist = ref(true)
 const selectedBlacklist = ref([...DEFAULT_BLACKLIST])
-const blacklistOptions = ['core:tick', 'core:resize', 'camera:', 'render:']
+const blacklistOptions = ['input:mouse_down', 'input:mouse_up', 'input:mouse_move', 'input:wheel', 'input:update']
 
 watch(enableBlacklist, (val) => {
   debugEventFilter.enableBlacklist = val
@@ -124,7 +125,7 @@ function refreshLogs() {
 
 <template>
   <div
-    class="event-monitor-panel relative flex flex-col bg-gray-900/95 backdrop-blur-sm border-r border-gray-700/50 transition-all duration-300 ease-in-out h-screen overflow-hidden shadow-2xl"
+    class="event-monitor-panel relative flex flex-col bg-gray-900/95 backdrop-blur-sm border-r border-gray-700/50 transition-all duration-300 ease-in-out h-screen overflow-visible shadow-2xl"
     :class="{ collapsed: isCollapsed }"
     :style="{ width: isCollapsed ? '40px' : '400px' }"
   >

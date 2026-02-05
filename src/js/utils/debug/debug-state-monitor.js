@@ -11,6 +11,7 @@
  * 仅在开发环境且 URL hash 为 #debug 时启用
  */
 
+import { DEFAULT_BLACKLIST } from './debug-config.js'
 // 生成唯一 ID
 function generateId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -58,12 +59,7 @@ class DebugStateMonitor {
     this.stateSnapshot = {}
 
     // 高频事件黑名单 - 这些事件不参与监视器（避免 console 爆满）
-    this.highFrequencyEvents = new Set([
-      'core:tick',
-      'core:resize',
-      'input:mouse_move',
-      'input:update',
-    ])
+    this.highFrequencyEvents = new Set(DEFAULT_BLACKLIST)
 
     if (this.enabled) {
       console.warn('[DebugStateMonitor] Initialized')

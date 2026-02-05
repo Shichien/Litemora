@@ -38,7 +38,7 @@ const isDebugMode = window.location.hash === '#debug'
     <Crosshair />
 
     <!-- Debug 模式：浮动 Event Monitor 面板 -->
-    <EventMonitorPanel v-if="isDebugMode" class="event-monitor-overlay" />
+    <EventMonitorPanel v-if="isDebugMode" class="event-monitor-overlay overflow-visible" />
   </div>
 </template>
 

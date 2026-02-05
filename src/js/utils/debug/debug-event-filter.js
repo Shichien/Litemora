@@ -13,10 +13,7 @@
  * 默认高频事件黑名单（避免污染日志）
  * 这些事件每秒触发多次，会淹没其他重要事件
  */
-export const DEFAULT_BLACKLIST = [
-  'core:tick',
-  'core:resize',
-]
+import { DEFAULT_BLACKLIST } from './debug-config.js'
 
 class DebugEventFilter {
   constructor() {
