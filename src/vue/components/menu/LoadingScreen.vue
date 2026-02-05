@@ -1,5 +1,5 @@
 <script setup>
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * LoadingScreen - Initial loading screen
  * Shows loading progress while resources are being loaded

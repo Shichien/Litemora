@@ -1,5 +1,5 @@
 <script setup>
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 import { Color } from 'three'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 

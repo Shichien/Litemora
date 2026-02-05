@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 
 import Experience from '../experience.js'
-import emitter from '../utils/event-bus.js'
+import emitter from '../utils/event/event-bus.js'
 
 export default class Camera {
   constructor() {

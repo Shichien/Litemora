@@ -1,7 +1,7 @@
 <script setup>
 import { useHudStore } from '@pinia/hudStore.js'
 import sources from '@three/sources.js'
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 import { blocks as blocksConfig } from '@three/world/terrain/blocks-config.js'
 /**
  * Hotbar - Minecraft Style Hotbar (9 slots)

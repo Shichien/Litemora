@@ -9,8 +9,8 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 
-import Experience from '../experience.js'
-import emitter from './event-bus.js'
+import Experience from '../../experience.js'
+import emitter from '../event/event-bus.js'
 
 export default class Resources {
   constructor(sources, options = {}) {

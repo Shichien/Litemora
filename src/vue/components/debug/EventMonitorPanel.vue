@@ -1,6 +1,6 @@
 <script setup>
-import debugEventFilter, { DEFAULT_BLACKLIST } from '@three/utils/debug-event-filter.js'
-import debugStateMonitor from '@three/utils/debug-state-monitor.js'
+import debugEventFilter, { DEFAULT_BLACKLIST } from '@three/utils/debug/debug-event-filter.js'
+import debugStateMonitor from '@three/utils/debug/debug-state-monitor.js'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import EventLogItem from './EventLogItem.vue'
 

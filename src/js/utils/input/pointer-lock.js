@@ -1,5 +1,5 @@
-import Experience from '../experience.js'
-import emitter from './event-bus.js'
+import Experience from '../../experience.js'
+import emitter from '../event/event-bus.js'
 
 /**
  * PointerLockManager - 管理浏览器 Pointer Lock API

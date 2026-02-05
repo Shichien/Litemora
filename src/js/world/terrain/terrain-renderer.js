@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { SHADOW_CONFIG, SHADOW_QUALITY, TREE_BLOCK_IDS } from '../../config/shadow-config.js'
 import Experience from '../../experience.js'
-import emitter from '../../utils/event-bus.js'
+import emitter from '../../utils/event/event-bus.js'
 
 import { ANIMATION_DEFAULTS, blocks, createMaterials, resources, sharedGeometry } from './blocks-config.js'
 import TerrainContainer from './terrain-container.js'

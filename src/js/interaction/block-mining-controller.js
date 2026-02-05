@@ -1,6 +1,6 @@
 import { INTERACTION_CONFIG } from '../config/interaction-config.js'
 import Experience from '../experience.js'
-import emitter from '../utils/event-bus.js'
+import emitter from '../utils/event/event-bus.js'
 
 /**
  * BlockMiningController

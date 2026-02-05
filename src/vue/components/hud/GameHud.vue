@@ -1,7 +1,7 @@
 <script setup>
 import { useHudStore } from '@pinia/hudStore.js'
 import { useUiStore } from '@pinia/uiStore.js'
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * GameHud - Main Minecraft Style HUD Container
  * Only visible when screen === 'playing'

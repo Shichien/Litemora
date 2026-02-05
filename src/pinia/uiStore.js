@@ -1,5 +1,5 @@
 import { useSettingsStore } from '@pinia/settingsStore.js'
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * UI Store - Menu System State Machine
  * Manages screen states, menu views, and world state

@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 
 import Experience from '../experience.js'
-import emitter from '../utils/event-bus.js'
+import emitter from '../utils/event/event-bus.js'
 import { blocks } from '../world/terrain/blocks-config.js'
 
 // 默认使用屏幕中心作为射线发射点（适配 PointerLock/FPS 交互）

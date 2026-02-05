@@ -1,6 +1,6 @@
 <script setup>
 import { useUiStore } from '@pinia/uiStore.js'
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * UiRoot - Menu System Root Component
  * Manages screen transitions and overlay rendering

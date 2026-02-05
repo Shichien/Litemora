@@ -11,7 +11,7 @@ import speedLinesVertexShader from '../shaders/speedlines/vertex.glsl'
 
 import { SHADOW_CONFIG, SHADOW_QUALITY } from './config/shadow-config.js'
 import Experience from './experience.js'
-import emitter from './utils/event-bus.js'
+import emitter from './utils/event/event-bus.js'
 import PlayerPreviewCamera from './world/player/player-preview-camera.js'
 
 export default class Renderer {

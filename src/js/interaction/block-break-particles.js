@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three'
 import Experience from '../experience.js'
-import emitter from '../utils/event-bus.js'
+import emitter from '../utils/event/event-bus.js'
 import { BLOCK_IDS } from '../world/terrain/blocks-config.js'
 
 // 方块 ID -> 粒子颜色映射（简化方案）

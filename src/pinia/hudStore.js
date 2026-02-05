@@ -1,4 +1,4 @@
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * HUD Store - Minecraft Style HUD State Management
  * Manages health, hunger, experience, hotbar, position, and chat messages

@@ -10,7 +10,7 @@ import {
   WATER_PARAMS,
 } from '../../config/chunk-config.js'
 import Experience from '../../experience.js'
-import IdleQueue from '../../utils/idle-queue.js'
+import IdleQueue from '../../utils/utils/idle-queue.js'
 import BiomeGenerator from './biome-generator.js'
 import { blocks, resources } from './blocks-config.js'
 import TerrainChunk from './terrain-chunk.js'

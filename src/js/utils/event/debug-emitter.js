@@ -13,7 +13,7 @@
  */
 
 import mitt from 'mitt'
-import debugStateMonitor from './debug-state-monitor.js'
+import debugStateMonitor from '../debug/debug-state-monitor.js'
 
 // 基础 mitt 实例
 const baseEmitter = mitt()

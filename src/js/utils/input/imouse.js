@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 
-import Experience from '../experience.js'
-import { detectDeviceType } from '../tools/dom.js'
+import Experience from '../../experience.js'
+import { detectDeviceType } from '../../tools/dom.js'
 
 /**
  * IMouse class for handling mouse and touch interactions

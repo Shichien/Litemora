@@ -1,4 +1,4 @@
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * Settings Store - Game settings management
  * Handles graphics, controls, camera, visual effects, and environment settings

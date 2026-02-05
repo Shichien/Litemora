@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js'
 
 import Experience from '../experience.js'
-import emitter from '../utils/event-bus.js'
+import emitter from '../utils/event/event-bus.js'
 import Float from './float.js'
 
 export default class TextMesh {

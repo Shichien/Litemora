@@ -1,5 +1,5 @@
 import { DEFAULT_SKIN_ID, SKIN_LIST } from '@three/config/skin-config.js'
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * Skin Store - 皮肤系统状态管理
  * 管理皮肤选择、预览状态和持久化

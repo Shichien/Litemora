@@ -1,4 +1,4 @@
-import emitter from './event-bus.js'
+import emitter from '../event/event-bus.js'
 
 export default class Time {
   constructor() {

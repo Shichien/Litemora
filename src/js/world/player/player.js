@@ -4,7 +4,7 @@ import { PLAYER_CONFIG } from '../../config/player-config.js'
 import { SHADOW_QUALITY } from '../../config/shadow-config.js'
 import { SKIN_LIST } from '../../config/skin-config.js'
 import Experience from '../../experience.js'
-import emitter from '../../utils/event-bus.js'
+import emitter from '../../utils/event/event-bus.js'
 import {
   AnimationCategories,
   AnimationClips,

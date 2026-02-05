@@ -14,7 +14,7 @@
  * 仅在开发环境启用
  */
 
-import debugStateMonitor from '@three/utils/debug-state-monitor.js'
+import debugStateMonitor from '@three/utils/debug/debug-state-monitor.js'
 
 /**
  * 深拷贝值用于比较

@@ -1,5 +1,5 @@
 <script setup>
-import emitter from '@three/utils/event-bus.js'
+import emitter from '@three/utils/event/event-bus.js'
 /**
  * KeyFeedbackPanel - Displays user key presses (WASD, ZXC, V)
  * Highlighting keys based on input:update events

@@ -1,4 +1,4 @@
-import emitter from './event-bus.js'
+import emitter from '../event/event-bus.js'
 
 /**
  * InputManager - 统一管理键盘和鼠标输入
