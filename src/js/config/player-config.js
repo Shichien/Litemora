@@ -42,7 +42,7 @@ export const PLAYER_CONFIG = {
   jumpForce: 4.9,
   facingAngle: Math.PI,
   mouseSensitivity: 0.002,
-  turnSmoothing: 0.05,
+  turnSmoothing: 0.10,
   respawn: {
     thresholdY: -2,
     position: { x: 0, y: 0, z: 0 },

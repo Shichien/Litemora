@@ -91,6 +91,7 @@ export default class Experience {
       this.camera.update()
       this.world.update()
     }
+
     // Always render (for static scene display)
     this.renderer.update()
     this.stats.update()
