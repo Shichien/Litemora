@@ -102,6 +102,7 @@ export default class PlayerCollisionSystem {
   narrowPhase(candidates, playerCapsule) {
     const collisions = []
     const { center, halfHeight, radius } = playerCapsule
+    const capsuleParams = { center, halfHeight, radius }
 
     for (const block of candidates) {
       // 方块中心在整数坐标，边长 1，对应 [-0.5,0.5]
@@ -111,19 +112,16 @@ export default class PlayerCollisionSystem {
         this._clamp(center.z, block.z - 0.5, block.z + 0.5),
       )
 
-      const collision = this._capsuleContainsPoint(closestPoint, { center, halfHeight, radius })
+      const collision = this._capsuleContainsPoint(closestPoint, capsuleParams)
       if (!collision) {
         continue
       }
-
-      const { normal, overlap, ground } = collision
-
       collisions.push({
         block,
         contactPoint: closestPoint,
-        normal,
-        overlap,
-        ground,
+        normal: collision.normal,
+        overlap: collision.overlap,
+        ground: collision.ground,
       })
 
       if (this.debug.active && this.params.showContacts) {
@@ -140,40 +138,60 @@ export default class PlayerCollisionSystem {
    * - 按重叠深度排序，优先处理浅层碰撞减少穿模
    * - 推离方块并消除沿法线速度
    * - 检测地面状态，清理下落速度
+   * - 优化：限制最大处理碰撞数和迭代次数，减少极端情况下的计算量
    * @param {Array<{block:{x:number,y:number,z:number}, contactPoint:THREE.Vector3, normal:THREE.Vector3, overlap:number, ground:boolean}>} collisions 碰撞结果
    * @param {{ basePosition:THREE.Vector3, center:THREE.Vector3, halfHeight:number, radius:number, worldVelocity:THREE.Vector3, isGrounded:boolean }} playerState 玩家状态（会被就地修改）
    */
   resolveCollisions(collisions, playerState) {
-    collisions.sort((a, b) => a.overlap - b.overlap)
+    // 优化：限制最大处理碰撞数，优先处理重叠小的（浅层碰撞优先）
+    const MAX_COLLISIONS = 4
+    const limitedCollisions = collisions
+      .sort((a, b) => a.overlap - b.overlap)
+      .slice(0, MAX_COLLISIONS)
 
-    for (const collision of collisions) {
-      // 位置调整后需要重新确认是否仍在胶囊内
-      if (!this._capsuleContainsPoint(collision.contactPoint, {
-        center: playerState.center,
-        halfHeight: playerState.halfHeight,
-        radius: playerState.radius,
-      })) {
-        continue
-      }
+    // 优化：限制迭代次数，防止复杂场景下的性能问题
+    const MAX_ITERATIONS = 3
+    const capsuleParams = {
+      center: playerState.center,
+      halfHeight: playerState.halfHeight,
+      radius: playerState.radius,
+    }
+    const deltaPosition = new THREE.Vector3()
 
-      // 推离方块
-      const deltaPosition = collision.normal.clone().multiplyScalar(collision.overlap)
-      playerState.basePosition.add(deltaPosition)
-      playerState.center.add(deltaPosition)
+    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+      let hasMoved = false
 
-      // 速度去掉沿法线分量，避免继续穿透
-      const vn = playerState.worldVelocity.dot(collision.normal)
-      if (vn > 0) {
-        playerState.worldVelocity.addScaledVector(collision.normal, -vn)
-      }
-
-      // 地面判定：法线向上即可视为着地
-      if (collision.ground) {
-        playerState.isGrounded = true
-        // 防止在地面上继续积累下落速度
-        if (playerState.worldVelocity.y < 0) {
-          playerState.worldVelocity.y = 0
+      for (const collision of limitedCollisions) {
+        // 位置调整后需要重新确认是否仍在胶囊内
+        if (!this._capsuleContainsPoint(collision.contactPoint, capsuleParams)) {
+          continue
         }
+
+        // 推离方块
+        deltaPosition.copy(collision.normal).multiplyScalar(collision.overlap)
+        playerState.basePosition.add(deltaPosition)
+        playerState.center.add(deltaPosition)
+        hasMoved = true
+
+        // 速度去掉沿法线分量，避免继续穿透
+        const vn = playerState.worldVelocity.dot(collision.normal)
+        if (vn > 0) {
+          playerState.worldVelocity.addScaledVector(collision.normal, -vn)
+        }
+
+        // 地面判定：法线向上即可视为着地
+        if (collision.ground) {
+          playerState.isGrounded = true
+          // 防止在地面上继续积累下落速度
+          if (playerState.worldVelocity.y < 0) {
+            playerState.worldVelocity.y = 0
+          }
+        }
+      }
+
+      // 如果本轮没有移动，提前退出
+      if (!hasMoved) {
+        break
       }
     }
 
@@ -193,9 +211,10 @@ export default class PlayerCollisionSystem {
 
     // 投影到轴线 [-halfHeight, halfHeight]
     const clampedY = this._clamp(local.y, -halfHeight, halfHeight)
-    const axisPoint = new THREE.Vector3(0, clampedY, 0)
-    const delta = new THREE.Vector3().subVectors(local, axisPoint)
-    const dist = delta.length()
+    const deltaX = local.x
+    const deltaZ = local.z
+    const deltaY = local.y - clampedY
+    const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ)
 
     if (dist > radius) {
       return null
@@ -206,7 +225,7 @@ export default class PlayerCollisionSystem {
     // 法线指向“远离方块”方向：从方块指向胶囊中心
     let normal
     if (dist > 1e-6) {
-      normal = delta.clone().negate().normalize()
+      normal = new THREE.Vector3(-deltaX / dist, -deltaY / dist, -deltaZ / dist)
     }
     else {
       // 退化情况：点在轴线上，使用 y 方向区分上下
@@ -216,6 +235,7 @@ export default class PlayerCollisionSystem {
     // 判断是否接地：法线朝上且接触点靠近胶囊底部球体
     const bottomProximity = local.y + halfHeight // 接触点到胶囊底部中心的相对高度
     const ground = normal.y > 0.5 && bottomProximity <= radius + 0.05
+
     return { normal, overlap, ground }
   }
 
