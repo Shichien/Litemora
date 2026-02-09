@@ -163,6 +163,11 @@ export default class DayCycle {
     this._currentPhase = 'noon'
     this._previousDayCount = 0
 
+    // HUD 时间更新节流：每 5 分钟游戏时间更新一次 (timeOfDay 精度)
+    // 5 分钟 = 5/(24*60) = 1/288 ≈ 0.00347 (timeOfDay 范围 0-1)
+    this._hudUpdateInterval = 5 / (24 * 60) // 5 分钟对应 timeOfDay 增量
+    this._lastHudTimeOfDay = this.params.timeOfDay // 上次更新 HUD 时的 timeOfDay
+
     // 加载天空盒贴图
     this._loadSkyTextures()
 
@@ -430,8 +435,14 @@ export default class DayCycle {
       }
     }
 
-    // 更新 HUD 时间显示
-    this.hud.updateGameTime(this.params.timeOfDay)
+    // 更新 HUD 时间显示（每 5 分钟游戏时间更新一次）
+    const timeOfDayDiff = Math.abs(this.params.timeOfDay - this._lastHudTimeOfDay)
+    // 处理跨天的情况（例如从 0.99 到 0.01）
+    const wrappedDiff = Math.min(timeOfDayDiff, 1 - timeOfDayDiff)
+    if (wrappedDiff >= this._hudUpdateInterval) {
+      this.hud.updateGameTime(this.params.timeOfDay)
+      this._lastHudTimeOfDay = this.params.timeOfDay
+    }
 
     // 更新太阳位置
     this._updateSunPosition(environment)

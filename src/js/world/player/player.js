@@ -37,6 +37,12 @@ export default class Player {
     // 速度线当前透明度
     this._speedLineOpacity = 0
 
+    // HUD 更新阈值控制：位置/朝向变化超过阈值才触发 emit
+    this._lastEmitPosition = new THREE.Vector3() // 上次 emit 时的位置
+    this._lastEmitFacingAngle = 0 // 上次 emit 时的朝向角度
+    this._positionThreshold = 1 // 位置变化阈值：移动超过 1 单位才更新
+    this._angleThreshold = Math.PI / 60 // 角度变化阈值：转动超过 1° (π/180 弧度) 才更新
+
     // Input state
     this.inputState = {
       forward: false,
@@ -365,12 +371,30 @@ export default class Player {
       this._lastTime = now
     }
 
-    // 发送位置和朝向信息给 Vue HUD 组件
-    emitter.emit('hud:update', {
-      position: this.getPosition(),
-      facingAngle: this.getFacingAngle(),
-      fps: this._currentFps,
-    })
+    // 获取当前位置和朝向
+    const currentPosition = this.getPosition()
+    const currentFacingAngle = this.getFacingAngle()
+
+    // 计算位置变化距离
+    const positionDiff = currentPosition.distanceTo(this._lastEmitPosition)
+
+    // 计算角度变化（归一化到 [0, π] 范围）
+    let angleDiff = Math.abs(currentFacingAngle - this._lastEmitFacingAngle)
+    angleDiff = Math.min(angleDiff, 2 * Math.PI - angleDiff) // 处理角度环绕
+
+    // 判断是否需要更新：位置或角度变化超过阈值
+    const shouldEmit = positionDiff >= this._positionThreshold || angleDiff >= this._angleThreshold
+
+    if (shouldEmit) {
+      emitter.emit('hud:update', {
+        position: currentPosition.clone(),
+        facingAngle: currentFacingAngle,
+        fps: this._currentFps,
+      })
+      // 记录本次 emit 的状态
+      this._lastEmitPosition.copy(currentPosition)
+      this._lastEmitFacingAngle = currentFacingAngle
+    }
   }
 
   /**
@@ -429,6 +453,26 @@ export default class Player {
       min: 0.01,
       max: 1.0,
       step: 0.01,
+    })
+
+    // ===== HUD 更新阈值控制 =====
+    const hudThresholdFolder = this.debugFolder.addFolder({
+      title: 'HUD 更新阈值',
+      expanded: false,
+    })
+
+    hudThresholdFolder.addBinding(this, '_positionThreshold', {
+      label: '位置阈值',
+      min: 0.01,
+      max: 2.0,
+      step: 0.01,
+    })
+
+    hudThresholdFolder.addBinding(this, '_angleThreshold', {
+      label: '角度阈值(弧度)',
+      min: 0.001,
+      max: Math.PI / 4,
+      step: 0.001,
     })
 
     // ===== 速度控制 =====
