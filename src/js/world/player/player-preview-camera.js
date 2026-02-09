@@ -48,6 +48,9 @@ export default class PlayerPreviewCamera {
     // 监听设置变更
     this._handleSettingChange = this._handleSettingChange.bind(this)
     emitter.on('settings:front-view-changed', this._handleSettingChange)
+
+    // 初始化尺寸自适应
+    this.resize()
   }
 
   /**
@@ -108,10 +111,26 @@ export default class PlayerPreviewCamera {
   }
 
   /**
-   * 调整尺寸
+   * 调整尺寸 - 根据屏幕分辨率自适应计算预览框位置和大小
+   * 基准分辨率: 1920x1040 (开发时的测试分辨率)
    */
   resize() {
-    // 预览尺寸固定，不需要响应窗口变化
+    const baseWidth = 1920
+    const baseHeight = 1040
+    const currentWidth = this.sizes.width
+    const currentHeight = this.sizes.height
+
+    // 计算相对于基准分辨率的比例（使用宽度比例作为主要缩放因子）
+    const scaleFactor = Math.min(
+      currentWidth / baseWidth,
+      currentHeight / baseHeight,
+    )
+
+    // 根据屏幕尺寸自适应调整配置
+    // 基准值：size=250, left=180, bottom=20
+    this.config.size = Math.max(180, Math.round(250 * scaleFactor))
+    this.config.margin.left = Math.max(120, Math.round(180 * scaleFactor))
+    this.config.margin.bottom = Math.max(15, Math.round(20 * scaleFactor))
   }
 
   /**

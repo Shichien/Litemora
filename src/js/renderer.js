@@ -341,6 +341,11 @@ export default class Renderer {
     // 同步更新 Composer 尺寸
     this.composer.setSize(this.sizes.width, this.sizes.height)
     this.composer.setPixelRatio(this.sizes.pixelRatio)
+
+    // 通知玩家预览相机更新尺寸
+    if (this.playerPreview) {
+      this.playerPreview.resize()
+    }
   }
 
   /**
