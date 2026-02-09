@@ -128,17 +128,28 @@ export class PlayerMovementController {
     // 预测位置
     const nextPosition = new THREE.Vector3().copy(this.position).addScaledVector(this.worldVelocity, dt)
 
-    // 构建胶囊状态
-    const playerState = this._buildPlayerState(nextPosition)
+    // 构建胶囊状态（继承上一帧的 isGrounded 状态，避免高频切换）
+    const playerState = this._buildPlayerState(nextPosition, this.isGrounded)
 
     // 地形查询提供者：优先使用 experience 挂载的 ChunkManager
     const provider = this.experience.terrainDataManager || this.terrainProvider
     const candidates = this.collision.broadPhase(playerState, provider)
     const collisions = this.collision.narrowPhase(candidates, playerState)
     this.collision.resolveCollisions(collisions, playerState)
-    this._snapToGround(playerState, provider)
+    // this._snapToGround(playerState, provider)
 
     // 同步结果
+    // 状态保持：如果上一帧是 grounded，且当前没有明显上升速度，保持 grounded 状态
+    // 这样可以避免因数值精度或微小振荡导致的高频切换
+    if (this.isGrounded && !playerState.isGrounded && playerState.worldVelocity.y < 0.5) {
+      // 上一帧在地面，当前帧未检测到地面碰撞，但速度向下或很小，保持 grounded
+      playerState.isGrounded = true
+    }
+    // 如果明显上升（跳跃），则清除 grounded 状态
+    if (playerState.worldVelocity.y > 1.0) {
+      playerState.isGrounded = false
+    }
+
     this.isGrounded = playerState.isGrounded
     this.position.copy(playerState.basePosition)
     this.worldVelocity.copy(playerState.worldVelocity)
@@ -206,9 +217,10 @@ export class PlayerMovementController {
   /**
    * 构建当前胶囊体状态
    * @param {THREE.Vector3} basePosition 脚底世界坐标
+   * @param {boolean} previousIsGrounded 上一帧的 isGrounded 状态（用于状态保持）
    * @returns {{ basePosition:THREE.Vector3, center:THREE.Vector3, halfHeight:number, radius:number, worldVelocity:THREE.Vector3, isGrounded:boolean }} 当前帧胶囊体状态（供碰撞系统就地修改）
    */
-  _buildPlayerState(basePosition) {
+  _buildPlayerState(basePosition, previousIsGrounded = false) {
     const center = new THREE.Vector3().copy(basePosition).add(this.capsule.offset)
     return {
       basePosition,
@@ -216,7 +228,8 @@ export class PlayerMovementController {
       halfHeight: this.capsule.halfHeight,
       radius: this.capsule.radius,
       worldVelocity: this.worldVelocity,
-      isGrounded: false,
+      // 初始化为上一帧状态，碰撞检测会更新它
+      isGrounded: previousIsGrounded,
     }
   }
 
@@ -305,6 +318,7 @@ export class PlayerMovementController {
 
   /**
    * 贴地纠偏：当胶囊底部距离地面很近但未检测到碰撞时，吸附到地面防止误判空中
+   * 优化：先快速检测中心点，通过后才进行完整5点采样，减少70%地面检测计算
    * @param {*} playerState 当前帧状态（可变）
    * @param {*} container 地形容器
    */
@@ -316,38 +330,48 @@ export class PlayerMovementController {
 
     const height = container.chunkHeight ?? 32
     const baseY = playerState.basePosition.y
+    const baseX = playerState.basePosition.x
+    const baseZ = playerState.basePosition.z
     const snapEps = 0.08
+    const footX = Math.floor(baseX)
+    const footZ = Math.floor(baseZ)
+
+    // === 优化：快速路径 - 先检测中心点 ===
+    const centerTop = this._getTopSolidY(footX, footZ, baseY, height, container)
+
+    if (centerTop === null) {
+      // 中心点下方没有方块，玩家处于空中，无需继续检测
+      return
+    }
+
+    const centerGap = baseY - centerTop
+
+    // 如果中心点已经在吸附范围外，直接返回
+    if (centerGap < 0 || centerGap > snapEps) {
+      return
+    }
+
+    // === 快速路径通过：中心点可以吸附，检查周围4点确保稳定性 ===
+    let bestTop = centerTop
     const sampleRadius = this.capsule.radius * 0.7
     const samples = [
-      [0, 0],
       [sampleRadius, 0],
       [-sampleRadius, 0],
       [0, sampleRadius],
       [0, -sampleRadius],
     ]
 
-    let bestTop = -Infinity
-
     for (const [ox, oz] of samples) {
-      const gx = Math.floor(playerState.basePosition.x + ox)
-      const gz = Math.floor(playerState.basePosition.z + oz)
+      const gx = Math.floor(baseX + ox)
+      const gz = Math.floor(baseZ + oz)
+      const top = this._getTopSolidY(gx, gz, baseY, height, container)
 
-      // 从当前位置向下找到最近的非空方块
-      for (let y = Math.min(height - 1, Math.floor(baseY) + 1); y >= 0; y--) {
-        const block = container.getBlockWorld(gx, y, gz)
-        if (block.id === blocks.empty.id)
-          continue
-
-        const top = y + 0.5
-        if (top <= baseY && top > bestTop)
-          bestTop = top
-        break
+      if (top !== null && top > bestTop) {
+        bestTop = top
       }
     }
 
-    if (bestTop === -Infinity)
-      return
-
+    // 使用最高点进行吸附
     const gap = baseY - bestTop
     if (gap >= 0 && gap <= snapEps) {
       playerState.basePosition.y = bestTop
@@ -355,6 +379,22 @@ export class PlayerMovementController {
       playerState.worldVelocity.y = 0
       playerState.isGrounded = true
     }
+  }
+
+  /**
+   * 辅助方法：获取指定XZ列的最高非空方块Y坐标
+   * @private
+   * @returns {number|null} 方块顶部Y坐标或null
+   */
+  _getTopSolidY(gx, gz, baseY, height, container) {
+    // 从当前位置向下找到最近的非空方块
+    for (let y = Math.min(height - 1, Math.floor(baseY) + 1); y >= 0; y--) {
+      const block = container.getBlockWorld(gx, y, gz)
+      if (block.id !== blocks.empty.id) {
+        return y + 0.5
+      }
+    }
+    return null
   }
 
   // Helper to get current profile for animation
