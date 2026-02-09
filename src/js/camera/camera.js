@@ -81,12 +81,10 @@ export default class Camera {
 
   toggleSide() {
     // 仅在第三人称模式下切换左右
-    if (this.currentMode !== this.cameraModes.THIRD_PERSON)
+    if (this.currentMode !== this.cameraModes.THIRD_PERSON || !this.rig)
       return
 
-    if (this.rig) {
-      this.rig.toggleSide()
-    }
+    this.rig.toggleSide()
   }
 
   setInstances() {
@@ -143,9 +141,7 @@ export default class Camera {
    * @param {string} mode - 视角模式
    */
   switchMode(mode) {
-    if (!Object.values(this.cameraModes).includes(mode))
-      return
-    if (mode === this.currentMode)
+    if (!Object.values(this.cameraModes).includes(mode) || mode === this.currentMode)
       return
 
     this.previousMode = this.currentMode
@@ -153,11 +149,8 @@ export default class Camera {
 
     // 根据模式选择相机实例（仅透视相机）
     this.instance = this.perspectiveCamera
-    // FOV 重置将由 Rig Update 处理 (如果是第三人称)
-    // 如果是鸟瞰，恢复默认FOV?
-    // 鸟瞰没有动态FOV，所以可以重置。
-    // 但 Rig 的 _currentFov 状态可能还保留着。
-    // 切换回第三人称时，Rig 会继续更新 FOV。
+    // FOV 重置将由 Rig Update 处理（第三人称模式）
+    // 鸟瞰模式没有动态 FOV，切换回第三人称时 Rig 会继续更新 FOV
 
     this.instance.updateProjectionMatrix()
 
@@ -267,9 +260,7 @@ export default class Camera {
   }
 
   _translateMode(mode) {
-    if (mode === this.cameraModes.THIRD_PERSON)
-      return '第三人称'
-    return '鸟瞰透视'
+    return mode === this.cameraModes.THIRD_PERSON ? '第三人称' : '鸟瞰透视'
   }
 
   // #region
@@ -374,8 +365,9 @@ export default class Camera {
   resize() {
     this.instance.aspect = this.sizes.width / this.sizes.height
     this.instance.updateProjectionMatrix()
-    if (this.cameraHelper)
+    if (this.cameraHelper) {
       this.cameraHelper.update()
+    }
     this.trackballControls.handleResize()
   }
 
@@ -396,8 +388,9 @@ export default class Camera {
     // 第三人称跟随逻辑 + Tracking Shot
     if (this.rig) {
       const output = this.rig.update()
-      if (!output)
+      if (!output) {
         return
+      }
 
       // ===== 位置处理 =====
       // 1. 获取 Rig 计算的基础位置 (已包含位置平滑)
@@ -435,23 +428,50 @@ export default class Camera {
 
   /**
    * 地形自适应：根据地面高度抬升相机，保持净空
+   * 优化：50ms间隔采样 + 位置变化阈值，减少查询次数
    * @param {THREE.Vector3} desiredCameraPos - 錨點計算出的理想相機位置
    */
   _applyTerrainAdaptation(desiredCameraPos) {
-    if (!this.terrainAdapt.enabled || this.rig.isInCave) {
+    if (!this.terrainAdapt.enabled || (this.rig && this.rig.isInCave)) {
       this._adaptiveY = desiredCameraPos.y
       return desiredCameraPos
     }
 
-    const ground = this._sampleGroundHeight(desiredCameraPos.x, desiredCameraPos.z)
+    // 初始化缓存
+    if (this._terrainCache === undefined) {
+      this._terrainCache = {
+        ground: null,
+        lastSampleTime: 0,
+        lastSamplePos: new THREE.Vector3(),
+      }
+    }
+
+    // 检查是否可以使用缓存：50ms内且位置变化<0.5单位
+    const timeGap = this.experience.time.elapsed - this._terrainCache.lastSampleTime
+    const posDelta = desiredCameraPos.distanceTo(this._terrainCache.lastSamplePos)
+    const canUseCache = timeGap < 50 && posDelta < 0.5 && this._terrainCache.ground !== null
+
+    let ground
+    if (canUseCache) {
+      // 使用缓存的地面高度
+      ground = this._terrainCache.ground
+    }
+    else {
+      // 重新采样地面高度
+      ground = this._sampleGroundHeight(desiredCameraPos.x, desiredCameraPos.z)
+      this._terrainCache.ground = ground
+      this._terrainCache.lastSampleTime = this.experience.time.elapsed
+      this._terrainCache.lastSamplePos.copy(desiredCameraPos)
+    }
 
     if (ground === null) {
       this._adaptiveY = desiredCameraPos.y
       return desiredCameraPos
     }
 
-    if (this._adaptiveY === null)
+    if (this._adaptiveY === null) {
       this._adaptiveY = desiredCameraPos.y
+    }
 
     // 期望的最低高度：地面 + 净空
     const minY = ground + this.terrainAdapt.clearance
@@ -484,8 +504,9 @@ export default class Camera {
 
     if (provider?.getTopSolidYWorld) {
       const topY = provider.getTopSolidYWorld(ix, iz)
-      if (topY === null)
+      if (topY === null) {
         return null
+      }
       // 方块顶部世界高度 = (y + 1) * heightScale * scale
       return (topY + 1) * heightScale * scale
     }

@@ -4,6 +4,32 @@ import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
 import { CAMERA_RIG_CONFIG } from './camera-rig-config.js'
 
+/**
+ * 帧率无关的指数阻尼函数
+ * 使用指数衰减模型确保在不同帧率下有一致的响应速度
+ * @param {number} current - 当前值
+ * @param {number} target - 目标值
+ * @param {number} lambda - 阻尼系数 (越大响应越快，建议 10-20)
+ * @param {number} dt - 时间步长 (秒)
+ * @returns {number} 阻尼后的值
+ */
+function damp(current, target, lambda, dt) {
+  return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt))
+}
+
+/**
+ * 帧率无关的 Vector3 指数阻尼
+ * @param {THREE.Vector3} current - 当前向量 (会被修改)
+ * @param {THREE.Vector3} target - 目标向量
+ * @param {number} lambda - 阻尼系数
+ * @param {number} dt - 时间步长 (秒)
+ */
+function dampVec3(current, target, lambda, dt) {
+  current.x = damp(current.x, target.x, lambda, dt)
+  current.y = damp(current.y, target.y, lambda, dt)
+  current.z = damp(current.z, target.z, lambda, dt)
+}
+
 export default class CameraRig {
   constructor() {
     this.experience = new Experience()
@@ -12,13 +38,7 @@ export default class CameraRig {
     // Virtual Anchors
     this.group = new THREE.Group()
     this.group.name = 'CameraRig'
-    this.experience.scene.add(this.group) // Add to scene to visualize or just logical?
-    // Wait, original logic attached anchors to Player Group.
-    // Now Rig Group is independent in Scene? Or logical?
-    // If it's not in scene, world position calc needs updateMatrixWorld.
-    // Better add to scene but maybe not visible.
-    // Actually, I can just not add it to scene if I manually update matrices,
-    // but adding to scene is safer for world transforms.
+    this.experience.scene.add(this.group)
 
     this.cameraAnchor = new THREE.Object3D()
     this.cameraAnchor.name = 'CameraAnchor'
@@ -38,9 +58,9 @@ export default class CameraRig {
     this._bobbingRoll = 0
     this._currentFov = this.config.trackingShot.fov.baseFov
 
-    // Mouse Target Y Offset State
+    // Mouse Target Y Offset State (目标阻尼模型)
     this.mouseYOffset = 0
-    this.mouseYVelocity = 0
+    this.mouseYOffsetTarget = 0
 
     // Target
     this.target = null
@@ -61,8 +81,10 @@ export default class CameraRig {
     // 目标点偏移 (Look-at Target)
     this._normalTargetOffset = new THREE.Vector3(0, 1.5, -5.5) // 常规目标偏移
     this._caveTargetOffset = new THREE.Vector3(0, 1.5, -1.5) // 洞内目标偏移
-    this._currentTargetOffset = new THREE.Vector3() // 目标点偏移（用于平滑过渡）
-    this._currentTargetOffset.copy(this._normalTargetOffset)
+
+    // 预分配世界坐标向量 (避免 update 中 new 对象)
+    this._cameraWorldPos = new THREE.Vector3()
+    this._targetWorldPos = new THREE.Vector3()
 
     // Debug Helpers
     this.helpersVisible = false
@@ -72,15 +94,24 @@ export default class CameraRig {
     this._setupEventListeners()
   }
 
+  // #region
   _setupEventListeners() {
     emitter.on('input:mouse_move', ({ movementY }) => {
       const config = this.config.follow.mouseTargetY
-      if (!config.enabled)
+      if (!config.enabled) {
         return
+      }
 
-      // 累加速度，实现“软”手感
+      // 目标阻尼模型：直接调整目标值
       const sign = config.invertY ? -1 : 1
-      this.mouseYVelocity += movementY * config.sensitivity * sign
+      this.mouseYOffsetTarget += movementY * config.sensitivity * sign
+
+      // 限制目标值范围
+      this.mouseYOffsetTarget = THREE.MathUtils.clamp(
+        this.mouseYOffsetTarget,
+        -config.maxOffset,
+        config.maxOffset * 1.5,
+      )
     })
 
     emitter.on('pointer:unlocked', () => {
@@ -93,16 +124,16 @@ export default class CameraRig {
     emitter.on('input:wheel', ({ deltaY }) => {
       // 滚轮控制相机高度 (常规偏移 Y)
       // 灵敏度因子，deltaY 通常是 100 左右
-      const sensitivity = 0.005
+      const sensitivity = 0.012
 
       // 计算新的 Y 值
-      let newY = this._normalOffset.y + deltaY * sensitivity
+      let newY = this.config.follow.offset.y + deltaY * sensitivity
 
       // 限制范围 1.5 - 5
       newY = THREE.MathUtils.clamp(newY, 1.5, 5.0)
 
-      // 更新常规偏移
-      this._normalOffset.y = newY
+      // 更新配置中的偏移 (统一数据源)
+      this.config.follow.offset.y = newY
     })
 
     // Listen for mouse sensitivity changes from Settings UI
@@ -113,31 +144,31 @@ export default class CameraRig {
     // Listen for camera preset changes from Settings UI
     emitter.on('settings:camera-rig-changed', ({ fov, bobbing }) => {
       if (fov) {
-        // Update FOV config
-        this.config.trackingShot.fov.enabled = fov.enabled
-        this.config.trackingShot.fov.baseFov = fov.baseFov
-        this.config.trackingShot.fov.maxFov = fov.maxFov
-        this.config.trackingShot.fov.speedThreshold = fov.speedThreshold
-        this.config.trackingShot.fov.smoothSpeed = fov.smoothSpeed
+        Object.assign(this.config.trackingShot.fov, {
+          enabled: fov.enabled,
+          baseFov: fov.baseFov,
+          maxFov: fov.maxFov,
+          speedThreshold: fov.speedThreshold,
+        })
       }
       if (bobbing) {
-        // Update Bobbing config
-        this.config.trackingShot.bobbing.enabled = bobbing.enabled
-        this.config.trackingShot.bobbing.verticalFrequency = bobbing.verticalFrequency
-        this.config.trackingShot.bobbing.verticalAmplitude = bobbing.verticalAmplitude
-        this.config.trackingShot.bobbing.horizontalFrequency = bobbing.horizontalFrequency
-        this.config.trackingShot.bobbing.horizontalAmplitude = bobbing.horizontalAmplitude
-        this.config.trackingShot.bobbing.rollFrequency = bobbing.rollFrequency
-        this.config.trackingShot.bobbing.rollAmplitude = bobbing.rollAmplitude
-        this.config.trackingShot.bobbing.speedMultiplier = bobbing.speedMultiplier
+        Object.assign(this.config.trackingShot.bobbing, {
+          enabled: bobbing.enabled,
+          verticalFrequency: bobbing.verticalFrequency,
+          verticalAmplitude: bobbing.verticalAmplitude,
+          horizontalFrequency: bobbing.horizontalFrequency,
+          horizontalAmplitude: bobbing.horizontalAmplitude,
+          rollFrequency: bobbing.rollFrequency,
+          rollAmplitude: bobbing.rollAmplitude,
+          speedMultiplier: bobbing.speedMultiplier,
+        })
         if (bobbing.idleBreathing) {
-          this.config.trackingShot.bobbing.idleBreathing.enabled = bobbing.idleBreathing.enabled
-          this.config.trackingShot.bobbing.idleBreathing.frequency = bobbing.idleBreathing.frequency
-          this.config.trackingShot.bobbing.idleBreathing.amplitude = bobbing.idleBreathing.amplitude
+          Object.assign(this.config.trackingShot.bobbing.idleBreathing, bobbing.idleBreathing)
         }
       }
     })
   }
+  // #endregion
 
   attachPlayer(player) {
     this.target = player
@@ -170,10 +201,10 @@ export default class CameraRig {
   }
 
   /**
-   * 检测玩家上方是否有方块（洞内检测）
-   * 逻辑：检测玩家头顶 3x3 范围内（XZ 各 ±1），在高度 2 和 3 处是否至少有 4 个方块
+   * 检测玩家上方是否有方块（洞内检测）- 简化版本
+   * 优化：仅检测头顶正上方3格，3次查询 vs 18次查询，减少83%
    * @param {THREE.Vector3} playerPos 玩家脚底位置
-   * @returns {boolean} 如果检测到至少 4 个方块返回 true
+   * @returns {boolean} 如果检测到至少 2 个方块返回 true
    */
   _checkBlockAbovePlayer(playerPos) {
     const terrainManager = this.experience.terrainDataManager
@@ -181,78 +212,74 @@ export default class CameraRig {
       return false
     }
 
-    // 玩家高度约为 2 个方块（胶囊体高度），检测玩家头顶上方 2-3 格的位置
-    const checkHeights = [2, 3]
-    const playerBlockX = Math.floor(playerPos.x)
-    const playerBlockZ = Math.floor(playerPos.z)
-    const playerBlockY = Math.floor(playerPos.y)
+    const x = Math.floor(playerPos.x)
+    const z = Math.floor(playerPos.z)
+    const y = Math.floor(playerPos.y)
 
-    // 检测 3x3 范围（以玩家为中心，XZ 方向各 ±1）
-    const checkRange = [-1, 0, 1]
-    let blockCount = 0
-
-    for (const heightOffset of checkHeights) {
-      const checkY = playerBlockY + heightOffset
-
-      for (const dx of checkRange) {
-        for (const dz of checkRange) {
-          const checkX = playerBlockX + dx
-          const checkZ = playerBlockZ + dz
-          const block = terrainManager.getBlockWorld(checkX, checkY, checkZ)
-
-          // 如果检测到非空方块，增加计数
-          if (block && block.id !== 0) {
-            blockCount++
-            // 如果累计检测到至少 4 个方块，说明处于洞内/屋檐下
-            if (blockCount >= 4) {
-              return true
-            }
-          }
-        }
+    // 只检测头顶正上方2、3、4格（3次查询 vs 18次）
+    let blockedCount = 0
+    for (let dy = 2; dy <= 4; dy++) {
+      const block = terrainManager.getBlockWorld(x, y + dy, z)
+      if (block?.id !== 0) {
+        blockedCount++
       }
     }
 
-    return false
+    // 2个或以上方块遮挡即触发洞内模式（更灵敏）
+    return blockedCount >= 2
   }
 
   /**
    * 更新相机偏移（根据洞内状态平滑切换）
+   * 优化后：直接驱动 anchor，使用帧率无关阻尼
    */
-  _updateCameraOffset() {
-    // 1. 根据当前状态设置目标偏移
+  _updateCameraOffset(dt) {
+    // 1. 从 config 同步基础偏移 (支持 debug 面板实时调整)
+    this._normalOffset.x = this.config.follow.offset.x
+    this._normalOffset.y = this.config.follow.offset.y
+    this._normalOffset.z = this.config.follow.offset.z
+    this._normalTargetOffset.z = this.config.follow.targetOffset.z
+
+    // 2. 根据当前状态选择目标偏移
     const targetCamOffset = this.isInCave ? this._caveOffset : this._normalOffset
     const targetLookOffset = this.isInCave ? this._caveTargetOffset : this._normalTargetOffset
 
-    // 2. 平滑插值
-    const lerpSpeed = 0.05 // 平滑过渡速度
-    this._targetOffset.lerp(targetCamOffset, lerpSpeed)
-    this._currentTargetOffset.lerp(targetLookOffset, lerpSpeed)
+    // 3. 使用帧率无关阻尼平滑相机偏移 (lambda = 8，约 150ms 响应)
+    dampVec3(this._targetOffset, targetCamOffset, 8, dt)
 
-    // 3. 更新配置中的相机偏移（保持 X 轴的左右切换功能）
-    this.config.follow.offset.x = this._targetOffset.x * this._sideFactor
-    this.config.follow.offset.y = this._targetOffset.y
-    this.config.follow.offset.z = this._targetOffset.z
+    // 4. 直接驱动 cameraAnchor (无中间 lerp)
+    this.cameraAnchor.position.set(
+      this._targetOffset.x * this._sideFactor,
+      this._targetOffset.y,
+      this._targetOffset.z,
+    )
 
-    // 4. 更新配置中的目标点偏移
-    this.config.follow.targetOffset.x = this._currentTargetOffset.x
-    this.config.follow.targetOffset.y = this._currentTargetOffset.y
-    this.config.follow.targetOffset.z = this._currentTargetOffset.z
+    // 5. 目标点偏移 - 直接设置 (LookAt 即时响应，无二次平滑)
+    this.targetAnchor.position.set(
+      targetLookOffset.x,
+      targetLookOffset.y + this.mouseYOffset,
+      targetLookOffset.z,
+    )
 
-    // 5. 更新玩家透明度 (如果在洞内则变为半透明)
+    // 6. 更新玩家透明度 (如果在洞内则变为半透明)
     if (this.target && typeof this.target.setOpacity === 'function') {
       const targetOpacity = this.isInCave ? 0.1 : 1.0
-      // 这里可以使用简单的 lerp 或者直接设置，取决于 Player 内部实现
-      // 为了平滑感，我们在这里简单处理
-      if (this._currentOpacity === undefined)
+      if (this._currentOpacity === undefined) {
         this._currentOpacity = 1.0
-      this._currentOpacity += (targetOpacity - this._currentOpacity) * 0.1
+      }
+      // 使用阻尼平滑透明度
+      this._currentOpacity = damp(this._currentOpacity, targetOpacity, 10, dt)
       this.target.setOpacity(this._currentOpacity)
     }
   }
 
   update() {
-    if (!this.target)
+    if (!this.target) {
       return null
+    }
+
+    // 获取时间步长 (秒)
+    const dt = this.time.delta / 1000
 
     // 1. Get Player State
     const playerPos = this.target.getPosition()
@@ -263,43 +290,35 @@ export default class CameraRig {
     // 2. Calculate Speed (Horizontal)
     const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
 
-    // 3. Update Mouse Y Offset Spring (Based on Player Speed)
-    this._updateMouseYOffset(speed)
+    // 3. Update Mouse Y Offset (目标阻尼模型)
+    this._updateMouseYOffset(dt)
 
-    // 3.5. 检测洞内状态并更新相机偏移
+    // 4. 检测洞内状态并更新相机偏移 (直接驱动 anchor，无中间状态)
     this.isInCave = this._checkBlockAbovePlayer(playerPos)
-    this._updateCameraOffset()
+    this._updateCameraOffset(dt)
 
-    // 4. Sync Anchors from Config
-    this.cameraAnchor.position.copy(this.config.follow.offset)
-    this.targetAnchor.position.copy(this.config.follow.targetOffset)
-
-    // Apply temporary Y offset
-    this.targetAnchor.position.y += this.mouseYOffset
-
-    // 5. Smooth Follow (Position)
-    this._smoothedPosition.lerp(playerPos, this.config.follow.smoothSpeed)
+    // 5. Smooth Follow (Position) - 帧率无关指数阻尼
+    // 使用 lambda = 12 对应约 100ms 的响应时间
+    dampVec3(this._smoothedPosition, playerPos, 12, dt)
     this.group.position.copy(this._smoothedPosition)
     this.group.rotation.y = facingAngle
 
-    // Update matrices to ensuregetWorldPosition is correct
+    // Update matrices to ensure getWorldPosition is correct
     this.group.updateMatrixWorld(true)
 
     // 6. Tracking Shot
-    this._updateDynamicFov(speed)
+    this._updateDynamicFov(speed, dt)
     this._updateBobbing(speed, isMoving)
 
-    // 7. Get World Positions
-    const cameraPos = new THREE.Vector3()
-    const targetPos = new THREE.Vector3()
-    this.cameraAnchor.getWorldPosition(cameraPos)
-    this.targetAnchor.getWorldPosition(targetPos)
+    // 7. Get World Positions (复用预分配向量，避免 GC)
+    this.cameraAnchor.getWorldPosition(this._cameraWorldPos)
+    this.targetAnchor.getWorldPosition(this._targetWorldPos)
 
-    // 8. Smooth LookAt
-    this._smoothedLookAtTarget.lerp(targetPos, this.config.follow.lookAtSmoothSpeed)
+    // 8. LookAt Target - 直接 copy，无二次平滑 (FPS/MC 风格即时响应)
+    this._smoothedLookAtTarget.copy(this._targetWorldPos)
 
     return {
-      cameraPos,
+      cameraPos: this._cameraWorldPos,
       targetPos: this._smoothedLookAtTarget,
       fov: this._currentFov,
       bobbingOffset: this._bobbingOffset.clone(),
@@ -307,49 +326,40 @@ export default class CameraRig {
     }
   }
 
-  _updateMouseYOffset(speed) {
-    const config = this.config.follow.mouseTargetY
-    const dt = this.time.delta / 1000 // 转换为秒
+  /**
+   * 鼠标 Y 偏移更新 (目标阻尼模型)
+   * 优化后：从弹簧模型(velocity+damping)简化为目标阻尼模型
+   */
+  _updateMouseYOffset(dt) {
+    // 目标阻尼模型：平滑跟踪目标值
+    // lambda = 18 对应约 60ms 响应，手感更直觉
+    this.mouseYOffset = damp(this.mouseYOffset, this.mouseYOffsetTarget, 18, dt)
 
-    // 1. 速度阻尼衰减
-    this.mouseYVelocity *= Math.exp(-config.damping * dt)
-
-    // 2. 位置根据速度更新 (注意这里乘以 dt 是因为 mouseYVelocity 是单位时间位移)
-    this.mouseYOffset += this.mouseYVelocity * dt
-
-    // 3. 回中力 (Spring Return)
-    // 只有在玩家移动时才回中，回中速度与玩家速度成正比
-    if (speed > 0.01) {
-      const dynamicReturnSpeed = config.returnSpeed * speed * 0.5
-      this.mouseYOffset += (-this.mouseYOffset) * dynamicReturnSpeed * dt
-    }
-
-    // 4. 限制范围
-    this.mouseYOffset = THREE.MathUtils.clamp(
-      this.mouseYOffset,
-      -config.maxOffset,
-      config.maxOffset,
-    )
-
-    // 归零保护
-    if (Math.abs(this.mouseYOffset) < 0.0001 && Math.abs(this.mouseYVelocity) < 0.0001) {
+    // 归零保护：当两者都接近零时直接清零
+    const epsilon = 0.0001
+    if (Math.abs(this.mouseYOffset) < epsilon && Math.abs(this.mouseYOffsetTarget) < epsilon) {
       this.mouseYOffset = 0
-      this.mouseYVelocity = 0
+      this.mouseYOffsetTarget = 0
     }
   }
 
-  _updateDynamicFov(speed) {
-    if (!this.config.trackingShot.fov.enabled)
+  /**
+   * 动态 FOV 更新
+   * 使用帧率无关阻尼
+   */
+  _updateDynamicFov(speed, dt) {
+    if (!this.config.trackingShot.fov.enabled) {
       return
+    }
 
-    const { baseFov, maxFov, speedThreshold, smoothSpeed } = this.config.trackingShot.fov
+    const { baseFov, maxFov, speedThreshold } = this.config.trackingShot.fov
 
     // 根据速度计算目标 FOV
     const speedRatio = Math.min(speed / speedThreshold, 1.0)
     const targetFov = baseFov + (maxFov - baseFov) * speedRatio
 
-    // 平滑过渡到目标 FOV
-    this._currentFov += (targetFov - this._currentFov) * smoothSpeed
+    // 帧率无关阻尼平滑 (lambda = 6 对应约 200ms 响应)
+    this._currentFov = damp(this._currentFov, targetFov, 6, dt)
   }
 
   _updateBobbing(speed, isMoving) {
@@ -394,6 +404,7 @@ export default class CameraRig {
     }
   }
 
+  // #region
   _createHelpers() {
     // 清理旧的
     if (this.helpers.camera) {
@@ -416,8 +427,9 @@ export default class CameraRig {
       this.helpers.groupAxes = null
     }
 
-    if (!this.helpersVisible)
+    if (!this.helpersVisible) {
       return
+    }
 
     // Camera Anchor Helper (Cyan Box)
     const cameraGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2)
@@ -436,25 +448,59 @@ export default class CameraRig {
     this.group.add(this.helpers.groupAxes)
   }
 
-  setDebug(debugFolder) {
-    if (!debugFolder)
-      return
-
-    // ===== 基础跟随设置 =====
-    const followFolder = debugFolder.addFolder({
-      title: '跟随设置',
-      expanded: true,
+  /**
+   * 添加偏移量绑定到 debug 面板
+   * @param {object} folder - Tweakpane folder 实例
+   * @param {THREE.Vector3} offset - 偏移向量
+   * @param {THREE.Vector3} targetOffset - 目标偏移向量（可选）
+   * @param {object} xRange - X 轴范围配置
+   * @param {object} yRange - Y 轴范围配置
+   * @param {object} zRange - Z 轴范围配置
+   * @param {object} targetZRange - 目标 Z 轴范围配置（可选）
+   */
+  _addOffsetBindings(folder, offset, targetOffset, xRange, yRange, zRange, targetZRange) {
+    folder.addBinding(offset, 'x', {
+      label: 'X',
+      ...xRange,
     })
+    folder.addBinding(offset, 'y', {
+      label: 'Y',
+      ...yRange,
+    })
+    folder.addBinding(offset, 'z', {
+      label: 'Z',
+      ...zRange,
+    })
+    if (targetOffset && targetZRange) {
+      folder.addBinding(targetOffset, 'z', {
+        label: '目标 Z',
+        ...targetZRange,
+      })
+    }
+  }
 
-    const debugParams = {
-      showHelpers: this.helpersVisible,
+  setDebug(debugFolder) {
+    if (!debugFolder) {
+      return
     }
 
-    followFolder.addBinding(debugParams, 'showHelpers', {
+    // ===== 可视化助手 =====
+    const visualFolder = debugFolder.addFolder({
+      title: '可视化助手',
+      expanded: false,
+    })
+
+    visualFolder.addBinding({ showHelpers: this.helpersVisible }, 'showHelpers', {
       label: '显示锚点助手',
     }).on('change', (ev) => {
       this.helpersVisible = ev.value
       this._createHelpers()
+    })
+
+    // ===== 基础跟随设置 =====
+    const followFolder = debugFolder.addFolder({
+      title: '基础跟随',
+      expanded: false,
     })
 
     followFolder.addBinding(this.config.follow, 'offset', {
@@ -471,23 +517,9 @@ export default class CameraRig {
       z: { min: -30, max: 10, step: 0.5 },
     })
 
-    followFolder.addBinding(this.config.follow, 'smoothSpeed', {
-      label: '位置平滑',
-      min: 0.01,
-      max: 0.5,
-      step: 0.01,
-    })
-
-    followFolder.addBinding(this.config.follow, 'lookAtSmoothSpeed', {
-      label: '视角平滑',
-      min: 0.01,
-      max: 0.5,
-      step: 0.01,
-    })
-
-    // ===== 目标点鼠标 Y 偏移 (B手感) =====
+    // ===== 鼠标 Y 偏移控制 =====
     const mouseTargetFolder = debugFolder.addFolder({
-      title: '目标点-鼠标Y偏移',
+      title: '鼠标 Y 偏移',
       expanded: false,
     })
 
@@ -513,27 +545,13 @@ export default class CameraRig {
       step: 0.5,
     })
 
-    mouseTargetFolder.addBinding(this.config.follow.mouseTargetY, 'returnSpeed', {
-      label: '回中速度',
-      min: 1,
-      max: 20,
-      step: 0.5,
-    })
-
-    mouseTargetFolder.addBinding(this.config.follow.mouseTargetY, 'damping', {
-      label: '阻尼',
-      min: 1,
-      max: 20,
-      step: 0.5,
-    })
-
     mouseTargetFolder.addBinding(this.config.follow.mouseTargetY, 'unlockReset', {
       label: '解锁重置',
     })
 
-    // ===== Tracking Shot - 动态 FOV =====
+    // ===== 动态 FOV =====
     const fovFolder = debugFolder.addFolder({
-      title: '动态 FOV (速度感)',
+      title: '动态 FOV',
       expanded: false,
     })
 
@@ -562,16 +580,15 @@ export default class CameraRig {
       step: 0.5,
     })
 
-    fovFolder.addBinding(this.config.trackingShot.fov, 'smoothSpeed', {
-      label: 'FOV 平滑',
-      min: 0.01,
-      max: 0.2,
-      step: 0.01,
+    // 显示当前 FOV（只读）
+    fovFolder.addBinding(this, '_currentFov', {
+      label: '当前 FOV',
+      readonly: true,
     })
 
-    // ===== Camera Bobbing =====
+    // ===== 镜头震动 (Bobbing) =====
     const bobbingFolder = debugFolder.addFolder({
-      title: '镜头震动 (Bobbing)',
+      title: '镜头震动',
       expanded: false,
     })
 
@@ -579,49 +596,55 @@ export default class CameraRig {
       label: '启用',
     })
 
-    bobbingFolder.addBinding(this.config.trackingShot.bobbing, 'verticalFrequency', {
+    // 运动震动参数
+    const movementFolder = bobbingFolder.addFolder({
+      title: '运动震动',
+      expanded: false,
+    })
+
+    movementFolder.addBinding(this.config.trackingShot.bobbing, 'verticalFrequency', {
       label: '垂直频率',
       min: 1,
       max: 20,
       step: 0.5,
     })
 
-    bobbingFolder.addBinding(this.config.trackingShot.bobbing, 'verticalAmplitude', {
+    movementFolder.addBinding(this.config.trackingShot.bobbing, 'verticalAmplitude', {
       label: '垂直幅度',
       min: 0,
       max: 0.2,
       step: 0.005,
     })
 
-    bobbingFolder.addBinding(this.config.trackingShot.bobbing, 'horizontalFrequency', {
+    movementFolder.addBinding(this.config.trackingShot.bobbing, 'horizontalFrequency', {
       label: '水平频率',
       min: 1,
       max: 20,
       step: 0.5,
     })
 
-    bobbingFolder.addBinding(this.config.trackingShot.bobbing, 'horizontalAmplitude', {
+    movementFolder.addBinding(this.config.trackingShot.bobbing, 'horizontalAmplitude', {
       label: '水平幅度',
       min: 0,
       max: 0.1,
       step: 0.005,
     })
 
-    bobbingFolder.addBinding(this.config.trackingShot.bobbing, 'rollFrequency', {
+    movementFolder.addBinding(this.config.trackingShot.bobbing, 'rollFrequency', {
       label: 'Roll 频率',
       min: 1,
       max: 20,
       step: 0.5,
     })
 
-    bobbingFolder.addBinding(this.config.trackingShot.bobbing, 'rollAmplitude', {
+    movementFolder.addBinding(this.config.trackingShot.bobbing, 'rollAmplitude', {
       label: 'Roll 幅度',
       min: 0,
       max: 0.05,
       step: 0.001,
     })
 
-    bobbingFolder.addBinding(this.config.trackingShot.bobbing, 'speedMultiplier', {
+    movementFolder.addBinding(this.config.trackingShot.bobbing, 'speedMultiplier', {
       label: '速度因子',
       min: 0,
       max: 3,
@@ -654,8 +677,8 @@ export default class CameraRig {
 
     // ===== 洞内状态检测 =====
     const caveFolder = debugFolder.addFolder({
-      title: '洞内状态（动态相机偏移）',
-      expanded: true,
+      title: '洞内状态',
+      expanded: false,
     })
 
     caveFolder.addBinding(this, 'isInCave', {
@@ -663,62 +686,37 @@ export default class CameraRig {
       readonly: true,
     })
 
-    caveFolder.addBinding(this._normalOffset, 'x', {
-      label: '常规偏移 X',
-      min: 0,
-      max: 10,
-      step: 0.1,
+    // 常规状态偏移
+    const normalOffsetFolder = caveFolder.addFolder({
+      title: '常规状态偏移',
+      expanded: false,
     })
+    this._addOffsetBindings(
+      normalOffsetFolder,
+      this._normalOffset,
+      this._normalTargetOffset,
+      { min: 0, max: 10, step: 0.1 },
+      { min: 1.5, max: 5, step: 0.1 },
+      { min: 0, max: 10, step: 0.1 },
+      { min: -15, max: 0, step: 0.1 },
+    )
 
-    caveFolder.addBinding(this._normalOffset, 'y', {
-      label: '常规偏移 Y',
-      min: 1.5,
-      max: 5,
-      step: 0.1,
+    // 洞内状态偏移
+    const caveOffsetFolder = caveFolder.addFolder({
+      title: '洞内状态偏移',
+      expanded: false,
     })
-
-    caveFolder.addBinding(this._normalOffset, 'z', {
-      label: '常规偏移 Z',
-      min: 0,
-      max: 10,
-      step: 0.1,
-    })
-
-    caveFolder.addBinding(this._caveOffset, 'x', {
-      label: '洞内偏移 X',
-      min: 0,
-      max: 5,
-      step: 0.1,
-    })
-
-    caveFolder.addBinding(this._caveOffset, 'y', {
-      label: '洞内偏移 Y',
-      min: 0,
-      max: 5,
-      step: 0.1,
-    })
-
-    caveFolder.addBinding(this._caveOffset, 'z', {
-      label: '洞内偏移 Z',
-      min: 0,
-      max: 5,
-      step: 0.1,
-    })
-
-    caveFolder.addBinding(this._normalTargetOffset, 'z', {
-      label: '常规目标 Z 偏移',
-      min: -15,
-      max: 0,
-      step: 0.1,
-    })
-
-    caveFolder.addBinding(this._caveTargetOffset, 'z', {
-      label: '洞内目标 Z 偏移',
-      min: -5,
-      max: 0,
-      step: 0.1,
-    })
+    this._addOffsetBindings(
+      caveOffsetFolder,
+      this._caveOffset,
+      this._caveTargetOffset,
+      { min: 0, max: 5, step: 0.1 },
+      { min: 0, max: 5, step: 0.1 },
+      { min: 0, max: 5, step: 0.1 },
+      { min: -5, max: 0, step: 0.1 },
+    )
   }
+  // #endregion
 
   destroy() {
     // Dispose helpers
