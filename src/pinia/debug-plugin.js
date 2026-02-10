@@ -91,18 +91,18 @@ export function createDebugPlugin() {
     })
 
     // 监听 store 的 actions (可选)
-    store.$onAction(({ name, store: _store, args, after, onError }) => {
-      // 记录 action 调用
-      console.warn(`[Pinia] Action: ${storeId}.${name}`, args)
+    // store.$onAction(({ name, store: _store, args, after, onError }) => {
+    //   // 记录 action 调用
+    //   console.warn(`[Pinia] Action: ${storeId}.${name}`, args)
 
-      after((result) => {
-        console.warn(`[Pinia] Action completed: ${storeId}.${name}`, result)
-      })
+    //   after((result) => {
+    //     console.warn(`[Pinia] Action completed: ${storeId}.${name}`, result)
+    //   })
 
-      onError((error) => {
-        console.error(`[Pinia] Action failed: ${storeId}.${name}`, error)
-      })
-    })
+    //   onError((error) => {
+    //     console.error(`[Pinia] Action failed: ${storeId}.${name}`, error)
+    //   })
+    // })
   }
 }
 

@@ -154,12 +154,12 @@ class DebugStateMonitor {
       this.logs.shift()
     }
 
-    // 控制台输出 (便于开发时查看)
-    console.warn(`[${scope}] ${type}: ${eventName}`, {
-      data: logEntry.data,
-      source: logEntry.source,
-      listeners: logEntry.listeners,
-    })
+    // // 控制台输出 (便于开发时查看)
+    // console.warn(`[${scope}] ${type}: ${eventName}`, {
+    //   data: logEntry.data,
+    //   source: logEntry.source,
+    //   listeners: logEntry.listeners,
+    // })
   }
 
   /**
@@ -202,10 +202,10 @@ class DebugStateMonitor {
     }
     this.stateSnapshot[storeName][key] = newValue
 
-    console.warn(`[pinia] ${storeName}.${key}:`, {
-      oldValue: logEntry.data.oldValue,
-      newValue: logEntry.data.newValue,
-    })
+    // console.warn(`[pinia] ${storeName}.${key}:`, {
+    //   oldValue: logEntry.data.oldValue,
+    //   newValue: logEntry.data.newValue,
+    // })
   }
 
   /**
