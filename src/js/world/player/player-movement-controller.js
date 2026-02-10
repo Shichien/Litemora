@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 import { MOVEMENT_CONSTANTS, MOVEMENT_DIRECTION_WEIGHTS } from '../../config/player-config.js'
 import Experience from '../../experience.js'
-import { blocks } from '../terrain/blocks-config.js'
 import { LocomotionProfiles } from './animation-config.js'
 import PlayerCollisionSystem from './player-collision.js'
 
@@ -136,7 +135,6 @@ export class PlayerMovementController {
     const candidates = this.collision.broadPhase(playerState, provider)
     const collisions = this.collision.narrowPhase(candidates, playerState)
     this.collision.resolveCollisions(collisions, playerState)
-    // this._snapToGround(playerState, provider)
 
     // 同步结果
     // 状态保持：如果上一帧是 grounded，且当前没有明显上升速度，保持 grounded 状态
@@ -245,7 +243,6 @@ export class PlayerMovementController {
    */
   _setupRespawnPoint() {
     // Step1：chunk 场景在创建 Player 之前已初始化完成
-    // 这里直接从 ChunkManager 计算重生点（chunk(0,0) 中心列的最高方块顶面）
     this._updateRespawnPoint()
   }
 
@@ -316,88 +313,6 @@ export class PlayerMovementController {
     this._syncMeshCustom()
   }
 
-  /**
-   * 贴地纠偏：当胶囊底部距离地面很近但未检测到碰撞时，吸附到地面防止误判空中
-   * 优化：先快速检测中心点，通过后才进行完整5点采样，减少70%地面检测计算
-   * @param {*} playerState 当前帧状态（可变）
-   * @param {*} container 地形容器
-   */
-  _snapToGround(playerState, container) {
-    // 仅在下落或静止且未接地时尝试吸附，避免起跳被吞
-    if (playerState.isGrounded || !container?.getBlockWorld || playerState.worldVelocity.y > 0.05) {
-      return
-    }
-
-    const height = container.chunkHeight ?? 32
-    const baseY = playerState.basePosition.y
-    const baseX = playerState.basePosition.x
-    const baseZ = playerState.basePosition.z
-    const snapEps = 0.08
-    const footX = Math.floor(baseX)
-    const footZ = Math.floor(baseZ)
-
-    // === 优化：快速路径 - 先检测中心点 ===
-    const centerTop = this._getTopSolidY(footX, footZ, baseY, height, container)
-
-    if (centerTop === null) {
-      // 中心点下方没有方块，玩家处于空中，无需继续检测
-      return
-    }
-
-    const centerGap = baseY - centerTop
-
-    // 如果中心点已经在吸附范围外，直接返回
-    if (centerGap < 0 || centerGap > snapEps) {
-      return
-    }
-
-    // === 快速路径通过：中心点可以吸附，检查周围4点确保稳定性 ===
-    let bestTop = centerTop
-    const sampleRadius = this.capsule.radius * 0.7
-    const samples = [
-      [sampleRadius, 0],
-      [-sampleRadius, 0],
-      [0, sampleRadius],
-      [0, -sampleRadius],
-    ]
-
-    for (const [ox, oz] of samples) {
-      const gx = Math.floor(baseX + ox)
-      const gz = Math.floor(baseZ + oz)
-      const top = this._getTopSolidY(gx, gz, baseY, height, container)
-
-      if (top !== null && top > bestTop) {
-        bestTop = top
-      }
-    }
-
-    // 使用最高点进行吸附
-    const gap = baseY - bestTop
-    if (gap >= 0 && gap <= snapEps) {
-      playerState.basePosition.y = bestTop
-      playerState.center.y = bestTop + this.capsule.offset.y
-      playerState.worldVelocity.y = 0
-      playerState.isGrounded = true
-    }
-  }
-
-  /**
-   * 辅助方法：获取指定XZ列的最高非空方块Y坐标
-   * @private
-   * @returns {number|null} 方块顶部Y坐标或null
-   */
-  _getTopSolidY(gx, gz, baseY, height, container) {
-    // 从当前位置向下找到最近的非空方块
-    for (let y = Math.min(height - 1, Math.floor(baseY) + 1); y >= 0; y--) {
-      const block = container.getBlockWorld(gx, y, gz)
-      if (block.id !== blocks.empty.id) {
-        return y + 0.5
-      }
-    }
-    return null
-  }
-
-  // Helper to get current profile for animation
   /**
    * 获取动画速度档位
    * @param {{shift:boolean,v:boolean}} inputState 输入状态
