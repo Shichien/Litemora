@@ -7,7 +7,6 @@ import emitter from '@three/utils/event/event-bus.js'
  */
 import { onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import HowToPlay from './HowToPlay.vue'
 import LoadingScreen from './LoadingScreen.vue'
 import MainMenu from './MainMenu.vue'
 import PauseMenu from './PauseMenu.vue'
@@ -69,8 +68,7 @@ function handleWindowBlur() {
 
       <!-- Main Menu -->
       <template v-else-if="ui.screen === 'mainMenu'">
-        <HowToPlay v-if="ui.mainMenuView === 'howToPlay'" />
-        <SkinSelector v-else-if="ui.mainMenuView === 'skinSelector'" />
+        <SkinSelector v-if="ui.mainMenuView === 'skinSelector'" />
         <MainMenu v-else />
       </template>
 

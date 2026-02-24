@@ -12,7 +12,6 @@ import speedLinesVertexShader from '../shaders/speedlines/vertex.glsl'
 import { SHADOW_CONFIG, SHADOW_QUALITY } from './config/shadow-config.js'
 import Experience from './experience.js'
 import emitter from './utils/event/event-bus.js'
-import PlayerPreviewCamera from './world/player/player-preview-camera.js'
 
 export default class Renderer {
   constructor() {
@@ -22,8 +21,6 @@ export default class Renderer {
     this.scene = this.experience.scene
     this.camera = this.experience.camera
     this.debug = this.experience.debug
-
-    this.playerPreview = null
 
     // 后期处理配置参数
     this.postProcessConfig = {
@@ -342,10 +339,6 @@ export default class Renderer {
     this.composer.setSize(this.sizes.width, this.sizes.height)
     this.composer.setPixelRatio(this.sizes.pixelRatio)
 
-    // 通知玩家预览相机更新尺寸
-    if (this.playerPreview) {
-      this.playerPreview.resize()
-    }
   }
 
   /**
@@ -365,63 +358,6 @@ export default class Renderer {
     // 使用 EffectComposer 渲染（包含所有后期处理）
     this.composer.render()
 
-    // 在主场景渲染完成后，渲染玩家预览覆盖层
-    this._renderPlayerPreview()
-  }
-
-  /**
-   * 初始化玩家预览系统
-   * @param {Player} player
-   */
-  initPlayerPreview(player) {
-    if (!this.playerPreview) {
-      this.playerPreview = new PlayerPreviewCamera()
-    }
-    this.playerPreview.setPlayer(player)
-  }
-
-  /**
-   * 渲染玩家预览（使用 Viewport 直接渲染到主画布左下角）
-   * 采用 setViewport + setScissor 方案，避免 GPU→CPU 回读
-   */
-  _renderPlayerPreview() {
-    if (!this.playerPreview?.enabled)
-      return
-
-    const preview = this.playerPreview
-    preview.update()
-
-    // 获取预览配置
-    const size = preview.config.size
-    const margin = preview.config.margin
-    // WebGL viewport/scissor 这里使用 CSS 像素，three 内部会按 pixelRatio 换算
-    // 避免在浏览器缩放（DPR 改变）时发生二次缩放导致画面无法铺满
-    const x = Math.floor(margin.left)
-    const y = Math.floor(margin.bottom)
-    const width = Math.floor(size)
-    const height = Math.floor(size)
-
-    // 保存当前状态
-    const currentSceneBackground = this.scene.background
-
-    // 临时移除场景背景
-    this.scene.background = null
-
-    // 启用裁剪测试，限制渲染区域
-    this.instance.setScissorTest(true)
-    this.instance.setScissor(x, y, width, height)
-    this.instance.setViewport(x, y, width, height)
-
-    // this.instance.setClearColor(0x000000, 0)
-    this.instance.clear(false, true, false)
-    // 渲染预览场景
-    this.instance.render(this.scene, preview.getCamera())
-
-    // 恢复状态
-    this.instance.setScissorTest(false)
-    this.instance.setViewport(0, 0, this.sizes.width, this.sizes.height)
-
-    this.scene.background = currentSceneBackground
   }
 
   /**

@@ -49,9 +49,6 @@ const DEFAULT_SETTINGS = {
   // Chunks
   chunkViewDistance: 2,
   chunkUnloadPadding: 1,
-
-  // Front View Preview
-  frontViewEnabled: true,
 }
 
 // ========================================
@@ -86,9 +83,6 @@ export const useSettingsStore = defineStore('settings', () => {
   // Chunk settings
   const chunkViewDistance = ref(DEFAULT_SETTINGS.chunkViewDistance)
   const chunkUnloadPadding = ref(DEFAULT_SETTINGS.chunkUnloadPadding)
-
-  // Front View Preview
-  const frontViewEnabled = ref(DEFAULT_SETTINGS.frontViewEnabled)
 
   // ----------------------------------------
   // Initialize from localStorage
@@ -132,8 +126,6 @@ export const useSettingsStore = defineStore('settings', () => {
           chunkViewDistance.value = parsed.chunkViewDistance
         if (parsed.chunkUnloadPadding !== undefined)
           chunkUnloadPadding.value = parsed.chunkUnloadPadding
-        if (parsed.frontViewEnabled !== undefined)
-          frontViewEnabled.value = parsed.frontViewEnabled
       }
     } catch {
       console.warn('[Settings] Failed to load settings from localStorage')
@@ -160,7 +152,6 @@ export const useSettingsStore = defineStore('settings', () => {
         envFogDensity: envFogDensity.value,
         chunkViewDistance: chunkViewDistance.value,
         chunkUnloadPadding: chunkUnloadPadding.value,
-        frontViewEnabled: frontViewEnabled.value,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
     } catch {
@@ -293,15 +284,6 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // ----------------------------------------
-  // Actions - Front View
-  // ----------------------------------------
-  function setFrontViewEnabled(enabled) {
-    frontViewEnabled.value = enabled
-    emitter.emit('settings:front-view-changed', { enabled })
-    saveSettings()
-  }
-
-  // ----------------------------------------
   // Actions - Apply all environment at once
   // ----------------------------------------
   function applyAllEnvironment() {
@@ -338,11 +320,6 @@ export const useSettingsStore = defineStore('settings', () => {
     // Reset chunks
     chunkViewDistance.value = CHUNK_DEFAULTS.viewDistance
     chunkUnloadPadding.value = CHUNK_DEFAULTS.unloadPadding
-
-    frontViewEnabled.value = DEFAULT_SETTINGS.frontViewEnabled
-    emitter.emit('settings:front-view-changed', {
-      enabled: frontViewEnabled.value,
-    })
 
     // Emit events for all settings
     emitter.emit('shadow:quality-changed', shadowQuality.value)
@@ -414,7 +391,6 @@ export const useSettingsStore = defineStore('settings', () => {
     // State - Chunks
     chunkViewDistance,
     chunkUnloadPadding,
-    frontViewEnabled,
 
     // Actions - Basic
     setLanguage,
@@ -440,9 +416,6 @@ export const useSettingsStore = defineStore('settings', () => {
     // Actions - Chunks
     setChunkViewDistance,
     setChunkUnloadPadding,
-
-    // Actions - Front View
-    setFrontViewEnabled,
 
     // Utils
     resetToDefaults,

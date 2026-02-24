@@ -123,7 +123,7 @@ onUnmounted(() => {
 .key-feedback {
   display: flex;
   flex-direction: column;
-  align-items: center; /* Align to the right to match InfoPanel */
+  align-items: center;
   gap: calc(2px * var(--hud-scale));
   padding-top: calc(4px * var(--hud-scale));
   pointer-events: none;

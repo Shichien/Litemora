@@ -121,27 +121,6 @@ function adjustSensitivity(delta) {
           {{ $t('settings.visual') }}
         </h3>
 
-        <!-- Front View Toggle -->
-        <div class="setting-row">
-          <span class="setting-label">{{ $t('settings.frontView') }}</span>
-          <div class="setting-control">
-            <button
-              class="option-btn"
-              :class="{ active: !settings.frontViewEnabled }"
-              @click="settings.setFrontViewEnabled(false)"
-            >
-              Off
-            </button>
-            <button
-              class="option-btn"
-              :class="{ active: settings.frontViewEnabled }"
-              @click="settings.setFrontViewEnabled(true)"
-            >
-              On
-            </button>
-          </div>
-        </div>
-
         <!-- SpeedLines Preset -->
         <div class="setting-row">
           <span class="setting-label">{{ $t('settings.speedLines') }}</span>

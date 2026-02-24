@@ -31,7 +31,7 @@ export const useUiStore = defineStore('ui', () => {
   /** Current screen: 'loading' | 'mainMenu' | 'playing' | 'pauseMenu' | 'settings' */
   const screen = ref('loading')
 
-  /** Main menu sub-view: 'root' | 'worldSetup' | 'howToPlay' | 'skinSelector' */
+  /** Main menu sub-view: 'root' | 'worldSetup' | 'skinSelector' */
   const mainMenuView = ref('root')
 
   /** Whether a new world creation is pending (for overwrite confirmation) */
@@ -229,20 +229,6 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   /**
-   * Enter How to Play view
-   */
-  function toHowToPlay() {
-    mainMenuView.value = 'howToPlay'
-  }
-
-  /**
-   * Exit How to Play back to Main Menu root
-   */
-  function exitHowToPlay() {
-    backToMainRoot()
-  }
-
-  /**
    * Enter Skin Selector view
    */
   function toSkinSelector() {
@@ -379,7 +365,7 @@ export const useUiStore = defineStore('ui', () => {
         toPauseMenu()
         break
       case 'mainMenu':
-        // 在 mainMenu 的子视图中（worldSetup/howToPlay/skinSelector）统一返回 root
+        // 在 mainMenu 的子视图中（worldSetup/skinSelector）统一返回 root
         if (mainMenuView.value !== 'root')
           backToMainRoot()
         break
@@ -423,8 +409,6 @@ export const useUiStore = defineStore('ui', () => {
     // Main Menu
     enterWorldSetup,
     backToMainRoot,
-    toHowToPlay,
-    exitHowToPlay,
     toSkinSelector,
     exitSkinSelector,
 

@@ -65,9 +65,6 @@ export default class World {
     this.cameraRig = new CameraRig()
     this.cameraRig.attachPlayer(this.player)
     this.experience.camera.attachRig(this.cameraRig)
-
-    // 启动时立即初始化玩家预览，避免依赖 settings 事件导致预览缺失
-    this.experience.renderer.initPlayerPreview(this.player)
   }
 
   /** 环境（天空、光照等） */
@@ -114,7 +111,6 @@ export default class World {
         const pos = this.player.getPosition()
         this.chunkManager.updateStreaming({ x: pos.x, z: pos.z }, true)
       }
-      this.experience.renderer.initPlayerPreview(this.player)
     })
   }
 
