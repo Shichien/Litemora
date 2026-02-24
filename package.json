@@ -27,8 +27,10 @@
   "dependencies": {
     "@tweakpane/plugin-essentials": "^0.2.1",
     "@vitejs/plugin-legacy": "^5.4.1",
+    "buffer": "^6.0.3",
     "gsap": "^3.12.5",
     "mitt": "^3.0.1",
+    "pako": "^2.1.0",
     "pinia": "^3.0.2",
     "postcss-import": "^16.1.0",
     "prismarine-nbt": "^2.8.0",

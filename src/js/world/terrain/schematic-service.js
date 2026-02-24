@@ -1,4 +1,5 @@
-import pako from 'pako'
+// eslint-disable-next-line unicorn/prefer-node-protocol
+import { Buffer } from 'buffer'
 import { parse } from 'prismarine-nbt'
 
 /**
@@ -8,6 +9,19 @@ import { parse } from 'prismarine-nbt'
 class SchematicService {
   constructor() {
     this.currentSchematic = null
+    this.pako = null
+  }
+
+  /**
+   * 延迟加载 pako（用于浏览器环境）
+   */
+  async _loadPako() {
+    if (this.pako) {
+      return this.pako
+    }
+    const pakoModule = await import('pako')
+    this.pako = pakoModule.default || pakoModule
+    return this.pako
   }
 
   /**
@@ -44,6 +58,7 @@ class SchematicService {
    */
   async _parseBuffer(arrayBuffer) {
     // Litematica 文件是 gzip 压缩的 NBT 格式
+    const pako = await this._loadPako()
     const decompressed = pako.inflate(arrayBuffer)
     const { parsed } = await parse(Buffer.from(decompressed))
 
@@ -176,4 +191,3 @@ class SchematicService {
 }
 
 export default new SchematicService()
-
