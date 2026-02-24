@@ -307,6 +307,28 @@ export default class Player {
     this.movement.setPosition(x, y, z)
   }
 
+  /**
+   * 设置重生点（由后端配置驱动）
+   * @param {number} x
+   * @param {number} y
+   * @param {number} z
+   * @param {boolean} [movePlayer]
+   */
+  setRespawnPoint(x, y, z, movePlayer = true) {
+    this.config.respawn.position = { x, y, z }
+    if (movePlayer) {
+      this.setPosition(x, y, z)
+    }
+  }
+
+  /**
+   * 注入额外地面采样器（例如后端上传模型）
+   * @param {(x:number, z:number, originY?:number)=>number|null} sampler
+   */
+  setGroundSampler(sampler) {
+    this.movement.setGroundSampler(sampler)
+  }
+
   update() {
     const isCombat = this.animation.stateMachine.currentState?.name === AnimationStates.COMBAT
 

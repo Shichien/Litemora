@@ -67,6 +67,13 @@ export const useUiStore = defineStore('ui', () => {
   /** Whether Advanced panel is expanded */
   const advancedExpanded = ref(false)
 
+  /** Pause menu visibility options from backend */
+  const pauseMenuConfig = reactive({
+    showMainMenu: false,
+    showSettings: true,
+    showSkins: true,
+  })
+
   // ----------------------------------------
   // Computed
   // ----------------------------------------
@@ -159,11 +166,13 @@ export const useUiStore = defineStore('ui', () => {
   /**
    * Navigate to Playing state
    */
-  function toPlaying() {
+  function toPlaying({ requestPointerLock = true } = {}) {
     screen.value = 'playing'
     isPaused.value = false
     emitter.emit('ui:pause-changed', false)
-    emitter.emit('game:request_pointer_lock')
+    if (requestPointerLock) {
+      emitter.emit('game:request_pointer_lock')
+    }
   }
 
   /**
@@ -346,6 +355,31 @@ export const useUiStore = defineStore('ui', () => {
     toPlaying()
   }
 
+  /**
+   * Bootstrap world directly from backend config flow
+   */
+  function bootstrapBackendWorld() {
+    world.value = {
+      hasWorld: true,
+      seed: 'backend',
+    }
+    toPlaying({ requestPointerLock: false })
+  }
+
+  /**
+   * Apply backend-controlled pause menu visibility options
+   * @param {{pauseMenu?: {showMainMenu?: boolean, showSettings?: boolean, showSkins?: boolean}}} uiConfig
+   */
+  function applyBackendUiConfig(uiConfig = {}) {
+    const pauseMenu = uiConfig.pauseMenu || {}
+    if (pauseMenu.showMainMenu !== undefined)
+      pauseMenuConfig.showMainMenu = pauseMenu.showMainMenu
+    if (pauseMenu.showSettings !== undefined)
+      pauseMenuConfig.showSettings = pauseMenu.showSettings
+    if (pauseMenu.showSkins !== undefined)
+      pauseMenuConfig.showSkins = pauseMenu.showSkins
+  }
+
   // ----------------------------------------
   // Actions: Handle ESC key
   // ----------------------------------------
@@ -388,6 +422,7 @@ export const useUiStore = defineStore('ui', () => {
     isPaused,
     worldGenDraft,
     advancedExpanded,
+    pauseMenuConfig,
 
     // Computed
     isMenuVisible,
@@ -421,6 +456,8 @@ export const useUiStore = defineStore('ui', () => {
     createWorld,
     resetWorld,
     continueWorld,
+    bootstrapBackendWorld,
+    applyBackendUiConfig,
 
     // ESC
     handleEscape,

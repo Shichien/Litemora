@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { partytownVite } from '@builder.io/partytown/utils'
@@ -26,6 +27,24 @@ export default {
     },
   },
   plugins: [
+    {
+      name: 'mock-backend-world-config',
+      configureServer(server) {
+        server.middlewares.use('/api/world-config', async (_req, res) => {
+          try {
+            const jsonPath = path.resolve(__dirname, 'public', 'world-config.json')
+            const content = await fs.readFile(jsonPath, 'utf-8')
+            res.setHeader('Content-Type', 'application/json; charset=utf-8')
+            res.end(content)
+          }
+          catch {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json; charset=utf-8')
+            res.end(JSON.stringify({ error: 'failed_to_read_world_config' }))
+          }
+        })
+      },
+    },
     legacy(),
     glsl(),
     vue(),

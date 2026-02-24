@@ -30,6 +30,7 @@ export class PlayerMovementController {
     // 无限地形查询入口：ChunkManager（World 中会挂到 experience.terrainDataManager）
     this.terrainProvider = this.experience.terrainDataManager
     this._hasInitializedRespawn = false
+    this.groundSampler = null
 
     // 角色朝向角度（弧度）- 通過旋轉 group 實現
     this.facingAngle = config.facingAngle ?? Math.PI
@@ -52,6 +53,14 @@ export class PlayerMovementController {
   setFacing(angle) {
     this.facingAngle = angle
     this.group.rotation.y = angle
+  }
+
+  /**
+   * 设置额外地面采样器（用于非体素模型地面）
+   * @param {(x:number, z:number, originY?:number)=>number|null} sampler
+   */
+  setGroundSampler(sampler) {
+    this.groundSampler = sampler
   }
 
   /**
@@ -135,6 +144,27 @@ export class PlayerMovementController {
     const candidates = this.collision.broadPhase(playerState, provider)
     const collisions = this.collision.narrowPhase(candidates, playerState)
     this.collision.resolveCollisions(collisions, playerState)
+
+    // 补充地面检测：支持基于后端模型的贴地行走
+    if (!playerState.isGrounded && this.groundSampler) {
+      const sampledY = this.groundSampler(
+        playerState.basePosition.x,
+        playerState.basePosition.z,
+        playerState.basePosition.y,
+      )
+
+      if (sampledY !== null && sampledY !== undefined && playerState.worldVelocity.y <= 0) {
+        const targetY = sampledY + 0.05
+        const dropDistance = playerState.basePosition.y - targetY
+
+        // 仅在可接受下落距离内吸附到地面，避免穿模/瞬移
+        if (dropDistance <= 0.6) {
+          playerState.basePosition.y = targetY
+          playerState.worldVelocity.y = 0
+          playerState.isGrounded = true
+        }
+      }
+    }
 
     // 同步结果
     // 状态保持：如果上一帧是 grounded，且当前没有明显上升速度，保持 grounded 状态

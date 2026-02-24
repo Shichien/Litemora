@@ -1,0 +1,35 @@
+{
+  "player": {
+    "spawnPoint": { "x": 32, "y": 26, "z": 32 }
+  },
+  "settings": {
+    "cameraPreset": "default",
+    "visualPreset": "off",
+    "chunk": {
+      "height": 32,
+      "viewDistance": 2,
+      "unloadPadding": 1
+    },
+    "environment": {
+      "skyMode": "Image",
+      "sunIntensity": 2.0,
+      "ambientIntensity": 0.85,
+      "fogDensity": 0.008
+    }
+  },
+  "scene": {
+    "modelUrl": "/models/cube/grass.glb",
+    "position": { "x": 32, "y": 11, "z": 32 },
+    "rotation": { "x": 0, "y": 0, "z": 0 },
+    "scale": { "x": 8, "y": 8, "z": 8 },
+    "castShadow": true,
+    "receiveShadow": true
+  },
+  "ui": {
+    "pauseMenu": {
+      "showMainMenu": false,
+      "showSettings": true,
+      "showSkins": true
+    }
+  }
+}

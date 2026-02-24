@@ -30,8 +30,7 @@ onUnmounted(() => {
 })
 
 function handleCoreReady() {
-  ui.screen = 'mainMenu'
-  ui.mainMenuView = 'root'
+  ui.bootstrapBackendWorld()
 }
 
 function handleEscape() {

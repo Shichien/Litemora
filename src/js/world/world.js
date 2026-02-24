@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { useSettingsStore } from '../../pinia/settingsStore.js'
+import { useUiStore } from '../../pinia/uiStore.js'
 import CameraRig from '../camera/camera-rig.js'
 import {
   CHUNK_BASIC_CONFIG,
@@ -14,6 +16,7 @@ import BlockRaycaster from '../interaction/block-raycaster.js'
 import BlockSelectionHelper from '../interaction/block-selection-helper.js'
 import ItemPickupAnimator from '../interaction/item-pickup-animator.js'
 import emitter from '../utils/event/event-bus.js'
+import { loadBackendWorldConfig } from './backend-world-config.js'
 import Environment from './environment.js'
 import Player from './player/player.js'
 import ChunkManager from './terrain/chunk-manager.js'
@@ -27,25 +30,196 @@ export default class World {
     this.experience = new Experience()
     this.scene = this.experience.scene
     this.resources = this.experience.resources
+    this.backendModel = null
+    this.backendConfig = null
+    this.backendGroundRaycaster = new THREE.Raycaster()
+    this.backendGroundRayOrigin = new THREE.Vector3()
 
     this.scene.add(new THREE.AxesHelper(5))
 
-    emitter.on('core:ready', () => {
-      this._initTerrain()
+    emitter.on('core:ready', async () => {
+      this.backendConfig = await loadBackendWorldConfig()
+
+      this._initTerrain(this.backendConfig)
       this._initPlayerAndCamera()
       this._initEnvironment()
       this._initBlockInteraction()
       this._initEffects()
       this._setupSettingsListeners()
+      await this._applyBackendRuntimeConfig(this.backendConfig)
+    })
+
+    emitter.on('backend:config-updated', async (config) => {
+      await this._applyBackendRuntimeConfig(config)
     })
   }
 
+  async _applyBackendRuntimeConfig(runtimeConfig = null) {
+    const config = runtimeConfig || await loadBackendWorldConfig()
+    this._applyBackendUi(config.ui)
+    this._applyBackendSettings(config.settings)
+    this._applyBackendSpawn(config.player)
+    await this._applyBackendSceneModel(config.scene)
+  }
+
+  _applyBackendUi(uiConfig) {
+    const ui = useUiStore()
+    ui.applyBackendUiConfig(uiConfig)
+  }
+
+  _applyBackendSettings(settingsConfig = {}) {
+    const settings = useSettingsStore()
+
+    if (settingsConfig.cameraPreset) {
+      settings.applyCameraPreset(settingsConfig.cameraPreset)
+    }
+    if (settingsConfig.visualPreset) {
+      settings.applyVisualPreset(settingsConfig.visualPreset)
+    }
+
+    const chunk = settingsConfig.chunk || {}
+    if (chunk.height !== undefined && this.chunkManager && chunk.height !== this.chunkManager.chunkHeight) {
+      console.warn('[World] chunk height changed. Please refresh page to rebuild world with new height.')
+    }
+    if (chunk.viewDistance !== undefined)
+      settings.setChunkViewDistance(chunk.viewDistance)
+    if (chunk.unloadPadding !== undefined)
+      settings.setChunkUnloadPadding(chunk.unloadPadding)
+
+    const environment = settingsConfig.environment || {}
+    if (environment.skyMode !== undefined)
+      settings.setEnvSkyMode(environment.skyMode)
+    if (environment.sunIntensity !== undefined)
+      settings.setEnvSunIntensity(environment.sunIntensity)
+    if (environment.ambientIntensity !== undefined)
+      settings.setEnvAmbientIntensity(environment.ambientIntensity)
+    if (environment.fogDensity !== undefined)
+      settings.setEnvFogDensity(environment.fogDensity)
+  }
+
+  _applyBackendSpawn(playerConfig = {}) {
+    if (!this.player)
+      return
+
+    const spawnPoint = playerConfig.spawnPoint
+    if (!spawnPoint)
+      return
+
+    this.player.setRespawnPoint(spawnPoint.x, spawnPoint.y, spawnPoint.z, true)
+  }
+
+  async _applyBackendSceneModel(sceneConfig = {}) {
+    if (!sceneConfig.modelUrl)
+      return
+
+    try {
+      const gltf = await this._loadGltfModel(sceneConfig.modelUrl)
+      this._disposeBackendModel()
+
+      this.backendModel = gltf.scene
+      this.backendModel.position.set(
+        sceneConfig.position?.x ?? 0,
+        sceneConfig.position?.y ?? 0,
+        sceneConfig.position?.z ?? 0,
+      )
+      this.backendModel.rotation.set(
+        sceneConfig.rotation?.x ?? 0,
+        sceneConfig.rotation?.y ?? 0,
+        sceneConfig.rotation?.z ?? 0,
+      )
+      this.backendModel.scale.set(
+        sceneConfig.scale?.x ?? 1,
+        sceneConfig.scale?.y ?? 1,
+        sceneConfig.scale?.z ?? 1,
+      )
+
+      this.backendModel.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = sceneConfig.castShadow ?? true
+          child.receiveShadow = sceneConfig.receiveShadow ?? true
+        }
+      })
+
+      this.scene.add(this.backendModel)
+      this._attachBackendGroundSampler()
+    }
+    catch {
+      console.warn('[World] Failed to load backend scene model')
+    }
+  }
+
+  _attachBackendGroundSampler() {
+    if (!this.player)
+      return
+
+    this.player.setGroundSampler((x, z, originY) => {
+      return this._sampleBackendModelGroundY(x, z, originY)
+    })
+  }
+
+  _sampleBackendModelGroundY(x, z, originY = 80) {
+    if (!this.backendModel)
+      return null
+
+    const startY = Math.max(originY + 10, 20)
+    this.backendGroundRayOrigin.set(x, startY, z)
+    this.backendGroundRaycaster.set(this.backendGroundRayOrigin, new THREE.Vector3(0, -1, 0))
+    this.backendGroundRaycaster.far = 200
+
+    const hits = this.backendGroundRaycaster.intersectObject(this.backendModel, true)
+    if (!hits || hits.length === 0)
+      return null
+
+    return hits[0].point.y
+  }
+
+  _loadGltfModel(path) {
+    const loader = this.resources?.loaders?.gltfLoader
+    if (!loader) {
+      return Promise.reject(new Error('GLTF loader is not ready'))
+    }
+
+    return new Promise((resolve, reject) => {
+      loader.load(path, resolve, undefined, reject)
+    })
+  }
+
+  _disposeBackendModel() {
+    if (!this.backendModel)
+      return
+
+    this.backendModel.traverse((child) => {
+      if (child.geometry) {
+        child.geometry.dispose?.()
+      }
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(material => material.dispose?.())
+        }
+        else {
+          child.material.dispose?.()
+        }
+      }
+    })
+
+    this.scene.remove(this.backendModel)
+    this.backendModel = null
+
+    if (this.player) {
+      this.player.setGroundSampler(null)
+    }
+  }
+
   /** 地形：ChunkManager + 暴露 terrainDataManager + 初始网格 */
-  _initTerrain() {
+  _initTerrain(config = null) {
+    const backendChunk = config?.settings?.chunk || {}
+    const chunkHeight = backendChunk.height ?? CHUNK_BASIC_CONFIG.chunkHeight
+    const viewDistance = backendChunk.viewDistance ?? CHUNK_BASIC_CONFIG.viewDistance
+
     this.chunkManager = new ChunkManager({
       chunkWidth: CHUNK_BASIC_CONFIG.chunkWidth,
-      chunkHeight: CHUNK_BASIC_CONFIG.chunkHeight,
-      viewDistance: CHUNK_BASIC_CONFIG.viewDistance,
+      chunkHeight,
+      viewDistance,
       seed: 1265,
       terrain: {
         scale: TERRAIN_PARAMS.scale,
@@ -181,6 +355,7 @@ export default class World {
     this.cameraRig?.destroy()
     this.player?.destroy()
     this.chunkManager?.destroy()
+    this._disposeBackendModel()
 
     // Clear terrainDataManager reference
     if (this.experience.terrainDataManager === this.chunkManager) {
