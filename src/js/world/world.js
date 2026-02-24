@@ -46,19 +46,20 @@ export default class World {
       this._initBlockInteraction()
       this._initEffects()
       this._setupSettingsListeners()
-      await this._applyBackendRuntimeConfig(this.backendConfig)
+      await this._applyBackendRuntimeConfig(this.backendConfig, { movePlayer: true })
     })
 
     emitter.on('backend:config-updated', async (config) => {
-      await this._applyBackendRuntimeConfig(config)
+      await this._applyBackendRuntimeConfig(config, { movePlayer: false })
     })
   }
 
-  async _applyBackendRuntimeConfig(runtimeConfig = null) {
+  async _applyBackendRuntimeConfig(runtimeConfig = null, options = {}) {
+    const { movePlayer = false } = options
     const config = runtimeConfig || await loadBackendWorldConfig()
     this._applyBackendUi(config.ui)
     this._applyBackendSettings(config.settings)
-    this._applyBackendSpawn(config.player)
+    this._applyBackendSpawn(config.player, { movePlayer })
     await this._applyBackendSceneModel(config.scene)
   }
 
@@ -97,7 +98,9 @@ export default class World {
       settings.setEnvFogDensity(environment.fogDensity)
   }
 
-  _applyBackendSpawn(playerConfig = {}) {
+  _applyBackendSpawn(playerConfig = {}, options = {}) {
+    const { movePlayer = false } = options
+
     if (!this.player)
       return
 
@@ -105,7 +108,7 @@ export default class World {
     if (!spawnPoint)
       return
 
-    this.player.setRespawnPoint(spawnPoint.x, spawnPoint.y, spawnPoint.z, true)
+    this.player.setRespawnPoint(spawnPoint.x, spawnPoint.y, spawnPoint.z, movePlayer)
   }
 
   async _applyBackendSceneModel(sceneConfig = {}) {
