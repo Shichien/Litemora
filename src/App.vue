@@ -1,5 +1,6 @@
 <script setup>
 import Experience from '@three/experience.js'
+import AdminConfigPage from '@ui-components/admin/AdminConfigPage.vue'
 import Crosshair from '@ui-components/Crosshair.vue'
 import EventMonitorPanel from '@ui-components/debug/EventMonitorPanel.vue'
 import GameHud from '@ui-components/hud/GameHud.vue'
@@ -7,15 +8,39 @@ import UiRoot from '@ui-components/menu/UiRoot.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const threeCanvas = ref(null)
+const isAdminMode = ref(window.location.hash === '#admin')
 let experience = null
+
+function createExperienceIfNeeded() {
+  if (!experience && threeCanvas.value) {
+    experience = new Experience(threeCanvas.value)
+  }
+}
+
+function destroyExperienceIfNeeded() {
+  if (experience) {
+    experience.destroy()
+    experience = null
+  }
+}
+
+function handleHashChange() {
+  const nextAdminMode = window.location.hash === '#admin'
+  if (nextAdminMode === isAdminMode.value) {
+    return
+  }
+
+  isAdminMode.value = nextAdminMode
+}
+
 onMounted(() => {
-  // 初始化 three.js 场景
-  experience = new Experience(threeCanvas.value)
+  window.addEventListener('hashchange', handleHashChange)
+  createExperienceIfNeeded()
 })
 
 onBeforeUnmount(() => {
-  experience?.destroy()
-  experience = null
+  window.removeEventListener('hashchange', handleHashChange)
+  destroyExperienceIfNeeded()
 })
 
 // 检查是否为 debug 模式
@@ -39,6 +64,9 @@ const isDebugMode = window.location.hash === '#debug'
 
     <!-- Debug 模式：浮动 Event Monitor 面板 -->
     <EventMonitorPanel v-if="isDebugMode" class="event-monitor-overlay overflow-visible" />
+
+    <!-- Admin 覆盖层：不销毁游戏实例，确保进度保留 -->
+    <AdminConfigPage v-if="isAdminMode" class="admin-overlay" />
   </div>
 </template>
 
@@ -56,5 +84,11 @@ const isDebugMode = window.location.hash === '#debug'
   left: 0;
   height: 100vh;
   z-index: 100;
+}
+
+.admin-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 300;
 }
 </style>

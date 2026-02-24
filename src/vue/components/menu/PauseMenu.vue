@@ -5,6 +5,10 @@
 import { useUiStore } from '@pinia/uiStore.js'
 
 const ui = useUiStore()
+
+function enterAdmin() {
+  window.location.hash = '#admin'
+}
 </script>
 
 <template>
@@ -17,14 +21,17 @@ const ui = useUiStore()
       <button class="mc-button" @click="ui.toPlaying()">
         <span class="title">{{ $t('menu.resume') }}</span>
       </button>
-      <button class="mc-button" @click="ui.toMainMenu({ preservePause: true })">
+      <button v-if="ui.pauseMenuConfig.showMainMenu" class="mc-button" @click="ui.toMainMenu({ preservePause: true })">
         <span class="title">{{ $t('menu.mainMenu') }}</span>
       </button>
-      <button class="mc-button" @click="ui.toSettings('pauseMenu')">
+      <button v-if="ui.pauseMenuConfig.showSettings" class="mc-button" @click="ui.toSettings('pauseMenu')">
         <span class="title">{{ $t('menu.settings') }}</span>
       </button>
-      <button class="mc-button" @click="ui.toSkinSelector()">
+      <button v-if="ui.pauseMenuConfig.showSkins" class="mc-button" @click="ui.toSkinSelector()">
         <span class="title">{{ $t('menu.skins') }}</span>
+      </button>
+      <button class="mc-button" @click="enterAdmin">
+        <span class="title">Admin Console</span>
       </button>
     </div>
   </div>
