@@ -30,7 +30,6 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
   },
   ui: {
     pauseMenu: {
-      showMainMenu: false,
       showSettings: true,
       showSkins: true,
     },
@@ -103,7 +102,6 @@ function mergeBackendConfig(raw = {}) {
       ...DEFAULT_BACKEND_WORLD_CONFIG.ui,
       pauseMenu: {
         ...DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu,
-        showMainMenu: ui.pauseMenu?.showMainMenu ?? DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu.showMainMenu,
         showSettings: ui.pauseMenu?.showSettings ?? DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu.showSettings,
         showSkins: ui.pauseMenu?.showSkins ?? DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu.showSkins,
       },

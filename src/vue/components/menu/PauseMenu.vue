@@ -21,9 +21,6 @@ function enterAdmin() {
       <button class="mc-button" @click="ui.toPlaying()">
         <span class="title">{{ $t('menu.resume') }}</span>
       </button>
-      <button v-if="ui.pauseMenuConfig.showMainMenu" class="mc-button" @click="ui.toMainMenu({ preservePause: true })">
-        <span class="title">{{ $t('menu.mainMenu') }}</span>
-      </button>
       <button v-if="ui.pauseMenuConfig.showSettings" class="mc-button" @click="ui.toSettings('pauseMenu')">
         <span class="title">{{ $t('menu.settings') }}</span>
       </button>

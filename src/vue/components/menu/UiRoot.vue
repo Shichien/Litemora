@@ -8,7 +8,6 @@ import emitter from '@three/utils/event/event-bus.js'
 import { onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LoadingScreen from './LoadingScreen.vue'
-import MainMenu from './MainMenu.vue'
 import PauseMenu from './PauseMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import SkinSelector from './SkinSelector.vue'
@@ -16,7 +15,7 @@ import SkinSelector from './SkinSelector.vue'
 const ui = useUiStore()
 const { locale } = useI18n()
 
-// Listen for core:ready to transition from loading to mainMenu
+// Listen for core:ready to transition from loading to playing
 onMounted(() => {
   emitter.on('core:ready', handleCoreReady)
   emitter.on('ui:escape', handleEscape)
@@ -65,14 +64,8 @@ function handleWindowBlur() {
       <!-- Loading Screen -->
       <LoadingScreen v-if="ui.screen === 'loading'" />
 
-      <!-- Main Menu -->
-      <template v-else-if="ui.screen === 'mainMenu'">
-        <SkinSelector v-if="ui.mainMenuView === 'skinSelector'" />
-        <MainMenu v-else />
-      </template>
-
       <!-- Pause Menu -->
-      <template v-else-if="ui.screen === 'pauseMenu'">
+      <template v-else-if="ui.screen === 'pauseMenu' || ui.screen === 'mainMenu'">
         <SkinSelector v-if="ui.mainMenuView === 'skinSelector'" />
         <PauseMenu v-else />
       </template>

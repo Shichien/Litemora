@@ -9,7 +9,6 @@ import {
 import emitter from '@three/utils/event/event-bus.js'
 
 import {
-  clearAdminWorldConfig,
   DEFAULT_BACKEND_WORLD_CONFIG,
   loadBackendWorldConfig,
   normalizeBackendWorldConfig,
@@ -19,12 +18,14 @@ import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicPreviewCanvas from '@ui-components/admin/SchematicPreviewCanvas.vue'
 
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const ADMIN_PASSWORD = 'admin123'
 const SEED_MAX = 2_000_000_000
 const SEED_REGEX = /^\d+$/
 
 const settingsStore = useSettingsStore()
+const { locale } = useI18n()
 
 const isAuthenticated = ref(false)
 const passwordInput = ref('')
@@ -33,7 +34,6 @@ const configDraft = ref(structuredClone(DEFAULT_BACKEND_WORLD_CONFIG))
 const statusText = ref('')
 const statusType = ref('neutral')
 const isApplying = ref(false)
-const isSaving = ref(false)
 
 // 原理图导入状态
 const schematicFile = ref(null)
@@ -61,6 +61,10 @@ const adminWorldGenDraft = reactive({
 const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const skyModeOptions = ['DayCycle', 'HDR']
+const languageOptions = [
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: 'English' },
+]
 
 const normalizedDraft = computed(() => {
   return normalizeBackendWorldConfig(configDraft.value)
@@ -147,17 +151,19 @@ async function loadCurrentConfig() {
   setStatus('已读取当前生效配置', 'success')
 }
 
+function setAdminLanguage(lang) {
+  if (locale.value === lang) {
+    return
+  }
+
+  locale.value = lang
+  settingsStore.setLanguage(lang)
+  setStatus(`语言已切换为 ${lang.toUpperCase()}`, 'success')
+}
+
 function resetToDefaultTemplate() {
   configDraft.value = structuredClone(DEFAULT_BACKEND_WORLD_CONFIG)
   setStatus('已重置为默认模板（未保存）', 'warning')
-}
-
-async function saveConfig() {
-  isSaving.value = true
-  const saved = saveAdminWorldConfig(configDraft.value)
-  markSaved(saved)
-  setStatus('已保存到管理员本地配置', 'success')
-  isSaving.value = false
 }
 
 async function applyConfig() {
@@ -169,10 +175,12 @@ async function applyConfig() {
   isApplying.value = false
 }
 
-async function clearLocalConfig() {
-  clearAdminWorldConfig()
-  await loadCurrentConfig()
-  setStatus('已清空本地配置，回退到默认值', 'warning')
+function formatSliderValue(value, digits = 0) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) {
+    return '-'
+  }
+  return digits > 0 ? num.toFixed(digits) : String(Math.round(num))
 }
 
 async function handleSchematicFileSelect(event) {
@@ -474,20 +482,11 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="toolbar">
-        <button class="btn" @click="loadCurrentConfig">
-          刷新
-        </button>
         <button class="btn" @click="resetToDefaultTemplate">
           默认模板
         </button>
-        <button class="btn" :disabled="isSaving" @click="saveConfig">
-          {{ isSaving ? '保存中...' : '保存' }}
-        </button>
         <button class="btn primary" :disabled="isApplying" @click="applyConfig">
           {{ isApplying ? '应用中...' : '保存并应用' }}
-        </button>
-        <button class="btn danger" @click="clearLocalConfig">
-          清空覆盖
         </button>
       </div>
 
@@ -500,7 +499,27 @@ onBeforeUnmount(() => {
             <label>Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
           </div>
           <div class="setting-row">
-            <label class="full">视距 <input v-model.number="adminWorldGenDraft.viewDistance" min="1" max="8" type="range"></label>
+            <label class="full">
+              视距
+              <div class="range-wrap">
+                <input v-model.number="adminWorldGenDraft.viewDistance" min="1" max="8" step="1" type="range">
+                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.viewDistance) }}</span>
+              </div>
+            </label>
+          </div>
+          <div class="setting-row">
+            <span class="row-label">语言</span>
+            <div class="option-group">
+              <button
+                v-for="option in languageOptions"
+                :key="`lang-${option.value}`"
+                class="option-btn"
+                :class="{ active: locale === option.value }"
+                @click="setAdminLanguage(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
           </div>
           <div class="setting-row toggles">
             <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
@@ -511,9 +530,27 @@ onBeforeUnmount(() => {
         <section class="setting-section">
           <h3>世界设置</h3>
           <div class="setting-row grid-three">
-            <label>高度上限(16-256) <input v-model.number="configDraft.settings.chunk.height" min="16" max="256" type="number"></label>
-            <label>视距 <input v-model.number="configDraft.settings.chunk.viewDistance" min="1" max="8" type="number"></label>
-            <label>卸载缓冲 <input v-model.number="configDraft.settings.chunk.unloadPadding" min="0" max="8" type="number"></label>
+            <label>
+              高度上限(16-256)
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.chunk.height" min="16" max="256" step="1" type="range">
+                <span class="slider-value">{{ formatSliderValue(configDraft.settings.chunk.height) }}</span>
+              </div>
+            </label>
+            <label>
+              视距
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.chunk.viewDistance" min="1" max="8" step="1" type="range">
+                <span class="slider-value">{{ formatSliderValue(configDraft.settings.chunk.viewDistance) }}</span>
+              </div>
+            </label>
+            <label>
+              卸载缓冲
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.chunk.unloadPadding" min="0" max="8" step="1" type="range">
+                <span class="slider-value">{{ formatSliderValue(configDraft.settings.chunk.unloadPadding) }}</span>
+              </div>
+            </label>
           </div>
           <div class="setting-row">
             <span class="row-label">相机风格</span>
@@ -562,16 +599,33 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="setting-row grid-three">
-            <label>阳光强度 <input v-model.number="configDraft.settings.environment.sunIntensity" step="0.1" type="number"></label>
-            <label>环境光 <input v-model.number="configDraft.settings.environment.ambientIntensity" step="0.1" type="number"></label>
-            <label>雾浓度 <input v-model.number="configDraft.settings.environment.fogDensity" step="0.001" type="number"></label>
+            <label>
+              阳光强度
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.environment.sunIntensity" min="0" max="5" step="0.05" type="range">
+                <span class="slider-value">{{ formatSliderValue(configDraft.settings.environment.sunIntensity, 2) }}</span>
+              </div>
+            </label>
+            <label>
+              环境光
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.environment.ambientIntensity" min="0" max="3" step="0.05" type="range">
+                <span class="slider-value">{{ formatSliderValue(configDraft.settings.environment.ambientIntensity, 2) }}</span>
+              </div>
+            </label>
+            <label>
+              雾浓度
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.environment.fogDensity" min="0" max="0.05" step="0.001" type="range">
+                <span class="slider-value">{{ formatSliderValue(configDraft.settings.environment.fogDensity, 3) }}</span>
+              </div>
+            </label>
           </div>
         </section>
 
         <section class="setting-section">
           <h3>暂停菜单</h3>
           <div class="setting-row toggles">
-            <label><input v-model="configDraft.ui.pauseMenu.showMainMenu" type="checkbox">显示主菜单按钮</label>
             <label><input v-model="configDraft.ui.pauseMenu.showSettings" type="checkbox">显示设置按钮</label>
             <label><input v-model="configDraft.ui.pauseMenu.showSkins" type="checkbox">显示皮肤按钮</label>
           </div>
@@ -613,9 +667,27 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="setting-row grid-three">
-              <label>偏移 X <input v-model.number="schematicOffsetX" type="number"></label>
-              <label>偏移 Y <input v-model.number="schematicOffsetY" type="number"></label>
-              <label>偏移 Z <input v-model.number="schematicOffsetZ" type="number"></label>
+              <label>
+                偏移 X
+                <div class="range-wrap">
+                  <input v-model.number="schematicOffsetX" min="-128" max="128" step="1" type="range">
+                  <span class="slider-value">{{ formatSliderValue(schematicOffsetX) }}</span>
+                </div>
+              </label>
+              <label>
+                偏移 Y
+                <div class="range-wrap">
+                  <input v-model.number="schematicOffsetY" min="-64" max="128" step="1" type="range">
+                  <span class="slider-value">{{ formatSliderValue(schematicOffsetY) }}</span>
+                </div>
+              </label>
+              <label>
+                偏移 Z
+                <div class="range-wrap">
+                  <input v-model.number="schematicOffsetZ" min="-128" max="128" step="1" type="range">
+                  <span class="slider-value">{{ formatSliderValue(schematicOffsetZ) }}</span>
+                </div>
+              </label>
             </div>
 
             <div class="setting-row schematic-preview-row">
@@ -733,9 +805,27 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="setting-row grid-three">
-            <label>地形高度 <input v-model.number="adminWorldGenDraft.magnitude" min="0" max="32" type="number"></label>
-            <label>树最小高 <input v-model.number="adminWorldGenDraft.treeMinHeight" min="1" max="16" type="number"></label>
-            <label>树最大高 <input v-model.number="adminWorldGenDraft.treeMaxHeight" min="1" max="32" type="number"></label>
+            <label>
+              地形高度
+              <div class="range-wrap">
+                <input v-model.number="adminWorldGenDraft.magnitude" min="0" max="32" step="1" type="range">
+                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.magnitude) }}</span>
+              </div>
+            </label>
+            <label>
+              树最小高
+              <div class="range-wrap">
+                <input v-model.number="adminWorldGenDraft.treeMinHeight" min="1" max="16" step="1" type="range">
+                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.treeMinHeight) }}</span>
+              </div>
+            </label>
+            <label>
+              树最大高
+              <div class="range-wrap">
+                <input v-model.number="adminWorldGenDraft.treeMaxHeight" min="1" max="32" step="1" type="range">
+                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.treeMaxHeight) }}</span>
+              </div>
+            </label>
           </div>
 
           <div class="preview-actions-right" style="margin-top: 12px;">
@@ -1052,7 +1142,7 @@ label.full input[type='text'] {
 }
 
 input[type='range'] {
-  width: min(100%, 320px);
+  width: 100%;
 }
 
 input[type='checkbox'] {
@@ -1074,6 +1164,20 @@ input::placeholder {
   margin: 0 0 10px;
   color: #fca5a5;
   font-size: 12px;
+}
+
+.range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.slider-value {
+  min-width: 52px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
 }
 
 .option-group {
