@@ -136,6 +136,13 @@ export default class TerrainPersistence {
     return data
   }
 
+  exportSnapshot() {
+    return {
+      worldState: { ...this.worldState },
+      modifications: this.serialize(),
+    }
+  }
+
   /**
    * 从序列化数据恢复
    */
@@ -144,6 +151,20 @@ export default class TerrainPersistence {
     for (const [chunkKey, blocks] of Object.entries(data)) {
       const blockMap = new Map(Object.entries(blocks).map(([k, v]) => [k, Number(v)]))
       this.modifications.set(chunkKey, blockMap)
+    }
+  }
+
+  applySnapshot(snapshot = {}, { persist = true } = {}) {
+    const worldState = snapshot?.worldState || {}
+    const modifications = snapshot?.modifications || {}
+
+    this.worldState = {
+      schematicOnlyMode: !!worldState.schematicOnlyMode,
+    }
+    this.deserialize(modifications)
+
+    if (persist) {
+      this.save()
     }
   }
 

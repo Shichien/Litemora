@@ -35,8 +35,9 @@ export default class World {
 
     emitter.on('core:ready', async () => {
       this.backendConfig = await loadBackendWorldConfig()
+      const sharedWorldState = await this._loadSharedWorldState()
 
-      this._initTerrain(this.backendConfig)
+      this._initTerrain(this.backendConfig, sharedWorldState)
 
       try {
         await preloadAtlasTextureImage()
@@ -76,6 +77,7 @@ export default class World {
           },
         }
         const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
+        await this._saveSharedWorldState()
         emitter.emit('schematic:apply-result', { ok: true, result })
       }
       catch (error) {
@@ -147,8 +149,46 @@ export default class World {
     }
   }
 
+  async _loadSharedWorldState() {
+    try {
+      const response = await fetch('/api/world-state', { cache: 'no-store' })
+      if (!response.ok) {
+        return null
+      }
+
+      const data = await response.json()
+      if (!data || typeof data !== 'object') {
+        return null
+      }
+      return data
+    }
+    catch {
+      return null
+    }
+  }
+
+  async _saveSharedWorldState() {
+    if (!this.chunkManager?.persistence?.exportSnapshot) {
+      return
+    }
+
+    try {
+      const payload = this.chunkManager.persistence.exportSnapshot()
+      await fetch('/api/world-state', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+    }
+    catch {
+      // no-op: fallback to local persistence only
+    }
+  }
+
   /** 地形：ChunkManager + 暴露 terrainDataManager + 初始网格 */
-  _initTerrain(config = null) {
+  _initTerrain(config = null, sharedWorldState = null) {
     const backendChunk = config?.settings?.chunk || {}
     const chunkHeight = backendChunk.height ?? CHUNK_BASIC_CONFIG.chunkHeight
     const viewDistance = backendChunk.viewDistance ?? CHUNK_BASIC_CONFIG.viewDistance
@@ -166,6 +206,12 @@ export default class World {
         fbm: TERRAIN_PARAMS.fbm,
       },
     })
+
+    if (sharedWorldState && this.chunkManager?.persistence?.applySnapshot) {
+      this.chunkManager.persistence.applySnapshot(sharedWorldState, { persist: true })
+      this.chunkManager.schematicOnlyMode = !!this.chunkManager.persistence.getWorldState?.().schematicOnlyMode
+    }
+
     this.experience.terrainDataManager = this.chunkManager
     this.chunkManager.initInitialGrid()
   }
