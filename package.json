@@ -12,12 +12,8 @@
     "url": "https://github.com/doinel1a/vite-three-js"
   },
   "scripts": {
-    "postinstall": "husky & playwright install",
+    "postinstall": "husky",
     "clean:dist": "npx rimraf dist",
-    "clean:report": "npx rimraf playwright-report",
-    "test:chrome": "npx playwright test --headed --project=chromium",
-    "test:firefox": "npx playwright test --headed --project=firefox",
-    "test:safari": "npx playwright test --headed --project=webkit",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "dev": "vite --host",
@@ -44,7 +40,6 @@
     "@builder.io/partytown": "^0.10.2",
     "@commitlint/cli": "^19.4.0",
     "@commitlint/config-conventional": "^19.2.2",
-    "@playwright/test": "^1.46.0",
     "@vitejs/plugin-vue": "^5.2.3",
     "autoprefixer": "^10.4.20",
     "cssnano": "^7.0.5",
@@ -69,3 +64,4 @@
     "vite-plugin-glsl": "^1.3.0"
   }
 }
+

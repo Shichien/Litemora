@@ -8,7 +8,7 @@ I'm using the writing-plans skill to create the implementation plan.
 
 **Architecture:** UI（Vue 组件 + 样式 + Pinia 状态）与 3D 核心（`src/js/**`）完全解耦。UI/Store/Styles 使用 alias 引用，避免后续目录调整引发大面积相对路径改动。样式采用 SCSS 单入口作为全局样式管线（包含 Tailwind 指令 + 现有全局/ HUD 样式）。
 
-**Tech Stack:** Vite 5 + Vue 3 + Pinia + TailwindCSS + Sass + mitt + Three.js，包管理 `pnpm`，测试 Playwright。
+**Tech Stack:** Vite 5 + Vue 3 + Pinia + TailwindCSS + Sass + mitt + Three.js，包管理 `pnpm`，测试 manual-check。
 
 ---
 

@@ -134,7 +134,7 @@
 ## Verification Strategy
 
 ### Test Decision
-- **Infrastructure exists**: YES (Playwright E2E tests)
+- **Infrastructure exists**: YES (manual-check E2E tests)
 - **Automated tests**: NO (本任务为开发工具，无需测试)
 - **Verification Method**: 用户手动校验
 

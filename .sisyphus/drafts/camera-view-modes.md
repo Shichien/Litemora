@@ -238,7 +238,7 @@ viewModes: {
 ## 测试策略
 
 **Agent-Executed QA Scenarios:**
-- Playwright 验证视角切换
+- manual-check 验证视角切换
 - 验证 Y键循环顺序
 - 验证第一人称 near-clip 效果
 - 验证各视角下移动/攻击正常

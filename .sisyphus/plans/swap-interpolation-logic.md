@@ -227,7 +227,7 @@
 
   **Recommended Agent Profile**:
   - **Category**: `quick`
-  - **Skills**: [`playwright`, `verification-before-completion`]
+  - **Skills**: [`manual-check`, `verification-before-completion`]
 
   **Parallelization**:
   - **Can Run In Parallel**: NO

@@ -28,24 +28,24 @@ pnpm lint:fix         # Auto-fix linting issues
 ### Testing
 
 ```bash
-# E2E tests with Playwright (located in tests/ directory)
-pnpm test:chrome      # Run tests in Chromium (headed mode)
-pnpm test:firefox     # Run tests in Firefox (headed mode)
-pnpm test:safari      # Run tests in WebKit/Safari (headed mode)
+# E2E tests with manual-check (located in tests/ directory)
+# removed test script      # Run tests in Chromium (headed mode)
+# removed test script     # Run tests in Firefox (headed mode)
+# removed test script      # Run tests in WebKit/Safari (headed mode)
 ```
 
 **Running a single test:**
 
 ```bash
-npx playwright test tests/browsers.test.js --headed --project=chromium
-npx playwright test tests/browsers.test.js:10 --headed  # Run specific line
+npx manual-check test tests/browsers.test.js --headed --project=chromium
+npx manual-check test tests/browsers.test.js:10 --headed  # Run specific line
 ```
 
 ### Cleanup
 
 ```bash
 pnpm clean:dist       # Remove dist directory
-pnpm clean:report     # Remove Playwright test reports
+pnpm clean:report     # Remove manual-check test reports
 ```
 
 ---
@@ -388,7 +388,7 @@ Always use aliases instead of deep relative paths (`../../..`):
 ## Testing Requirements
 
 - Write comprehensive tests for new/modified functionality
-- E2E tests go in `tests/` directory (Playwright)
+- E2E tests go in `tests/` directory (manual-check)
 - Test UI changes across different screen sizes and browsers
 - Verify 3D interactions work with raycasting and collision detection
 

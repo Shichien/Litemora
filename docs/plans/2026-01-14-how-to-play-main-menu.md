@@ -487,7 +487,7 @@ pnpm lint
 
 ---
 
-## Task 6: 手动验收（个人项目，不写 Playwright）
+## Task 6: 手动验收（个人项目，不写 manual-check）
 
 **Step 1: 本地运行**
 

@@ -46,7 +46,7 @@
 - [pending]
 
 ## Test Strategy Decision
-- **Infrastructure exists**: YES (Playwright)
+- **Infrastructure exists**: YES (manual-check)
 - **User wants tests**: NO
 - **QA approach**: 手动验证 — Tweakpane 调试 + 视觉检查
 

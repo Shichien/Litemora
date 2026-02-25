@@ -6,8 +6,6 @@
 # testing
 /coverage
 /test-results/
-/playwright-report/
-/playwright/.cache/
 
 # production
 /dist
@@ -15,7 +13,6 @@
 /src copy
 /TD
 # various
-/playwright-report
 TODO.md
 OLD_README.md
 

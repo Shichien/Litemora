@@ -177,7 +177,7 @@
 | 动画库 | GSAP |
 | 着色器 | GLSL + vite-glsl-plugin |
 | 材质增强 | three-custom-shader-material |
-| 测试框架 | Playwright |
+| 测试框架 | manual-check |
 
 ### 4.2 系统架构
 ```

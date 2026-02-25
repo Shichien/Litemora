@@ -280,7 +280,7 @@ emitter.on('game:reset_world', ({ seed, terrain, trees }) => {
 
 - **目标**：防止未来改动把 UI 缩放/对齐/Advanced 逻辑打坏。
 - **改动文件**
-  - `tests/` 下新增 Playwright 冒烟（可选）
+  - `tests/` 下新增 manual-check 冒烟（可选）
 - **验收**
   - 至少覆盖：菜单可见、切换到 Settings、Advanced 展开、点击 preset 不报错
 

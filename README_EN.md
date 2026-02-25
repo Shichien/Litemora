@@ -27,8 +27,8 @@
 ### Start Screen
 <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/image.webp" width="960" alt="Start Screen Display" />
 
-| Attack Effect | Terrain: Multi-Biome Mosaic |
-| :--- | :--- |
+| Attack Effect                                                                                                                                          | Terrain: Multi-Biome Mosaic                                                                                                                                    |
+| :----------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/attack.gif" width="420" alt="Attack Effect Preview" /><br/>Attack Effect Preview | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/多生态拼图.webp" width="420" alt="Multi-Biome Mosaic" /><br/>Terrain: Multi-Biome Mosaic |
 
 ## Core Highlights (Project Realization)
@@ -43,30 +43,30 @@
 
 > Aimed at "onboarding readers within 30 seconds."
 
-| Action | Key | Description |
-| --- | --- | --- |
-| **Move** | `W / A / S / D` | 8-directional movement with stance switching |
-| **Normal Attack** | `Z` | Supports combo sequences |
-| **Heavy Attack** | `X` | Powerful hit feedback |
-| **Lock Target** | `Middle Mouse` | (WIP) Souls-like locking logic |
-| **Block** | `C` | Defensive action |
-| **Interact** | `E / F` | (WIP) Gathering or opening portals |
-| **Close Menu** | `ESC` | Exit or pause |
+| Action            | Key             | Description                                  |
+| ----------------- | --------------- | -------------------------------------------- |
+| **Move**          | `W / A / S / D` | 8-directional movement with stance switching |
+| **Normal Attack** | `Z`             | Supports combo sequences                     |
+| **Heavy Attack**  | `X`             | Powerful hit feedback                        |
+| **Lock Target**   | `Middle Mouse`  | (WIP) Souls-like locking logic               |
+| **Block**         | `C`             | Defensive action                             |
+| **Interact**      | `E / F`         | (WIP) Gathering or opening portals           |
+| **Close Menu**    | `ESC`           | Exit or pause                                |
 
 ## Biomes & Terrain Generation
 
 Terrain emphasizes "Voxel style + Procedural Biome transitions" while maintaining a stable frame rate.
 
-| Plains | Forest |
-| :--- | :--- |
+| Plains                                                                                                                                | Forest                                                                                                                                |
+| :------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------ |
 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/01.2rvmobho84.gif" width="420" alt="Plains" /><br/>Plains Biome | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/05.6f16budguw.gif" width="420" alt="Forest" /><br/>Forest Biome |
 
-| Birch Forest | Cherry Blossom |
-| :--- | :--- |
+| Birch Forest                                                                                                                                      | Cherry Blossom                                                                                                                                       |
+| :------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/06.7lkhkg2dhn.gif" width="420" alt="Birch Forest" /><br/>Birch Forest Biome | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/08.b9e9easke.gif" width="420" alt="Cherry Blossom" /><br/>Cherry Blossom Biome |
 
-| Desert | Frozen Ocean |
-| :--- | :--- |
+| Desert                                                                                                                                | Frozen Ocean                                                                                                                              |
+| :------------------------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------- |
 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/07.9gx2d2et4h.gif" width="420" alt="Desert" /><br/>Desert Biome | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/冻洋.webp" width="420" alt="Frozen Ocean" /><br/>Frozen Ocean Biome |
 
 ### Terrain Generation Logic (Noise & FBM)
@@ -74,8 +74,8 @@ Terrain emphasizes "Voxel style + Procedural Biome transitions" while maintainin
 #### One Seed, One World (PRNG)
 <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/seed.webp" width="960" alt="One Seed, One World" />
 
-| Amplitude Adjustment (Noise) | Detail Adjustment (FBM) |
-| :--- | :--- |
+| Amplitude Adjustment (Noise)                                                                                                             | Detail Adjustment (FBM)                                                                                                    |
+| :--------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/地形振幅.gif" width="420" alt="Amplitude" /><br/>Terrain Amplitude | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/FBM.gif" width="420" alt="FBM" /><br/>Ground Details |
 
 ## Camera Adaptation & HUD
@@ -85,8 +85,8 @@ Core Goal: Free camera rotation, automatic obstacle avoidance without clipping t
 ### HUD UI Overview
 <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/HUD.webp" width="960" alt="HUD Overview" />
 
-| Camera Following | Over-the-Shoulder |
-| :--- | :--- |
+| Camera Following                                                                                                                                   | Over-the-Shoulder                                                                                                                                 |
+| :------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/03.6f16budgsi.gif" width="420" alt="Camera Follow" /><br/>Camera Follow Demo | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/相机调整.gif" width="420" alt="Over-the-Shoulder" /><br/>Camera Stance Adj. |
 
 ## Technology Stack
@@ -107,7 +107,6 @@ Core Goal: Free camera rotation, automatic obstacle avoidance without clipping t
 - **mitt**: Global event bus for real-time UI/3D communication
 - **Tailwind CSS**: Utility-first CSS framework
 - **Sass/PostCSS**: Preprocessor support
-- **Playwright**: E2E testing
 - **Husky & Commitlint**: Git commit standards
 
 ## Project Structure
@@ -180,10 +179,6 @@ pnpm preview
 pnpm lint
 pnpm lint:fix
 
-# E2E (Playwright)
-pnpm test:chrome
-pnpm test:firefox
-pnpm test:safari
 ```
 
 ## Docs & Entry Points
