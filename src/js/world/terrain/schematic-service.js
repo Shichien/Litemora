@@ -456,7 +456,8 @@ class SchematicService {
         || this._resolveTextureName(normalizedName)
 
       if (wallTextureName) {
-        const geometryType = wallGeometryTypeFromProperties(properties)
+        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
+        const geometryType = wallGeometryTypeFromProperties(mappedProperties)
         const wallBlock = ensureDynamicBlockType(wallTextureName, {
           blockName: normalizedName,
           geometryType,
