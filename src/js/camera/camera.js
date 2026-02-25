@@ -186,6 +186,10 @@ export default class Camera {
     this._createCameraHelper()
 
     this._notifyRenderer()
+    emitter.emit('camera:perspective-changed', {
+      mode,
+      firstPerson: mode === this.cameraModes.FIRST_PERSON,
+    })
     emitter.emit('hud:camera-perspective-changed', {
       mode,
       firstPerson: mode === this.cameraModes.FIRST_PERSON,

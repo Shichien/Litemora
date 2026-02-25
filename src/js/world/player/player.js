@@ -59,6 +59,7 @@ export default class Player {
     this._useLeftHook = true // 勾拳：true=左手, false=右手
     // 挖掘状态
     this.isMining = false
+    this._hideForFirstPerson = false
 
     // Resource - 使用当前选中的皮肤
     const skinStore = useSkinStore()
@@ -169,11 +170,18 @@ export default class Player {
   }
 
   setOpacity(value) {
+    const opacity = this._hideForFirstPerson ? 0 : value
     this.model.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.material.opacity = value
+        child.material.opacity = opacity
+        child.visible = opacity > 0.001
       }
     })
+  }
+
+  setFirstPersonHidden(hidden) {
+    this._hideForFirstPerson = !!hidden
+    this.setOpacity(1)
   }
 
   /**
@@ -243,6 +251,10 @@ export default class Player {
       emitter.emit('hud:flight-mode-changed', {
         enabled: this.movement.isFlying,
       })
+    })
+
+    emitter.on('camera:perspective-changed', (payload = {}) => {
+      this.setFirstPersonHidden(!!payload.firstPerson)
     })
 
     // ==================== 攻击输入 ====================
@@ -393,7 +405,7 @@ export default class Player {
       inputState: effectiveInput,
       directionWeights: blockedByMining ? { forward: 0, backward: 0, left: 0, right: 0 } : weights, // Pass normalized weights
       isMoving: blockedByMining ? false : this.movement.isMoving(effectiveInput),
-      isGrounded: simulateGroundWalk ? true : (this.movement.isInWater ? true : this.movement.isGrounded),
+      isGrounded: simulateGroundWalk ? true : this.movement.isGrounded,
       speedProfile: this.movement.getSpeedProfile(effectiveInput),
       isMining: blockedByMining,
     }
