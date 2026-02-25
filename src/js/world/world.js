@@ -233,8 +233,10 @@ export default class World {
    */
   update() {
     if (this.chunkManager && this.player) {
-      const pos = this.player.getPosition()
-      this.chunkManager.updateStreaming({ x: pos.x, z: pos.z })
+      if (!this.chunkManager.schematicOnlyMode) {
+        const pos = this.player.getPosition()
+        this.chunkManager.updateStreaming({ x: pos.x, z: pos.z })
+      }
       this.chunkManager.pumpIdleQueue()
     }
     if (this.chunkManager)

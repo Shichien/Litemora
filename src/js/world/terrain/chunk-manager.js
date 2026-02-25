@@ -80,6 +80,10 @@ export default class ChunkManager {
    * Step1：初始化 3×3（viewDistance=1）chunk 网格
    */
   initInitialGrid() {
+    if (this.schematicOnlyMode) {
+      return
+    }
+
     // Step2：初始化时先确保玩家附近一圈 chunk 存在并排队生成
     // 这里以 (0,0) 为中心（玩家初始通常在 chunk(0,0)）
     this.updateStreaming({ x: this.chunkWidth * 0.5, z: this.chunkWidth * 0.5 }, true)
