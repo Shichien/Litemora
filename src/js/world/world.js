@@ -20,6 +20,7 @@ import { loadBackendWorldConfig } from './backend-world-config.js'
 import Environment from './environment.js'
 import Player from './player/player.js'
 import ChunkManager from './terrain/chunk-manager.js'
+import schematicService from './terrain/schematic-service.js'
 
 /**
  * World 场景编排器：只负责在 core:ready 后按依赖顺序创建组件、编排 update/destroy。
@@ -51,6 +52,20 @@ export default class World {
 
     emitter.on('backend:config-updated', async (config) => {
       await this._applyBackendRuntimeConfig(config, { movePlayer: false })
+    })
+
+    emitter.on('schematic:apply-request', async (payload = {}) => {
+      try {
+        const offset = payload.offset || { x: 0, y: 0, z: 0 }
+        const result = await schematicService.applyToWorld(this.chunkManager, offset)
+        emitter.emit('schematic:apply-result', { ok: true, result })
+      }
+      catch (error) {
+        emitter.emit('schematic:apply-result', {
+          ok: false,
+          error: error?.message || 'Unknown schematic apply error',
+        })
+      }
     })
   }
 

@@ -217,14 +217,35 @@ async function applySchematic() {
 
   isApplying.value = true
   try {
-    // TODO: 实现世界集成
-    // const result = await schematicService.applyToWorld(
-    //   world,
-    //   schematicOffsetX.value,
-    //   schematicOffsetY.value,
-    //   schematicOffsetZ.value
-    // )
-    setStatus('原理图应用已触发（功能待实现世界集成）', 'warning')
+    const offset = {
+      x: Number(schematicOffsetX.value) || 0,
+      y: Number(schematicOffsetY.value) || 0,
+      z: Number(schematicOffsetZ.value) || 0,
+    }
+
+    const resultPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('原理图应用超时，请重试'))
+      }, 45000)
+
+      emitter.once('schematic:apply-result', (payload) => {
+        clearTimeout(timeout)
+        resolve(payload)
+      })
+    })
+
+    emitter.emit('schematic:apply-request', { offset })
+
+    const payload = await resultPromise
+    if (!payload?.ok) {
+      throw new Error(payload?.error || '原理图应用失败')
+    }
+
+    const result = payload.result
+    setStatus(
+      `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}，涉及 ${result.touchedChunks} 个区块`,
+      'success',
+    )
   }
   catch (error) {
     setStatus(`应用失败: ${error.message}`, 'warning')
