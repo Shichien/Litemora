@@ -7,14 +7,9 @@ import { SHADOW_CONFIG, SHADOW_QUALITY, TREE_BLOCK_IDS } from '../../config/shad
 import Experience from '../../experience.js'
 import emitter from '../../utils/event/event-bus.js'
 
-import { ANIMATION_DEFAULTS, blocks, createMaterials, resources, sharedGeometry } from './blocks-config.js'
+import { ANIMATION_DEFAULTS, blocks, createMaterials, getBlockTypeById, resources, sharedGeometry } from './blocks-config.js'
 import TerrainContainer from './terrain-container.js'
 
-// 将 id -> 配置映射缓存，避免每次遍历 Object.values
-const BLOCK_BY_ID = Object.values(blocks).reduce((map, item) => {
-  map[item.id] = item
-  return map
-}, {})
 const RESOURCE_IDS = new Set(resources.map(r => r.id))
 
 export default class TerrainRenderer {
@@ -52,6 +47,8 @@ export default class TerrainRenderer {
     this._tempMatrix = new THREE.Matrix4()
     this._blockMeshes = new Map()
     this._animatedMaterials = [] // 统一追踪所有动画材质
+    this._pendingTextureLoads = new Set()
+    this._rebuildAfterTextureLoadScheduled = false
     this._statsParams = {
       totalInstances: 0,
     }
@@ -212,9 +209,15 @@ export default class TerrainRenderer {
 
     // 为每种方块创建 InstancedMesh
     positionsByBlock.forEach((positions, blockId) => {
-      const blockType = BLOCK_BY_ID[blockId]
+      const blockType = getBlockTypeById(blockId)
       if (!blockType || !blockType.visible)
         return
+
+      const missingTextureNames = this._getMissingTextureNames(blockType)
+      if (missingTextureNames.length > 0) {
+        this._queueTextureLoadForBlock(missingTextureNames)
+        return
+      }
 
       const materials = createMaterials(blockType, this.resources.items)
       if (!materials)
@@ -285,6 +288,47 @@ export default class TerrainRenderer {
     this._applyShadowSettings()
 
     this._updateStatsPanel()
+  }
+
+  _getMissingTextureNames(blockType) {
+    if (!blockType?.textureKeys) {
+      return []
+    }
+
+    const textureNames = Object.values(blockType.textureKeys).filter(Boolean)
+    return textureNames.filter(name => !this.resources.items[name])
+  }
+
+  _queueTextureLoadForBlock(missingTextureNames = []) {
+    const names = [...new Set((missingTextureNames || []).filter(Boolean))]
+      .filter(name => !this._pendingTextureLoads.has(name))
+
+    if (names.length === 0) {
+      return
+    }
+
+    names.forEach(name => this._pendingTextureLoads.add(name))
+
+    this.resources.loadByNames(names)
+      .catch((error) => {
+        console.warn('[TerrainRenderer] Failed to lazy-load block textures:', names, error)
+      })
+      .finally(() => {
+        names.forEach(name => this._pendingTextureLoads.delete(name))
+        this._scheduleRebuildAfterTextureLoad()
+      })
+  }
+
+  _scheduleRebuildAfterTextureLoad() {
+    if (this._rebuildAfterTextureLoadScheduled) {
+      return
+    }
+
+    this._rebuildAfterTextureLoadScheduled = true
+    setTimeout(() => {
+      this._rebuildAfterTextureLoadScheduled = false
+      this._rebuildFromContainer()
+    }, 0)
   }
 
   /**

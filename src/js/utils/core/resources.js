@@ -19,7 +19,10 @@ export default class Resources {
     this.sources = sources
 
     this.items = {}
-    this.toLoad = this.sources.length
+    this.sourceMap = new Map(this.sources.map(source => [source.name, source]))
+    this.loadingPromises = new Map()
+    this._readyEmitted = false
+    this.toLoad = this.sources.filter(source => !source.lazy).length
     this.loaded = 0
 
     // Loading screen elements
@@ -64,88 +67,114 @@ export default class Resources {
   }
 
   startLoading() {
-    for (const source of this.sources) {
+    const eagerSources = this.sources.filter(source => !source.lazy)
+
+    if (eagerSources.length === 0) {
+      this._emitReadyOnce()
+      return
+    }
+
+    for (const source of eagerSources) {
+      void this.loadSource(source, { countInProgress: true })
+    }
+  }
+
+  loadSource(source, options = {}) {
+    if (!source?.name) {
+      return Promise.resolve(null)
+    }
+
+    const { countInProgress = false } = options
+
+    if (this.items[source.name]) {
+      return Promise.resolve(this.items[source.name])
+    }
+
+    if (this.loadingPromises.has(source.name)) {
+      return this.loadingPromises.get(source.name)
+    }
+
+    const loadPromise = new Promise((resolve, reject) => {
+      const onLoaded = (file) => {
+        this.sourceLoaded(source, file, { countInProgress })
+        resolve(file)
+      }
+
+      const onError = (error) => {
+        console.error(`[Resources] Failed to load source: ${source.name} (${source.path})`, error)
+        reject(error)
+      }
+
       switch (source.type) {
         case 'gltfModel': {
-          this.loaders.gltfLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.gltfLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'texture': {
-          this.loaders.textureLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.textureLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'cubeTexture': {
-          this.loaders.cubeTextureLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.cubeTextureLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'font': {
-          this.loaders.fontLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.fontLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'fbxModel': {
-          this.loaders.fbxLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.fbxLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'audio': {
-          this.loaders.audioLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.audioLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'objModel': {
-          this.loaders.objLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.objLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'hdrTexture': {
-          this.loaders.hdrTextureLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.hdrTextureLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'svg': {
-          this.loaders.svgLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.svgLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'exrTexture': {
-          this.loaders.exrLoader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.exrLoader.load(source.path, onLoaded, undefined, onError)
           break
         }
         case 'video': {
           this.loadVideoTexture(source.path).then((file) => {
-            this.sourceLoaded(source, file)
-          })
+            onLoaded(file)
+          }).catch(onError)
           break
         }
         case 'ktx2Texture': {
-          this.loaders.ktx2Loader.load(source.path, (file) => {
-            this.sourceLoaded(source, file)
-          })
+          this.loaders.ktx2Loader.load(source.path, onLoaded, undefined, onError)
           break
         }
-        // No default
+        default: {
+          reject(new Error(`Unsupported source type: ${source.type}`))
+        }
       }
-    }
+    }).finally(() => {
+      this.loadingPromises.delete(source.name)
+    })
+
+    this.loadingPromises.set(source.name, loadPromise)
+    return loadPromise
   }
 
-  sourceLoaded(source, file) {
+  sourceLoaded(source, file, options = {}) {
+    const { countInProgress = false } = options
     this.items[source.name] = file
-    this.loaded++
+
+    if (countInProgress) {
+      this.loaded++
+    }
 
     // Update loading progress
     const progress = this.loadProgress
@@ -158,17 +187,44 @@ export default class Resources {
       this.loadingPercentage.textContent = `${percentage}%`
     }
 
-    if (this.loaded === this.toLoad) {
-      // Hide loading screen with fade out animation
-      if (this.loadingScreen) {
-        this.loadingScreen.style.transition = 'opacity 0.5s ease-out'
-        this.loadingScreen.style.opacity = '0'
-        setTimeout(() => {
-          this.loadingScreen.style.display = 'none'
-        }, 500)
-      }
-      emitter.emit('core:ready')
+    if (countInProgress && this.loaded === this.toLoad) {
+      this._emitReadyOnce()
     }
+  }
+
+  _emitReadyOnce() {
+    if (this._readyEmitted) {
+      return
+    }
+    this._readyEmitted = true
+
+    if (this.loadingScreen) {
+      this.loadingScreen.style.transition = 'opacity 0.5s ease-out'
+      this.loadingScreen.style.opacity = '0'
+      setTimeout(() => {
+        this.loadingScreen.style.display = 'none'
+      }, 500)
+    }
+
+    emitter.emit('core:ready')
+  }
+
+  async loadByNames(names = []) {
+    const uniqueNames = [...new Set((names || []).filter(Boolean))]
+    if (uniqueNames.length === 0) {
+      return []
+    }
+
+    const tasks = uniqueNames.map((name) => {
+      const source = this.sourceMap.get(name)
+      if (!source) {
+        return Promise.resolve(null)
+      }
+      return this.loadSource(source)
+    })
+
+    await Promise.all(tasks)
+    return uniqueNames.filter(name => !!this.items[name])
   }
 
   loadVideoTexture(path) {

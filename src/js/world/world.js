@@ -54,6 +54,15 @@ export default class World {
     emitter.on('schematic:apply-request', async (payload = {}) => {
       try {
         const offset = payload.offset || { x: 0, y: 0, z: 0 }
+        emitter.emit('schematic:apply-progress', {
+          phase: 'loading-textures',
+          progress: 0,
+          processedBlocks: 0,
+          totalBlocks: schematicService.getPreview()?.blockCount || 0,
+        })
+
+        await schematicService.preloadTextures(this.resources)
+
         const options = {
           ...(payload.options || {}),
           onProgress: (progress) => {

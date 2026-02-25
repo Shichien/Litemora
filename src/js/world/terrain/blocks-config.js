@@ -387,6 +387,59 @@ export const blocks = {
   },
 }
 
+const DYNAMIC_BLOCK_ID_START = 1000
+const dynamicBlockByTexture = new Map()
+
+let blockByIdCache = null
+let blockByIdCacheSize = -1
+
+function rebuildBlockByIdCacheIfNeeded() {
+  const entries = Object.values(blocks)
+  if (blockByIdCache && blockByIdCacheSize === entries.length) {
+    return
+  }
+
+  blockByIdCache = entries.reduce((map, item) => {
+    map[item.id] = item
+    return map
+  }, {})
+  blockByIdCacheSize = entries.length
+}
+
+export function getBlockTypeById(id) {
+  rebuildBlockByIdCacheIfNeeded()
+  return blockByIdCache[id]
+}
+
+export function ensureDynamicBlockType(textureName, options = {}) {
+  if (!textureName) {
+    return null
+  }
+
+  if (dynamicBlockByTexture.has(textureName)) {
+    return dynamicBlockByTexture.get(textureName)
+  }
+
+  const dynamicIndex = dynamicBlockByTexture.size
+  const blockType = {
+    id: DYNAMIC_BLOCK_ID_START + dynamicIndex,
+    name: options.blockName || textureName,
+    visible: true,
+    textureKeys: {
+      all: textureName,
+    },
+  }
+
+  const key = `dynamicBedrock_${dynamicIndex}`
+  blocks[key] = blockType
+  dynamicBlockByTexture.set(textureName, blockType)
+
+  blockByIdCache = null
+  blockByIdCacheSize = -1
+
+  return blockType
+}
+
 // 需要通过 3D 噪声生成的矿产列表
 export const resources = [
   blocks.stone,

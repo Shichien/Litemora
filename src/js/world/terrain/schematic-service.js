@@ -2,7 +2,8 @@
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer as BufferPolyfill } from 'buffer'
 import { parse, simplify } from 'prismarine-nbt'
-import { BLOCK_IDS } from './blocks-config.js'
+import { bedrockTextureNameByRelative, bedrockTextureNameByStem } from '../../generated/bedrock-texture-sources.js'
+import { BLOCK_IDS, ensureDynamicBlockType, getBlockTypeById } from './blocks-config.js'
 
 if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = BufferPolyfill
@@ -384,9 +385,54 @@ class SchematicService {
       }
     }
 
+    const bedrockTextureName = this._resolveBedrockTextureName(normalizedName)
+    if (bedrockTextureName) {
+      const dynamicBlock = ensureDynamicBlockType(bedrockTextureName, {
+        blockName: normalizedName,
+      })
+
+      if (dynamicBlock?.id) {
+        const result = {
+          id: dynamicBlock.id,
+          source: 'bedrock-dynamic',
+          textureName: bedrockTextureName,
+        }
+        this._blockResolveCache.set(blockName, result)
+        return result
+      }
+    }
+
     const fallback = { id: BLOCK_IDS.STONE, source: 'default-stone' }
     this._blockResolveCache.set(blockName, fallback)
     return fallback
+  }
+
+  _resolveBedrockTextureName(normalizedName) {
+    if (!normalizedName) {
+      return null
+    }
+
+    const direct = bedrockTextureNameByStem[normalizedName] || bedrockTextureNameByRelative[normalizedName]
+    if (direct) {
+      return direct
+    }
+
+    const candidates = [
+      `${normalizedName}_top`,
+      `${normalizedName}_side`,
+      `${normalizedName}_front`,
+      `${normalizedName}_on`,
+      `${normalizedName}_off`,
+    ]
+
+    for (const candidate of candidates) {
+      const textureName = bedrockTextureNameByStem[candidate] || bedrockTextureNameByRelative[candidate]
+      if (textureName) {
+        return textureName
+      }
+    }
+
+    return null
   }
 
   /**
@@ -532,6 +578,54 @@ class SchematicService {
     }
   }
 
+  getRequiredTextureNames() {
+    if (!this.currentSchematic) {
+      return []
+    }
+
+    const textureNames = new Set()
+
+    for (const region of Object.values(this.currentSchematic.regions)) {
+      const blockIndices = this._getDecodedIndices(region)
+      if (!blockIndices.length) {
+        continue
+      }
+
+      const usedPalette = new Set(blockIndices)
+      for (const paletteIndex of usedPalette) {
+        const paletteEntry = region.palette[paletteIndex]
+        const blockName = paletteEntry?.name || 'minecraft:air'
+        const projectBlock = this._resolveProjectBlock(blockName)
+        if (!projectBlock?.id || projectBlock.id === BLOCK_IDS.EMPTY) {
+          continue
+        }
+
+        const blockType = getBlockTypeById(projectBlock.id)
+        const keys = blockType?.textureKeys ? Object.values(blockType.textureKeys) : []
+        keys.forEach((key) => {
+          if (key) {
+            textureNames.add(key)
+          }
+        })
+      }
+    }
+
+    return [...textureNames]
+  }
+
+  async preloadTextures(resources) {
+    if (!resources?.loadByNames) {
+      return []
+    }
+
+    const names = this.getRequiredTextureNames()
+    if (!names.length) {
+      return []
+    }
+
+    return resources.loadByNames(names)
+  }
+
   /**
    * 估算原理图中的方块数量
    */
@@ -603,6 +697,7 @@ class SchematicService {
       skipped: 0,
       mappedByExact: 0,
       mappedByKeyword: 0,
+      mappedByBedrockDynamic: 0,
       mappedByDefaultStone: 0,
       unknownMappedToStone: 0,
       touchedChunks: 0,
@@ -700,6 +795,9 @@ class SchematicService {
             }
             else if (projectBlock.source === 'keyword') {
               stats.mappedByKeyword++
+            }
+            else if (projectBlock.source === 'bedrock-dynamic') {
+              stats.mappedByBedrockDynamic++
             }
             else if (projectBlock.source === 'default-stone') {
               stats.mappedByDefaultStone++

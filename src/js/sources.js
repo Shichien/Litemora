@@ -1,3 +1,5 @@
+import { bedrockTextureSources } from './generated/bedrock-texture-sources.js'
+
 /**
  * 定义项目所需的静态资源列表。
  * Resources 类会根据 'type' 属性自动选择合适的加载器。
@@ -16,7 +18,7 @@
  * - video:       自定义加载逻辑，创建 VideoTexture (加载视频作为纹理)
  * - ktx2Texture: KTX2Loader (加载 KTX2 压缩纹理)
  */
-export default [
+const sources = [
   {
     name: 'environmentMapHDRTexture',
     type: 'hdrTexture',
@@ -385,3 +387,16 @@ export default [
     path: 'textures/background/midnight.png',
   },
 ]
+
+const allSources = [...sources, ...bedrockTextureSources]
+
+export default allSources.map((source) => {
+  const isBlockTexture = source.type === 'texture' && source.path.startsWith('textures/blocks/')
+  if (!isBlockTexture) {
+    return source
+  }
+  return {
+    ...source,
+    lazy: true,
+  }
+})
