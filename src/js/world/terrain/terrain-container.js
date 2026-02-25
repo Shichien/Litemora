@@ -3,7 +3,8 @@
  * 以三维矩阵存储方块信息：data[x][y][z] = { id, instanceId }
  * 提供查询/写入/遍历/遮挡判断等工具方法
  */
-import { blocks } from './blocks-config.js'
+import { getBlockBehavior } from './block-behaviors.js'
+import { blocks, getBlockTypeById } from './blocks-config.js'
 
 let instance = null
 
@@ -147,6 +148,17 @@ export default class TerrainContainer {
    * 遮挡判定：六个方向都非空气则视为被遮挡
    */
   isBlockObscured(x, y, z) {
+    const current = this.getBlock(x, y, z)
+    if (!current || current.id === blocks.empty.id) {
+      return true
+    }
+
+    const currentType = getBlockTypeById(current.id)
+    const behavior = getBlockBehavior(currentType)
+    if (behavior.slab || behavior.stair || behavior.trapdoor || behavior.bars || behavior.wall) {
+      return false
+    }
+
     const up = this.getBlock(x, y + 1, z)?.id ?? blocks.empty.id
     const down = this.getBlock(x, y - 1, z)?.id ?? blocks.empty.id
     const left = this.getBlock(x + 1, y, z)?.id ?? blocks.empty.id
