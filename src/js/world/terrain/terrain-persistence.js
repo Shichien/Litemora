@@ -8,6 +8,9 @@ export default class TerrainPersistence {
   constructor(options = {}) {
     this.worldName = options.worldName || 'default'
     this.useIndexedDB = options.useIndexedDB ?? false
+    this.worldState = {
+      schematicOnlyMode: false,
+    }
 
     // 每个 chunk 的修改记录：Map<chunkKey, Map<blockKey, blockId>>
     // chunkKey: "x,z"
@@ -17,6 +20,14 @@ export default class TerrainPersistence {
 
     // 加载已保存的修改
     this.load()
+  }
+
+  _modsStorageKey() {
+    return `terrain_mods_${this.worldName}`
+  }
+
+  _stateStorageKey() {
+    return `terrain_state_${this.worldName}`
   }
 
   /**
@@ -47,8 +58,12 @@ export default class TerrainPersistence {
     const localX = Math.floor(worldX - chunkX * chunkWidth)
     const localZ = Math.floor(worldZ - chunkZ * chunkWidth)
 
+    this.recordChunkLocalModification(chunkX, chunkZ, localX, worldY, localZ, blockId)
+  }
+
+  recordChunkLocalModification(chunkX, chunkZ, localX, localY, localZ, blockId) {
     const chunkKey = this._chunkKey(chunkX, chunkZ)
-    const blockKey = this._blockKey(localX, worldY, localZ)
+    const blockKey = this._blockKey(localX, localY, localZ)
 
     if (!this.modifications.has(chunkKey)) {
       this.modifications.set(chunkKey, new Map())
@@ -79,6 +94,19 @@ export default class TerrainPersistence {
    */
   clearAllModifications() {
     this.modifications.clear()
+  }
+
+  setWorldState(patch = {}) {
+    this.worldState = {
+      ...this.worldState,
+      ...patch,
+    }
+  }
+
+  getWorldState() {
+    return {
+      ...this.worldState,
+    }
   }
 
   /**
@@ -130,8 +158,8 @@ export default class TerrainPersistence {
   _saveToLocalStorage() {
     try {
       const data = this.serialize()
-      const key = `terrain_mods_${this.worldName}`
-      localStorage.setItem(key, JSON.stringify(data))
+      localStorage.setItem(this._modsStorageKey(), JSON.stringify(data))
+      localStorage.setItem(this._stateStorageKey(), JSON.stringify(this.worldState))
       console.warn(`[TerrainPersistence] 已保存 ${this.modifications.size} 个 chunk 的修改`)
     }
     catch (error) {
@@ -141,16 +169,38 @@ export default class TerrainPersistence {
 
   _loadFromLocalStorage() {
     try {
-      const key = `terrain_mods_${this.worldName}`
-      const json = localStorage.getItem(key)
+      const json = localStorage.getItem(this._modsStorageKey())
       if (json) {
         const data = JSON.parse(json)
         this.deserialize(data)
         console.warn(`[TerrainPersistence] 已加载 ${this.modifications.size} 个 chunk 的修改`)
       }
+
+      const worldStateRaw = localStorage.getItem(this._stateStorageKey())
+      if (worldStateRaw) {
+        const parsedState = JSON.parse(worldStateRaw)
+        this.worldState = {
+          schematicOnlyMode: !!parsedState?.schematicOnlyMode,
+        }
+      }
     }
     catch (error) {
       console.error('[TerrainPersistence] localStorage 加载失败:', error)
+    }
+  }
+
+  clearAllPersistedData() {
+    this.modifications.clear()
+    this.worldState = {
+      schematicOnlyMode: false,
+    }
+
+    try {
+      localStorage.removeItem(this._modsStorageKey())
+      localStorage.removeItem(this._stateStorageKey())
+    }
+    catch (error) {
+      console.error('[TerrainPersistence] 清理持久化数据失败:', error)
     }
   }
 

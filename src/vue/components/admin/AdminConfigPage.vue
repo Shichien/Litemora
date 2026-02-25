@@ -191,7 +191,7 @@ async function handleSchematicFileSelect(event) {
     schematicFile.value = file.name
     schematicPreview.value = schematicService.getPreview()
     isBuildingSchematicPreview.value = true
-    schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 12000 })
+    schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 30000 })
     const yInfo = schematicPreview.value?.yStats
     if (yInfo?.hasBlocksBelowZero) {
       setStatus(
@@ -259,6 +259,8 @@ async function applySchematic() {
       offset,
       options: {
         replaceWorld: true,
+        persistModifications: true,
+        keepSchematicOnlyMode: true,
       },
     })
 

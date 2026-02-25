@@ -1,6 +1,8 @@
+import * as THREE from 'three'
 import { INTERACTION_CONFIG } from '../config/interaction-config.js'
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
+import { ensureDynamicBlockType, getBlockTypeById } from '../world/terrain/blocks-config.js'
 
 /**
  * BlockInteractionManager
@@ -20,6 +22,7 @@ export default class BlockInteractionManager {
 
     // State
     this.mode = INTERACTION_CONFIG.modes.REMOVE // 'remove' | 'add'
+    this._tmpLookDirection = new THREE.Vector3()
 
     // Hotbar state (synced via events from hudStore)
     this._selectedBlockId = null
@@ -108,8 +111,11 @@ export default class BlockInteractionManager {
     const targetY = worldBlock.y + ny
     const targetZ = worldBlock.z + nz
 
-    // Use selected block from Hotbar
-    const blockToPlace = this._selectedBlockId
+    // Use selected block from Hotbar and resolve smart variants for slabs/stairs
+    const blockToPlace = this._resolvePlacementBlockId(this._selectedBlockId, target, { nx, ny, nz })
+    if (!blockToPlace) {
+      return
+    }
 
     // Check availability (optional: collision check with player?)
     // For now, just place it
@@ -124,10 +130,89 @@ export default class BlockInteractionManager {
     }
   }
 
+  _resolvePlacementBlockId(selectedBlockId, target, normal) {
+    const blockType = getBlockTypeById(selectedBlockId)
+    if (!blockType) {
+      return selectedBlockId
+    }
+
+    const geometryType = blockType.geometryType || 'cube'
+    const blockName = blockType.name || ''
+
+    const isSlab = geometryType.startsWith('slab_') || blockName.endsWith('_slab')
+    const isStair = geometryType.startsWith('stair_') || blockName.endsWith('_stairs')
+
+    if (!isSlab && !isStair) {
+      return selectedBlockId
+    }
+
+    const textureName = blockType?.textureKeys?.all
+      || blockType?.textureKeys?.top
+      || blockType?.textureKeys?.side
+    if (!textureName) {
+      return selectedBlockId
+    }
+
+    const half = this._resolvePlacementHalf(target, normal)
+
+    if (isSlab) {
+      const slabBlock = ensureDynamicBlockType(textureName, {
+        blockName: blockName || 'dynamic_slab',
+        geometryType: half === 'top' ? 'slab_top' : 'slab_bottom',
+      })
+      return slabBlock?.id || selectedBlockId
+    }
+
+    const facing = this._resolvePlacementFacing()
+    const stairBlock = ensureDynamicBlockType(textureName, {
+      blockName: blockName || 'dynamic_stairs',
+      geometryType: `stair_${half}_${facing}_straight`,
+    })
+    return stairBlock?.id || selectedBlockId
+  }
+
+  _resolvePlacementHalf(target, normal) {
+    if (normal?.ny < 0) {
+      return 'top'
+    }
+    if (normal?.ny > 0) {
+      return 'bottom'
+    }
+
+    const hitY = target?.point?.y
+    const centerY = target?.worldPosition?.y
+    if (typeof hitY === 'number' && typeof centerY === 'number') {
+      return hitY >= centerY ? 'top' : 'bottom'
+    }
+
+    return 'bottom'
+  }
+
+  _resolvePlacementFacing() {
+    const direction = this.experience.camera?.instance?.getWorldDirection?.(this._tmpLookDirection)
+    const dirX = Number(direction?.x || 0)
+    const dirZ = Number(direction?.z || 0)
+
+    let playerFacing
+    if (Math.abs(dirX) > Math.abs(dirZ)) {
+      playerFacing = dirX > 0 ? 'east' : 'west'
+    }
+    else {
+      playerFacing = dirZ > 0 ? 'south' : 'north'
+    }
+
+    const opposite = {
+      north: 'south',
+      south: 'north',
+      east: 'west',
+      west: 'east',
+    }
+    return opposite[playerFacing] || 'north'
+  }
+
   destroy() {
     emitter.off('input:toggle_block_edit_mode', this._onToggleMode)
     emitter.off('input:mouse_down', this._onMouseDown)
     emitter.off('hud:selected-block-update', this._onHotbarUpdate)
   }
 }
-

@@ -61,6 +61,8 @@ export default class ChunkManager {
       useIndexedDB: options.useIndexedDB ?? CHUNK_BASIC_CONFIG.useIndexedDB,
     })
 
+    this.schematicOnlyMode = !!this.persistence.getWorldState?.().schematicOnlyMode
+
     // 自动保存：节流，避免频繁写入
     this._saveTimeout = null
     this._autoSaveDelay = CHUNK_BASIC_CONFIG.autoSaveDelay
@@ -154,7 +156,25 @@ export default class ChunkManager {
    * 启用后，新生成的区块会被清空为纯空气（仅保留持久化修改）
    */
   setSchematicOnlyMode(enabled = true) {
-    this.schematicOnlyMode = !!enabled
+    const nextMode = !!enabled
+    this.schematicOnlyMode = nextMode
+    this.persistence?.setWorldState?.({ schematicOnlyMode: nextMode })
+    this.persistence?.save?.()
+  }
+
+  _prepareChunkData(chunk) {
+    if (!chunk || chunk.state === 'disposed' || chunk.state !== 'init') {
+      return false
+    }
+
+    if (this.schematicOnlyMode) {
+      chunk.container.clear()
+      chunk.state = 'dataReady'
+      return true
+    }
+
+    chunk.generator.params.seed = this.seed
+    return chunk.generateData()
   }
 
   /**
@@ -201,11 +221,11 @@ export default class ChunkManager {
       const currentKey = this._key(pcx, pcz)
       const currentChunk = this.chunks.get(currentKey)
       if (currentChunk?.state === 'init') {
-        currentChunk.generator.params.seed = this.seed
-        currentChunk.generateData()
-        if (this.schematicOnlyMode) {
-          currentChunk.container.clear()
+        const prepared = this._prepareChunkData(currentChunk)
+        if (!prepared) {
+          return { seed: this.seed }
         }
+        this._applyChunkModifications(currentChunk)
         currentChunk.buildMesh()
         currentChunk.renderer.group.scale.setScalar(this.renderParams.scale)
       }
@@ -587,14 +607,9 @@ export default class ChunkManager {
       if (!this.chunks.has(key) || chunk.state === 'disposed')
         return
 
-      chunk.generator.params.seed = this.seed
-      const ok = chunk.generateData()
+      const ok = this._prepareChunkData(chunk)
       if (!ok)
         return
-
-      if (this.schematicOnlyMode) {
-        chunk.container.clear()
-      }
 
       // ===== 应用玩家修改 =====
       this._applyChunkModifications(chunk)

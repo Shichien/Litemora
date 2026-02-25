@@ -257,6 +257,7 @@ export default class World {
       return
     }
 
+    this.chunkManager.persistence?.clearAllPersistedData?.()
     this.chunkManager.setSchematicOnlyMode?.(false)
 
     // Use the new lightweight regeneration API

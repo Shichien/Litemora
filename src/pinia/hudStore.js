@@ -40,8 +40,8 @@ export const useHudStore = defineStore('hud', () => {
    */
   const hotbarItems = ref([
     { blockId: 2, count: 30 }, // Initial: 30 dirt blocks
-    null,
-    null,
+    { blockId: 31, count: 30 }, // Initial: 30 stone slab blocks
+    { blockId: 32, count: 30 }, // Initial: 30 stone stairs blocks
     null,
     null,
     null,

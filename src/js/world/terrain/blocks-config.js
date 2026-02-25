@@ -53,6 +53,8 @@ export const BLOCK_IDS = {
   CRACKED_POLISHED_BLACKSTONE_BRICKS: 28,
   OCHRE_FROGLIGHT: 29,
   PEARLESCENT_FROGLIGHT: 30,
+  STONE_SLAB: 31,
+  STONE_STAIRS: 32,
 }
 
 // 植物 ID 常量（使用 200+ 区间与方块区分）
@@ -385,10 +387,28 @@ export const blocks = {
       side: 'pearlescentFroglight_SideTexture',
     },
   },
+  stoneSlab: {
+    id: BLOCK_IDS.STONE_SLAB,
+    name: 'stone_slab',
+    visible: true,
+    textureKeys: {
+      all: 'stone',
+    },
+    geometryType: 'slab_bottom',
+  },
+  stoneStairs: {
+    id: BLOCK_IDS.STONE_STAIRS,
+    name: 'stone_stairs',
+    visible: true,
+    textureKeys: {
+      all: 'stone',
+    },
+    geometryType: 'stair_bottom_north',
+  },
 }
 
 const DYNAMIC_BLOCK_ID_START = 1000
-const dynamicBlockByTexture = new Map()
+const dynamicBlockBySignature = new Map()
 
 let blockByIdCache = null
 let blockByIdCacheSize = -1
@@ -416,11 +436,14 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     return null
   }
 
-  if (dynamicBlockByTexture.has(textureName)) {
-    return dynamicBlockByTexture.get(textureName)
+  const geometryType = options.geometryType || 'cube'
+  const signature = `${textureName}::${geometryType}`
+
+  if (dynamicBlockBySignature.has(signature)) {
+    return dynamicBlockBySignature.get(signature)
   }
 
-  const dynamicIndex = dynamicBlockByTexture.size
+  const dynamicIndex = dynamicBlockBySignature.size
   const blockType = {
     id: DYNAMIC_BLOCK_ID_START + dynamicIndex,
     name: options.blockName || textureName,
@@ -428,11 +451,12 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     textureKeys: {
       all: textureName,
     },
+    geometryType,
   }
 
   const key = `dynamicBedrock_${dynamicIndex}`
   blocks[key] = blockType
-  dynamicBlockByTexture.set(textureName, blockType)
+  dynamicBlockBySignature.set(signature, blockType)
 
   blockByIdCache = null
   blockByIdCacheSize = -1
@@ -592,6 +616,155 @@ export function createMaterials(blockType, textureItems) {
  * 共享几何体，避免重复创建
  */
 export const sharedGeometry = new THREE.BoxGeometry(1, 1, 1)
+
+function mergeToSingleGeometry(geometries = []) {
+  const positions = []
+  const normals = []
+  const uvs = []
+
+  geometries.forEach((geometry) => {
+    const nonIndexed = geometry.toNonIndexed()
+    const position = nonIndexed.getAttribute('position')
+    const normal = nonIndexed.getAttribute('normal')
+    const uv = nonIndexed.getAttribute('uv')
+
+    if (position) {
+      positions.push(...position.array)
+    }
+    if (normal) {
+      normals.push(...normal.array)
+    }
+    if (uv) {
+      uvs.push(...uv.array)
+    }
+
+    nonIndexed.dispose()
+  })
+
+  const merged = new THREE.BufferGeometry()
+  merged.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3))
+  merged.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3))
+  merged.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2))
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+const slabBottomGeometry = (() => {
+  const geometry = new THREE.BoxGeometry(1, 0.5, 1)
+  geometry.translate(0, -0.25, 0)
+  return geometry
+})()
+
+const slabTopGeometry = (() => {
+  const geometry = new THREE.BoxGeometry(1, 0.5, 1)
+  geometry.translate(0, 0.25, 0)
+  return geometry
+})()
+
+function createStairGeometry({ half = 'bottom', facing = 'north', shape = 'straight' } = {}) {
+  const isTop = half === 'top'
+  const lower = new THREE.BoxGeometry(1, 0.5, 1)
+  lower.translate(0, isTop ? 0.25 : -0.25, 0)
+
+  const topY = isTop ? -0.25 : 0.25
+  const topPieces = []
+  const normalizedShape = ['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].includes(shape)
+    ? shape
+    : 'straight'
+
+  const addNorthHalf = () => {
+    const g = new THREE.BoxGeometry(1, 0.5, 0.5)
+    g.translate(0, topY, -0.25)
+    topPieces.push(g)
+  }
+  const addWestHalf = () => {
+    const g = new THREE.BoxGeometry(0.5, 0.5, 1)
+    g.translate(-0.25, topY, 0)
+    topPieces.push(g)
+  }
+  const addEastHalf = () => {
+    const g = new THREE.BoxGeometry(0.5, 0.5, 1)
+    g.translate(0.25, topY, 0)
+    topPieces.push(g)
+  }
+  const addNorthWestQuarter = () => {
+    const g = new THREE.BoxGeometry(0.5, 0.5, 0.5)
+    g.translate(-0.25, topY, -0.25)
+    topPieces.push(g)
+  }
+  const addNorthEastQuarter = () => {
+    const g = new THREE.BoxGeometry(0.5, 0.5, 0.5)
+    g.translate(0.25, topY, -0.25)
+    topPieces.push(g)
+  }
+
+  if (normalizedShape === 'inner_left') {
+    addNorthHalf()
+    addWestHalf()
+  }
+  else if (normalizedShape === 'inner_right') {
+    addNorthHalf()
+    addEastHalf()
+  }
+  else if (normalizedShape === 'outer_left') {
+    addNorthWestQuarter()
+  }
+  else if (normalizedShape === 'outer_right') {
+    addNorthEastQuarter()
+  }
+  else {
+    addNorthHalf()
+  }
+
+  const merged = mergeToSingleGeometry([lower, ...topPieces])
+
+  const rotationY = {
+    north: 0,
+    east: Math.PI / 2,
+    south: Math.PI,
+    west: -Math.PI / 2,
+  }[facing] ?? 0
+
+  if (rotationY !== 0) {
+    merged.rotateY(rotationY)
+    merged.computeBoundingBox()
+    merged.computeBoundingSphere()
+  }
+
+  lower.dispose()
+  topPieces.forEach(piece => piece.dispose())
+  return merged
+}
+
+const stairGeometries = {
+}
+
+;['bottom', 'top'].forEach((half) => {
+  ;['north', 'south', 'east', 'west'].forEach((facing) => {
+    ;['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].forEach((shape) => {
+      const key = `stair_${half}_${facing}_${shape}`
+      stairGeometries[key] = createStairGeometry({ half, facing, shape })
+      if (shape === 'straight') {
+        stairGeometries[`stair_${half}_${facing}`] = stairGeometries[key]
+      }
+    })
+  })
+})
+
+export function getGeometryForBlockType(blockType) {
+  const geometryType = blockType?.geometryType || 'cube'
+  if (geometryType === 'slab_bottom') {
+    return slabBottomGeometry
+  }
+  if (geometryType === 'slab_top') {
+    return slabTopGeometry
+  }
+  if (stairGeometries[geometryType]) {
+    return stairGeometries[geometryType]
+  }
+  return sharedGeometry
+}
 
 /**
  * 植物配置

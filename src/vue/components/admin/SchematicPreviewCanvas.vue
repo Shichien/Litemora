@@ -1,5 +1,6 @@
 <script setup>
 import * as THREE from 'three'
+import { getGeometryForBlockType } from '@three/world/terrain/blocks-config.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -68,6 +69,22 @@ const hasModel = computed(() => {
 
 function getBlockColor(id) {
   return colorByBlockId[id] || '#9ca3af'
+}
+
+function hashStringToColorHex(input) {
+  const text = String(input || '')
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  const hue = Math.abs(hash) % 360
+  const saturation = 32 + (Math.abs(hash >> 3) % 28)
+  const lightness = 44 + (Math.abs(hash >> 5) % 20)
+  const color = new THREE.Color()
+  color.setHSL(hue / 360, saturation / 100, lightness / 100)
+  return `#${color.getHexString()}`
 }
 
 function disposeObject3D(object) {
@@ -143,27 +160,33 @@ function buildPreviewMesh() {
 
   const groups = new Map()
   for (const block of blocks) {
-    const key = `${block.id}`
+    const colorKey = block.textureName || block.name || String(block.id)
+    const geometryType = block.geometryType || 'cube'
+    const key = `${geometryType}::${colorKey}`
     if (!groups.has(key)) {
-      groups.set(key, [])
+      groups.set(key, {
+        entries: [],
+        color: colorByBlockId[block.id] || hashStringToColorHex(colorKey),
+        geometryType,
+      })
     }
-    groups.get(key).push(block)
+    groups.get(key).entries.push(block)
   }
 
   const matrix = new THREE.Matrix4()
-  const geometry = new THREE.BoxGeometry(1, 1, 1)
-
-  groups.forEach((entries, key) => {
-    const color = getBlockColor(Number(key))
+  groups.forEach((groupInfo) => {
+    const color = groupInfo.color || getBlockColor(0)
+    const baseGeometry = getGeometryForBlockType({ geometryType: groupInfo.geometryType }) || new THREE.BoxGeometry(1, 1, 1)
+    const geometry = baseGeometry.clone()
     const material = new THREE.MeshStandardMaterial({
       color,
       roughness: 0.95,
       metalness: 0.0,
     })
 
-    const mesh = new THREE.InstancedMesh(geometry, material, entries.length)
+    const mesh = new THREE.InstancedMesh(geometry, material, groupInfo.entries.length)
 
-    entries.forEach((entry, index) => {
+    groupInfo.entries.forEach((entry, index) => {
       matrix.makeTranslation(
         entry.x + VOXEL_CENTER_OFFSET - correctedCenterX,
         entry.y + VOXEL_CENTER_OFFSET - correctedCenterY,

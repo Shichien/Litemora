@@ -7,7 +7,7 @@ import { SHADOW_CONFIG, SHADOW_QUALITY, TREE_BLOCK_IDS } from '../../config/shad
 import Experience from '../../experience.js'
 import emitter from '../../utils/event/event-bus.js'
 
-import { ANIMATION_DEFAULTS, blocks, createMaterials, getBlockTypeById, resources, sharedGeometry } from './blocks-config.js'
+import { ANIMATION_DEFAULTS, blocks, createMaterials, getBlockTypeById, getGeometryForBlockType, resources } from './blocks-config.js'
 import TerrainContainer from './terrain-container.js'
 
 const RESOURCE_IDS = new Set(resources.map(r => r.id))
@@ -232,7 +232,7 @@ export default class TerrainRenderer {
       })
 
       // Clone geometry to add instance attributes (AO)
-      const geometry = sharedGeometry.clone()
+      const geometry = getGeometryForBlockType(blockType).clone()
 
       // Create AO instance attribute: single float per block (Top-Column AO)
       // aAo: 0 = no occlusion (bright), 1 = max occlusion (darkest)

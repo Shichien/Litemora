@@ -277,7 +277,7 @@ class SchematicService {
     const resolved = {}
     for (const [index, entry] of Object.entries(region.palette)) {
       const blockName = entry?.name || 'minecraft:air'
-      resolved[index] = this._resolveProjectBlock(blockName)
+      resolved[index] = this._resolveProjectBlock(blockName, entry?.properties || {})
     }
     region._paletteResolved = resolved
     return resolved
@@ -358,29 +358,87 @@ class SchematicService {
     return region._solidYStats
   }
 
-  _resolveProjectBlock(blockName) {
-    if (this._blockResolveCache.has(blockName)) {
-      return this._blockResolveCache.get(blockName)
+  _resolveProjectBlock(blockName, properties = {}) {
+    const cacheKey = `${blockName}::${this._buildBlockVariantKey(properties)}`
+    if (this._blockResolveCache.has(cacheKey)) {
+      return this._blockResolveCache.get(cacheKey)
     }
 
     if (!blockName || blockName === 'minecraft:air') {
       const result = { id: BLOCK_IDS.EMPTY, source: 'air' }
-      this._blockResolveCache.set(blockName, result)
+      this._blockResolveCache.set(cacheKey, result)
       return result
     }
 
     const exact = MC_TO_PROJECT_MAPPING[blockName]
     if (exact) {
       const result = { id: exact, source: 'exact' }
-      this._blockResolveCache.set(blockName, result)
+      this._blockResolveCache.set(cacheKey, result)
       return result
     }
 
     const normalizedName = blockName.replace('minecraft:', '')
+
+    if (normalizedName.endsWith('_slab')) {
+      const slabBaseName = normalizedName.replace(/_slab$/u, '')
+      const slabType = this._normalizeVariantString(properties?.type || properties?.slab_type || properties?.half)
+      const geometryType = slabType === 'top' ? 'slab_top' : 'slab_bottom'
+
+      const slabTextureName = this._resolveBedrockTextureName(slabBaseName)
+        || this._resolveBedrockTextureName(`${slabBaseName}_planks`)
+        || this._resolveBedrockTextureName(`planks_${slabBaseName}`)
+        || this._resolveBedrockTextureName(normalizedName)
+      if (slabTextureName) {
+        const slabBlock = ensureDynamicBlockType(slabTextureName, {
+          blockName: normalizedName,
+          geometryType: slabType === 'double' ? 'cube' : geometryType,
+        })
+
+        if (slabBlock?.id) {
+          const result = {
+            id: slabBlock.id,
+            source: 'bedrock-dynamic',
+            textureName: slabTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (normalizedName.endsWith('_stairs')) {
+      const stairBaseName = normalizedName.replace(/_stairs$/u, '')
+      const stairTextureName = this._resolveBedrockTextureName(stairBaseName)
+        || this._resolveBedrockTextureName(`${stairBaseName}_planks`)
+        || this._resolveBedrockTextureName(`planks_${stairBaseName}`)
+        || this._resolveBedrockTextureName(normalizedName)
+
+      if (stairTextureName) {
+        const facing = this._normalizeFacing(properties?.facing)
+        const half = this._normalizeVariantString(properties?.half) === 'top' ? 'top' : 'bottom'
+        const shape = this._normalizeStairShape(properties?.shape)
+        const geometryType = `stair_${half}_${facing}_${shape}`
+        const stairBlock = ensureDynamicBlockType(stairTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (stairBlock?.id) {
+          const result = {
+            id: stairBlock.id,
+            source: 'bedrock-dynamic',
+            textureName: stairTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
     for (const rule of KEYWORD_MAPPING) {
       if (rule.keywords.some(keyword => normalizedName.includes(keyword))) {
         const result = { id: rule.id, source: 'keyword' }
-        this._blockResolveCache.set(blockName, result)
+        this._blockResolveCache.set(cacheKey, result)
         return result
       }
     }
@@ -397,14 +455,48 @@ class SchematicService {
           source: 'bedrock-dynamic',
           textureName: bedrockTextureName,
         }
-        this._blockResolveCache.set(blockName, result)
+        this._blockResolveCache.set(cacheKey, result)
         return result
       }
     }
 
     const fallback = { id: BLOCK_IDS.STONE, source: 'default-stone' }
-    this._blockResolveCache.set(blockName, fallback)
+    this._blockResolveCache.set(cacheKey, fallback)
     return fallback
+  }
+
+  _normalizeVariantString(value) {
+    if (value === undefined || value === null) {
+      return ''
+    }
+    const raw = typeof value === 'string'
+      ? value
+      : (typeof value === 'object' && 'value' in value ? value.value : String(value))
+    return String(raw).toLowerCase()
+  }
+
+  _normalizeFacing(value) {
+    const facing = this._normalizeVariantString(value)
+    if (['north', 'south', 'east', 'west'].includes(facing)) {
+      return facing
+    }
+    return 'north'
+  }
+
+  _normalizeStairShape(value) {
+    const shape = this._normalizeVariantString(value)
+    if (['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].includes(shape)) {
+      return shape
+    }
+    return 'straight'
+  }
+
+  _buildBlockVariantKey(properties = {}) {
+    const type = this._normalizeVariantString(properties?.type || properties?.slab_type)
+    const half = this._normalizeVariantString(properties?.half)
+    const facing = this._normalizeFacing(properties?.facing)
+    const shape = this._normalizeVariantString(properties?.shape)
+    return `type=${type}|half=${half}|facing=${facing}|shape=${shape}`
   }
 
   _resolveBedrockTextureName(normalizedName) {
@@ -412,18 +504,30 @@ class SchematicService {
       return null
     }
 
-    const direct = bedrockTextureNameByStem[normalizedName] || bedrockTextureNameByRelative[normalizedName]
-    if (direct) {
-      return direct
-    }
+    const baseCandidates = this._buildBedrockBaseNameCandidates(normalizedName)
+    const candidates = []
+    const seen = new Set()
 
-    const candidates = [
-      `${normalizedName}_top`,
-      `${normalizedName}_side`,
-      `${normalizedName}_front`,
-      `${normalizedName}_on`,
-      `${normalizedName}_off`,
-    ]
+    for (const base of baseCandidates) {
+      const variants = [
+        base,
+        `${base}_top`,
+        `${base}_side`,
+        `${base}_front`,
+        `${base}_on`,
+        `${base}_off`,
+        `${base}_bottom`,
+        `${base}_end`,
+      ]
+
+      for (const variant of variants) {
+        if (seen.has(variant)) {
+          continue
+        }
+        seen.add(variant)
+        candidates.push(variant)
+      }
+    }
 
     for (const candidate of candidates) {
       const textureName = bedrockTextureNameByStem[candidate] || bedrockTextureNameByRelative[candidate]
@@ -433,6 +537,45 @@ class SchematicService {
     }
 
     return null
+  }
+
+  _buildBedrockBaseNameCandidates(normalizedName) {
+    const candidates = [normalizedName]
+
+    const shapeStripped = normalizedName.replace(/_(stairs|slab|wall|fence|fence_gate|door|trapdoor)$/u, '')
+    if (shapeStripped && shapeStripped !== normalizedName) {
+      candidates.push(shapeStripped)
+    }
+
+    const swapPairs = [
+      ['_planks', 'planks_'],
+      ['_concrete', 'concrete_'],
+      ['_stained_glass', 'glass_'],
+    ]
+
+    for (const source of [...candidates]) {
+      for (const [suffix, prefix] of swapPairs) {
+        if (!source.endsWith(suffix)) {
+          continue
+        }
+        const material = source.slice(0, -suffix.length)
+        if (!material) {
+          continue
+        }
+        candidates.push(`${prefix}${material}`)
+      }
+    }
+
+    for (const source of [...candidates]) {
+      if (source === 'stone_bricks' || source === 'stone_brick') {
+        candidates.push('stonebrick')
+      }
+      if (source === 'nether_bricks') {
+        candidates.push('nether_brick')
+      }
+    }
+
+    return [...new Set(candidates)]
   }
 
   /**
@@ -473,7 +616,7 @@ class SchematicService {
             const paletteIndex = blockIndices[linearIndex++] ?? 0
             const paletteEntry = region.palette[paletteIndex]
             const blockName = paletteEntry?.name || 'minecraft:air'
-            const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName)
+            const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName, paletteEntry?.properties || {})
             const projectBlockId = projectBlock.id
             if (projectBlockId === BLOCK_IDS.EMPTY) {
               continue
@@ -492,12 +635,19 @@ class SchematicService {
 
             seenSolidBlocks++
 
+            const blockType = getBlockTypeById(projectBlockId)
+
             const candidate = {
               x: worldX,
               y: worldY,
               z: worldZ,
               id: projectBlockId,
               name: blockName,
+              geometryType: blockType?.geometryType || 'cube',
+              textureName: blockType?.textureKeys?.all
+                || blockType?.textureKeys?.top
+                || blockType?.textureKeys?.side
+                || null,
             }
 
             if (sampledBlocks.length < maxBlocks) {
@@ -595,7 +745,7 @@ class SchematicService {
       for (const paletteIndex of usedPalette) {
         const paletteEntry = region.palette[paletteIndex]
         const blockName = paletteEntry?.name || 'minecraft:air'
-        const projectBlock = this._resolveProjectBlock(blockName)
+        const projectBlock = this._resolveProjectBlock(blockName, paletteEntry?.properties || {})
         if (!projectBlock?.id || projectBlock.id === BLOCK_IDS.EMPTY) {
           continue
         }
@@ -685,7 +835,10 @@ class SchematicService {
 
     const schematic = this.currentSchematic
     const replaceWorld = options.replaceWorld !== false
+    const persistModifications = options.persistModifications ?? replaceWorld
+    const keepSchematicOnlyMode = options.keepSchematicOnlyMode ?? replaceWorld
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
+    const previousSchematicOnlyMode = !!chunkManager.schematicOnlyMode
 
     const offsetX = Math.floor(worldOffset.x ?? 0)
     const offsetY = Math.floor(worldOffset.y ?? 0)
@@ -694,6 +847,7 @@ class SchematicService {
     const stats = {
       placed: 0,
       replaced: 0,
+      persisted: 0,
       skipped: 0,
       mappedByExact: 0,
       mappedByKeyword: 0,
@@ -731,177 +885,196 @@ class SchematicService {
       replaceWorld,
     })
 
-    if (replaceWorld) {
-      chunkManager.setSchematicOnlyMode?.(true)
-      chunkManager.persistence?.clearAllModifications?.()
+    try {
+      if (replaceWorld) {
+        chunkManager.setSchematicOnlyMode?.(true)
+        chunkManager.persistence?.clearAllModifications?.()
 
-      const loadedChunks = Array.from(chunkManager.chunks?.values?.() || [])
-      for (let index = 0; index < loadedChunks.length; index++) {
-        const chunk = loadedChunks[index]
+        const loadedChunks = Array.from(chunkManager.chunks?.values?.() || [])
+        for (let index = 0; index < loadedChunks.length; index++) {
+          const chunk = loadedChunks[index]
+          if (!chunk || chunk.state === 'disposed') {
+            continue
+          }
+
+          if (chunk.state === 'init') {
+            chunk.generator.params.seed = chunkManager.seed
+            const generated = chunk.generateData()
+            if (!generated) {
+              continue
+            }
+          }
+
+          chunk.container.clear()
+          touchedChunkKeys.add(`${chunk.chunkX},${chunk.chunkZ}`)
+          stats.worldClearedChunks++
+
+          reportProgress('clearing-world', {
+            clearedChunks: stats.worldClearedChunks,
+            totalLoadedChunks: loadedChunks.length,
+          })
+
+          if ((index + 1) % chunksPerFrame === 0) {
+            await this._yieldToMainThread()
+          }
+        }
+      }
+
+      for (const region of Object.values(schematic.regions)) {
+        const sizeX = Math.abs(region.size.x)
+        const sizeY = Math.abs(region.size.y)
+        const sizeZ = Math.abs(region.size.z)
+        const totalBlocks = sizeX * sizeY * sizeZ
+        if (totalBlocks <= 0) {
+          continue
+        }
+
+        const blockIndices = this._getDecodedIndices(region)
+        const resolvedPalette = this._buildResolvedPalette(region)
+
+        let linearIndex = 0
+        for (let y = 0; y < sizeY; y++) {
+          for (let z = 0; z < sizeZ; z++) {
+            for (let x = 0; x < sizeX; x++) {
+              const paletteIndex = blockIndices[linearIndex++] ?? 0
+              const paletteEntry = region.palette[paletteIndex]
+              const blockName = paletteEntry?.name || 'minecraft:air'
+              const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName, paletteEntry?.properties || {})
+              const projectBlockId = projectBlock.id
+              if (projectBlockId === BLOCK_IDS.EMPTY) {
+                continue
+              }
+
+              if (projectBlock.source === 'exact') {
+                stats.mappedByExact++
+              }
+              else if (projectBlock.source === 'keyword') {
+                stats.mappedByKeyword++
+              }
+              else if (projectBlock.source === 'bedrock-dynamic') {
+                stats.mappedByBedrockDynamic++
+              }
+              else if (projectBlock.source === 'default-stone') {
+                stats.mappedByDefaultStone++
+                stats.unknownMappedToStone++
+              }
+
+              const worldX = x + region.position.x + offsetX
+              const worldY = y + region.position.y + offsetY
+              const worldZ = z + region.position.z + offsetZ
+
+              if (worldY < 0 || worldY >= chunkManager.chunkHeight) {
+                stats.skipped++
+                stats.skippedOutOfHeight++
+                continue
+              }
+
+              const chunkX = Math.floor(worldX / chunkManager.chunkWidth)
+              const chunkZ = Math.floor(worldZ / chunkManager.chunkWidth)
+              const chunkKey = `${chunkX},${chunkZ}`
+
+              const chunk = this._ensureChunkReady(chunkManager, chunkX, chunkZ)
+              if (!chunk) {
+                stats.skipped++
+                continue
+              }
+
+              const localX = Math.floor(worldX - chunkX * chunkManager.chunkWidth)
+              const localZ = Math.floor(worldZ - chunkZ * chunkManager.chunkWidth)
+              const existing = chunk.container.getBlock(localX, worldY, localZ)
+              if (!existing) {
+                stats.skipped++
+                continue
+              }
+
+              if (existing.id === projectBlockId) {
+                continue
+              }
+
+              if (existing.id !== BLOCK_IDS.EMPTY) {
+                stats.replaced++
+              }
+              stats.placed++
+
+              chunk.container.setBlockId(localX, worldY, localZ, projectBlockId)
+              if (persistModifications) {
+                chunkManager.persistence.recordChunkLocalModification(
+                  chunkX,
+                  chunkZ,
+                  localX,
+                  worldY,
+                  localZ,
+                  projectBlockId,
+                )
+                stats.persisted++
+              }
+              touchedChunkKeys.add(chunkKey)
+              processedSolidBlocks++
+
+              processedSinceYield++
+              if (processedSinceYield >= blocksPerFrame) {
+                processedSinceYield = 0
+                reportProgress('placing-blocks', {
+                  touchedChunks: touchedChunkKeys.size,
+                })
+                await this._yieldToMainThread()
+              }
+            }
+          }
+        }
+      }
+
+      const touchedChunks = Array.from(touchedChunkKeys)
+      for (let index = 0; index < touchedChunks.length; index++) {
+        const chunkKey = touchedChunks[index]
+        const [chunkX, chunkZ] = chunkKey.split(',').map(Number)
+        const chunk = chunkManager.getChunk(chunkX, chunkZ)
         if (!chunk || chunk.state === 'disposed') {
           continue
         }
 
-        if (chunk.state === 'init') {
-          chunk.generator.params.seed = chunkManager.seed
-          const generated = chunk.generateData()
-          if (!generated) {
-            continue
+        if (chunk.state === 'dataReady') {
+          const built = chunk.buildMesh()
+          if (built) {
+            chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
           }
         }
-
-        chunk.container.clear()
-        touchedChunkKeys.add(`${chunk.chunkX},${chunk.chunkZ}`)
-        stats.worldClearedChunks++
-
-        reportProgress('clearing-world', {
-          clearedChunks: stats.worldClearedChunks,
-          totalLoadedChunks: loadedChunks.length,
-        })
+        else if (chunk.state === 'meshReady') {
+          chunk.renderer?._rebuildFromContainer?.()
+          chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
+        }
 
         if ((index + 1) % chunksPerFrame === 0) {
+          reportProgress('rebuilding-chunks', {
+            rebuiltChunks: index + 1,
+            totalTouchedChunks: touchedChunks.length,
+          })
           await this._yieldToMainThread()
         }
       }
-    }
 
-    for (const region of Object.values(schematic.regions)) {
-      const sizeX = Math.abs(region.size.x)
-      const sizeY = Math.abs(region.size.y)
-      const sizeZ = Math.abs(region.size.z)
-      const totalBlocks = sizeX * sizeY * sizeZ
-      if (totalBlocks <= 0) {
-        continue
+      if (persistModifications) {
+        chunkManager.persistence.save()
       }
 
-      const blockIndices = this._getDecodedIndices(region)
-      const resolvedPalette = this._buildResolvedPalette(region)
+      stats.touchedChunks = touchedChunkKeys.size
 
-      let linearIndex = 0
-      for (let y = 0; y < sizeY; y++) {
-        for (let z = 0; z < sizeZ; z++) {
-          for (let x = 0; x < sizeX; x++) {
-            const paletteIndex = blockIndices[linearIndex++] ?? 0
-            const paletteEntry = region.palette[paletteIndex]
-            const blockName = paletteEntry?.name || 'minecraft:air'
-            const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName)
-            const projectBlockId = projectBlock.id
-            if (projectBlockId === BLOCK_IDS.EMPTY) {
-              continue
-            }
+      reportProgress('done', {
+        touchedChunks: stats.touchedChunks,
+        skipped: stats.skipped,
+      })
 
-            if (projectBlock.source === 'exact') {
-              stats.mappedByExact++
-            }
-            else if (projectBlock.source === 'keyword') {
-              stats.mappedByKeyword++
-            }
-            else if (projectBlock.source === 'bedrock-dynamic') {
-              stats.mappedByBedrockDynamic++
-            }
-            else if (projectBlock.source === 'default-stone') {
-              stats.mappedByDefaultStone++
-              stats.unknownMappedToStone++
-            }
-
-            const worldX = x + region.position.x + offsetX
-            const worldY = y + region.position.y + offsetY
-            const worldZ = z + region.position.z + offsetZ
-
-            if (worldY < 0 || worldY >= chunkManager.chunkHeight) {
-              stats.skipped++
-              stats.skippedOutOfHeight++
-              continue
-            }
-
-            const chunkX = Math.floor(worldX / chunkManager.chunkWidth)
-            const chunkZ = Math.floor(worldZ / chunkManager.chunkWidth)
-            const chunkKey = `${chunkX},${chunkZ}`
-
-            const chunk = this._ensureChunkReady(chunkManager, chunkX, chunkZ)
-            if (!chunk) {
-              stats.skipped++
-              continue
-            }
-
-            const localX = Math.floor(worldX - chunkX * chunkManager.chunkWidth)
-            const localZ = Math.floor(worldZ - chunkZ * chunkManager.chunkWidth)
-            const existing = chunk.container.getBlock(localX, worldY, localZ)
-            if (!existing) {
-              stats.skipped++
-              continue
-            }
-
-            if (existing.id === projectBlockId) {
-              continue
-            }
-
-            if (existing.id !== BLOCK_IDS.EMPTY) {
-              stats.replaced++
-            }
-            stats.placed++
-
-            chunk.container.setBlockId(localX, worldY, localZ, projectBlockId)
-            chunkManager.persistence.recordModification(worldX, worldY, worldZ, projectBlockId, chunkManager.chunkWidth)
-            touchedChunkKeys.add(chunkKey)
-            processedSolidBlocks++
-
-            processedSinceYield++
-            if (processedSinceYield >= blocksPerFrame) {
-              processedSinceYield = 0
-              reportProgress('placing-blocks', {
-                touchedChunks: touchedChunkKeys.size,
-              })
-              await this._yieldToMainThread()
-            }
-          }
-        }
+      return {
+        status: 'applied',
+        totalBlocks: totalSolidBlocks,
+        offset: { x: offsetX, y: offsetY, z: offsetZ },
+        ...stats,
       }
     }
-
-    const touchedChunks = Array.from(touchedChunkKeys)
-    for (let index = 0; index < touchedChunks.length; index++) {
-      const chunkKey = touchedChunks[index]
-      const [chunkX, chunkZ] = chunkKey.split(',').map(Number)
-      const chunk = chunkManager.getChunk(chunkX, chunkZ)
-      if (!chunk || chunk.state === 'disposed') {
-        continue
+    finally {
+      if (!keepSchematicOnlyMode) {
+        chunkManager.setSchematicOnlyMode?.(previousSchematicOnlyMode)
       }
-
-      if (chunk.state === 'dataReady') {
-        const built = chunk.buildMesh()
-        if (built) {
-          chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
-        }
-      }
-      else if (chunk.state === 'meshReady') {
-        chunk.renderer?._rebuildFromContainer?.()
-        chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
-      }
-
-      if ((index + 1) % chunksPerFrame === 0) {
-        reportProgress('rebuilding-chunks', {
-          rebuiltChunks: index + 1,
-          totalTouchedChunks: touchedChunks.length,
-        })
-        await this._yieldToMainThread()
-      }
-    }
-
-    chunkManager.persistence.save()
-
-    stats.touchedChunks = touchedChunkKeys.size
-
-    reportProgress('done', {
-      touchedChunks: stats.touchedChunks,
-      skipped: stats.skipped,
-    })
-
-    return {
-      status: 'applied',
-      totalBlocks: totalSolidBlocks,
-      offset: { x: offsetX, y: offsetY, z: offsetZ },
-      ...stats,
     }
   }
 }
