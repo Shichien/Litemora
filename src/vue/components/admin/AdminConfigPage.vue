@@ -183,6 +183,10 @@ function formatSliderValue(value, digits = 0) {
   return digits > 0 ? num.toFixed(digits) : String(Math.round(num))
 }
 
+function formatSliderDisplay(value, max, digits = 0) {
+  return `${formatSliderValue(value, digits)} / ${formatSliderValue(max, digits)}`
+}
+
 async function handleSchematicFileSelect(event) {
   const file = event.target.files?.[0]
   if (!file) {
@@ -501,12 +505,20 @@ onBeforeUnmount(() => {
           <div class="setting-row">
             <label class="full">
               视距
-              <div class="range-wrap">
+              <div class="range-wrap range-wrap-compact">
                 <input v-model.number="adminWorldGenDraft.viewDistance" min="1" max="8" step="1" type="range">
-                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.viewDistance) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.viewDistance, 8) }}</span>
               </div>
             </label>
           </div>
+          <div class="setting-row toggles">
+            <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
+            <label><input v-model="configDraft.player.flight.groundWalkAnimationWhenMoving" type="checkbox">飞行移动模拟地面行走动画</label>
+          </div>
+        </section>
+
+        <section class="setting-section">
+          <h3>界面设置</h3>
           <div class="setting-row">
             <span class="row-label">语言</span>
             <div class="option-group">
@@ -522,8 +534,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="setting-row toggles">
-            <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
-            <label><input v-model="configDraft.player.flight.groundWalkAnimationWhenMoving" type="checkbox">飞行移动模拟地面行走动画</label>
+            <label><input v-model="configDraft.ui.pauseMenu.showSettings" type="checkbox">显示设置按钮</label>
+            <label><input v-model="configDraft.ui.pauseMenu.showSkins" type="checkbox">显示皮肤按钮</label>
           </div>
         </section>
 
@@ -534,21 +546,21 @@ onBeforeUnmount(() => {
               高度上限(16-256)
               <div class="range-wrap">
                 <input v-model.number="configDraft.settings.chunk.height" min="16" max="256" step="1" type="range">
-                <span class="slider-value">{{ formatSliderValue(configDraft.settings.chunk.height) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.chunk.height, 256) }}</span>
               </div>
             </label>
             <label>
               视距
               <div class="range-wrap">
                 <input v-model.number="configDraft.settings.chunk.viewDistance" min="1" max="8" step="1" type="range">
-                <span class="slider-value">{{ formatSliderValue(configDraft.settings.chunk.viewDistance) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.chunk.viewDistance, 8) }}</span>
               </div>
             </label>
             <label>
               卸载缓冲
               <div class="range-wrap">
                 <input v-model.number="configDraft.settings.chunk.unloadPadding" min="0" max="8" step="1" type="range">
-                <span class="slider-value">{{ formatSliderValue(configDraft.settings.chunk.unloadPadding) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.chunk.unloadPadding, 8) }}</span>
               </div>
             </label>
           </div>
@@ -580,10 +592,10 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-        </section>
 
-        <section class="setting-section">
-          <h3>环境设置</h3>
+          <div class="subsection-title">
+            环境设置
+          </div>
           <div class="setting-row">
             <span class="row-label">天空</span>
             <div class="option-group">
@@ -603,36 +615,28 @@ onBeforeUnmount(() => {
               阳光强度
               <div class="range-wrap">
                 <input v-model.number="configDraft.settings.environment.sunIntensity" min="0" max="5" step="0.05" type="range">
-                <span class="slider-value">{{ formatSliderValue(configDraft.settings.environment.sunIntensity, 2) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.sunIntensity, 5, 2) }}</span>
               </div>
             </label>
             <label>
               环境光
               <div class="range-wrap">
                 <input v-model.number="configDraft.settings.environment.ambientIntensity" min="0" max="3" step="0.05" type="range">
-                <span class="slider-value">{{ formatSliderValue(configDraft.settings.environment.ambientIntensity, 2) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.ambientIntensity, 3, 2) }}</span>
               </div>
             </label>
             <label>
               雾浓度
               <div class="range-wrap">
                 <input v-model.number="configDraft.settings.environment.fogDensity" min="0" max="0.05" step="0.001" type="range">
-                <span class="slider-value">{{ formatSliderValue(configDraft.settings.environment.fogDensity, 3) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.fogDensity, 0.05, 3) }}</span>
               </div>
             </label>
           </div>
-        </section>
 
-        <section class="setting-section">
-          <h3>暂停菜单</h3>
-          <div class="setting-row toggles">
-            <label><input v-model="configDraft.ui.pauseMenu.showSettings" type="checkbox">显示设置按钮</label>
-            <label><input v-model="configDraft.ui.pauseMenu.showSkins" type="checkbox">显示皮肤按钮</label>
+          <div class="subsection-title">
+            导入 Litematica 投影文件
           </div>
-        </section>
-
-        <section class="setting-section">
-          <h3>导入 Litematica 投影文件</h3>
           <div class="setting-row">
             <input
               type="file"
@@ -671,21 +675,21 @@ onBeforeUnmount(() => {
                 偏移 X
                 <div class="range-wrap">
                   <input v-model.number="schematicOffsetX" min="-128" max="128" step="1" type="range">
-                  <span class="slider-value">{{ formatSliderValue(schematicOffsetX) }}</span>
+                  <span class="slider-value">{{ formatSliderDisplay(schematicOffsetX, 128) }}</span>
                 </div>
               </label>
               <label>
                 偏移 Y
                 <div class="range-wrap">
                   <input v-model.number="schematicOffsetY" min="-64" max="128" step="1" type="range">
-                  <span class="slider-value">{{ formatSliderValue(schematicOffsetY) }}</span>
+                  <span class="slider-value">{{ formatSliderDisplay(schematicOffsetY, 128) }}</span>
                 </div>
               </label>
               <label>
                 偏移 Z
                 <div class="range-wrap">
                   <input v-model.number="schematicOffsetZ" min="-128" max="128" step="1" type="range">
-                  <span class="slider-value">{{ formatSliderValue(schematicOffsetZ) }}</span>
+                  <span class="slider-value">{{ formatSliderDisplay(schematicOffsetZ, 128) }}</span>
                 </div>
               </label>
             </div>
@@ -768,10 +772,10 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-        </section>
 
-        <section class="setting-section">
-          <h3>创建世界</h3>
+          <div class="subsection-title">
+            创建世界
+          </div>
           <div class="setting-row">
             <label class="full">
               Seed
@@ -809,21 +813,21 @@ onBeforeUnmount(() => {
               地形高度
               <div class="range-wrap">
                 <input v-model.number="adminWorldGenDraft.magnitude" min="0" max="32" step="1" type="range">
-                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.magnitude) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.magnitude, 32) }}</span>
               </div>
             </label>
             <label>
               树最小高
               <div class="range-wrap">
                 <input v-model.number="adminWorldGenDraft.treeMinHeight" min="1" max="16" step="1" type="range">
-                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.treeMinHeight) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.treeMinHeight, 16) }}</span>
               </div>
             </label>
             <label>
               树最大高
               <div class="range-wrap">
                 <input v-model.number="adminWorldGenDraft.treeMaxHeight" min="1" max="32" step="1" type="range">
-                <span class="slider-value">{{ formatSliderValue(adminWorldGenDraft.treeMaxHeight) }}</span>
+                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.treeMaxHeight, 32) }}</span>
               </div>
             </label>
           </div>
@@ -1143,6 +1147,11 @@ label.full input[type='text'] {
 
 input[type='range'] {
   width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  flex: 1 1 auto;
 }
 
 input[type='checkbox'] {
@@ -1173,10 +1182,22 @@ input::placeholder {
   width: 100%;
 }
 
+.range-wrap-compact input[type='range'] {
+  flex: 0 0 33.333%;
+  max-width: 33.333%;
+}
+
 .slider-value {
-  min-width: 52px;
+  min-width: 92px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+}
+
+.subsection-title {
+  margin: 8px 0 10px;
+  font-size: 16px;
+  font-weight: 600;
   color: #e2e8f0;
 }
 
