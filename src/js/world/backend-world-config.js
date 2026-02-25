@@ -22,7 +22,7 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
       unloadPadding: 1,
     },
     environment: {
-      skyMode: 'Image',
+      skyMode: 'DayCycle',
       sunIntensity: 1.75,
       ambientIntensity: 0.75,
       fogDensity: 0.01,

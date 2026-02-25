@@ -59,7 +59,7 @@ const adminWorldGenDraft = reactive({
 
 const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
-const skyModeOptions = ['Image', 'HDR']
+const skyModeOptions = ['DayCycle', 'HDR']
 
 const normalizedDraft = computed(() => {
   return normalizeBackendWorldConfig(configDraft.value)

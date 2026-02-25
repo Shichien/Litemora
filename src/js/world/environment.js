@@ -151,12 +151,9 @@ export default class Environment {
 
   updateBackground() {
     // 此方法保留用于调试面板切换，但默认由 SkyDome 管理天空
-    // 仅在需要强制使用 HDR/Image 时启用
+    // 仅在需要强制使用 HDR 时启用
     if (this.params.background === 'HDR') {
       this.scene.background = this.environmentMap.texture
-    }
-    else if (this.params.background === 'Image' && this.backgroundTexture) {
-      this.scene.background = this.backgroundTexture
     }
     else {
       // DayCycle 模式：清除 scene.background，让 SkyDome 显示
@@ -261,7 +258,6 @@ export default class Environment {
         options: {
           DayCycle: 'DayCycle',
           HDR: 'HDR',
-          Image: 'Image',
         },
       }).on('change', this.updateBackground.bind(this))
 

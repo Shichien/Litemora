@@ -35,7 +35,7 @@ const presetOptions = [
 
 // Sky mode options
 const skyModeOptions = [
-  { value: 'Image', label: 'Image' },
+  { value: 'DayCycle', label: 'DayCycle' },
   { value: 'HDR', label: 'HDR' },
 ]
 
