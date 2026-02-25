@@ -2,6 +2,12 @@ import * as THREE from 'three'
 import { INTERACTION_CONFIG } from '../config/interaction-config.js'
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
+import {
+  getBlockBehavior,
+  isIronBarsBlockType,
+  isStairBlockType,
+  isWallBlockType,
+} from '../world/terrain/block-behaviors.js'
 import { ensureDynamicBlockType, getBlockTypeById } from '../world/terrain/blocks-config.js'
 
 /**
@@ -159,15 +165,15 @@ export default class BlockInteractionManager {
       return selectedBlockId
     }
 
-    const geometryType = blockType.geometryType || 'cube'
     const blockName = blockType.name || ''
     const textureName = this._getTextureName(blockType)
 
-    const isSlab = geometryType.startsWith('slab_') || blockName.endsWith('_slab')
-    const isStair = geometryType.startsWith('stair_') || blockName.endsWith('_stairs')
-    const isTrapdoor = geometryType.startsWith('trapdoor_') || blockName.endsWith('_trapdoor')
-    const isIronBars = geometryType.startsWith('bars_') || blockName === 'iron_bars'
-    const isWall = geometryType.startsWith('wall_') || blockName.endsWith('_wall')
+    const behavior = getBlockBehavior(blockType)
+    const isSlab = behavior.slab
+    const isStair = behavior.stair
+    const isTrapdoor = behavior.trapdoor
+    const isIronBars = behavior.bars
+    const isWall = behavior.wall
 
     if (!isSlab && !isStair && !isTrapdoor && !isIronBars && !isWall) {
       return selectedBlockId
@@ -226,27 +232,15 @@ export default class BlockInteractionManager {
   }
 
   _isStairBlockType(blockType) {
-    if (!blockType) {
-      return false
-    }
-    const geometryType = blockType.geometryType || ''
-    return geometryType.startsWith('stair_') || blockType.name?.endsWith?.('_stairs')
+    return isStairBlockType(blockType)
   }
 
   _isBarsBlockType(blockType) {
-    if (!blockType) {
-      return false
-    }
-    const geometryType = blockType.geometryType || ''
-    return geometryType.startsWith('bars_') || blockType.name === 'iron_bars'
+    return isIronBarsBlockType(blockType)
   }
 
   _isWallBlockType(blockType) {
-    if (!blockType) {
-      return false
-    }
-    const geometryType = blockType.geometryType || ''
-    return geometryType.startsWith('wall_') || blockType.name?.endsWith?.('_wall')
+    return isWallBlockType(blockType)
   }
 
   _getTextureName(blockType) {

@@ -8,6 +8,7 @@ import Experience from '../../experience.js'
 import emitter from '../../utils/event/event-bus.js'
 
 import { ANIMATION_DEFAULTS, blocks, createMaterials, getBlockTypeById, getGeometryForBlockType, resources } from './blocks-config.js'
+import { isAtlasTextureVirtualKey, preloadAtlasTextureImage } from './java-atlas-texture-provider.js'
 import TerrainContainer from './terrain-container.js'
 
 const RESOURCE_IDS = new Set(resources.map(r => r.id))
@@ -90,9 +91,15 @@ export default class TerrainRenderer {
     // Mining event listeners
     this._handleMiningProgress = this._handleMiningProgress.bind(this)
     this._handleMiningCancel = this._handleMiningCancel.bind(this)
+    this._handleAtlasTextureReady = this._handleAtlasTextureReady.bind(this)
     emitter.on('game:mining-progress', this._handleMiningProgress)
     emitter.on('game:mining-cancel', this._handleMiningCancel)
     emitter.on('game:mining-complete', this._handleMiningCancel)
+    emitter.on('terrain:atlas-texture-ready', this._handleAtlasTextureReady)
+
+    preloadAtlasTextureImage().catch((error) => {
+      console.warn('[TerrainRenderer] Failed to preload atlas texture image:', error)
+    })
 
     // 若容器已有数据，立即绘制
     this._rebuildFromContainer()
@@ -174,6 +181,10 @@ export default class TerrainRenderer {
     this._miningUniforms.uTargetInstanceId.value = -1
   }
 
+  _handleAtlasTextureReady() {
+    this._scheduleRebuildAfterTextureLoad()
+  }
+
   /**
    * 响应数据就绪事件
    */
@@ -216,7 +227,6 @@ export default class TerrainRenderer {
       const missingTextureNames = this._getMissingTextureNames(blockType)
       if (missingTextureNames.length > 0) {
         this._queueTextureLoadForBlock(missingTextureNames)
-        return
       }
 
       const materials = createMaterials(blockType, this.resources.items)
@@ -296,7 +306,7 @@ export default class TerrainRenderer {
     }
 
     const textureNames = Object.values(blockType.textureKeys).filter(Boolean)
-    return textureNames.filter(name => !this.resources.items[name])
+    return textureNames.filter(name => !isAtlasTextureVirtualKey(name) && !this.resources.items[name])
   }
 
   _queueTextureLoadForBlock(missingTextureNames = []) {
@@ -594,6 +604,7 @@ export default class TerrainRenderer {
     emitter.off('game:mining-progress', this._handleMiningProgress)
     emitter.off('game:mining-cancel', this._handleMiningCancel)
     emitter.off('game:mining-complete', this._handleMiningCancel)
+    emitter.off('terrain:atlas-texture-ready', this._handleAtlasTextureReady)
     this._disposeChildren()
     this.scene.remove(this.group)
   }

@@ -11,6 +11,7 @@ import aoFragmentShader from '../../../shaders/blocks/ao.frag.glsl'
 import aoVertexShader from '../../../shaders/blocks/ao.vert.glsl'
 // 导入动画着色器
 import windVertexShader from '../../../shaders/blocks/wind.vert.glsl'
+import { requestAtlasTexture } from './java-atlas-texture-provider.js'
 
 // 方块 ID 常量，便于在代码中保持一致引用
 export const BLOCK_IDS = {
@@ -481,10 +482,60 @@ export function createMaterials(blockType, textureItems) {
   if (blockType.id === blocks.empty.id)
     return null
 
+  const getOrCreateMissingTexture = () => {
+    if (textureItems.__missing_block_texture) {
+      return textureItems.__missing_block_texture
+    }
+
+    let texture = null
+    if (typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas')
+      canvas.width = 16
+      canvas.height = 16
+      const context = canvas.getContext('2d')
+
+      if (context) {
+        context.fillStyle = '#ff00ff'
+        context.fillRect(0, 0, 16, 16)
+        context.fillStyle = '#111111'
+        context.fillRect(0, 0, 8, 8)
+        context.fillRect(8, 8, 8, 8)
+      }
+
+      texture = new THREE.CanvasTexture(canvas)
+    }
+    else {
+      const pixels = new Uint8Array([
+        255,
+        0,
+        255,
+        255,
+        17,
+        17,
+        17,
+        255,
+        17,
+        17,
+        17,
+        255,
+        255,
+        0,
+        255,
+        255,
+      ])
+      texture = new THREE.DataTexture(pixels, 2, 2)
+      texture.needsUpdate = true
+    }
+
+    texture.magFilter = THREE.NearestFilter
+    texture.minFilter = THREE.NearestFilter
+    texture.colorSpace = THREE.SRGBColorSpace
+    textureItems.__missing_block_texture = texture
+    return texture
+  }
+
   const ensureTexture = (key) => {
-    const tex = textureItems[key]
-    if (!tex)
-      return null
+    const tex = requestAtlasTexture(key) || textureItems[key] || getOrCreateMissingTexture()
     tex.magFilter = THREE.NearestFilter
     tex.minFilter = THREE.NearestFilter
     tex.colorSpace = THREE.SRGBColorSpace

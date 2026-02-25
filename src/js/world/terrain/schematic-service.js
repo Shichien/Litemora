@@ -2,73 +2,33 @@
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer as BufferPolyfill } from 'buffer'
 import { parse, simplify } from 'prismarine-nbt'
-import { bedrockTextureNameByRelative, bedrockTextureNameByStem } from '../../generated/bedrock-texture-sources.js'
+import { javaAtlasBlockTextureRects } from '../../generated/java-atlas-textures.js'
+import { javaBlockTextureStemHintsByBlock } from '../../generated/java-block-texture-hints.js'
+import {
+  isIronBarsBlockName,
+  isSlabBlockName,
+  isStairBlockName,
+  isTrapdoorBlockName,
+  isWallBlockName,
+} from './block-behaviors.js'
+import {
+  barsGeometryTypeFromProperties,
+  buildVariantKey,
+  normalizeFacing,
+  normalizeStairShape,
+  slabGeometryTypeFromProperties,
+  trapdoorGeometryTypeFromProperties,
+  variantBoolean,
+  variantString,
+  wallGeometryTypeFromProperties,
+} from './block-state-adapter.js'
 import { BLOCK_IDS, ensureDynamicBlockType, getBlockTypeById } from './blocks-config.js'
 
 if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = BufferPolyfill
 }
 
-const MC_TO_PROJECT_MAPPING = {
-  'minecraft:grass_block': BLOCK_IDS.GRASS,
-  'minecraft:dirt': BLOCK_IDS.DIRT,
-  'minecraft:stone': BLOCK_IDS.STONE,
-  'minecraft:smooth_stone': BLOCK_IDS.STONE,
-  'minecraft:andesite': BLOCK_IDS.ANDESITE,
-  'minecraft:polished_andesite': BLOCK_IDS.POLISHED_ANDESITE,
-  'minecraft:diorite': BLOCK_IDS.DIORITE,
-  'minecraft:polished_diorite': BLOCK_IDS.POLISHED_DIORITE,
-  'minecraft:clay': BLOCK_IDS.TERRACOTTA,
-  'minecraft:polished_blackstone': BLOCK_IDS.POLISHED_BLACKSTONE,
-  'minecraft:polished_blackstone_bricks': BLOCK_IDS.POLISHED_BLACKSTONE_BRICKS,
-  'minecraft:cracked_polished_blackstone_bricks': BLOCK_IDS.CRACKED_POLISHED_BLACKSTONE_BRICKS,
-  'minecraft:ochre_froglight': BLOCK_IDS.OCHRE_FROGLIGHT,
-  'minecraft:pearlescent_froglight': BLOCK_IDS.PEARLESCENT_FROGLIGHT,
-  'minecraft:coal_ore': BLOCK_IDS.COAL_ORE,
-  'minecraft:iron_ore': BLOCK_IDS.IRON_ORE,
-  'minecraft:oak_log': BLOCK_IDS.TREE_TRUNK,
-  'minecraft:oak_leaves': BLOCK_IDS.TREE_LEAVES,
-  'minecraft:birch_log': BLOCK_IDS.BIRCH_TRUNK,
-  'minecraft:birch_leaves': BLOCK_IDS.BIRCH_LEAVES,
-  'minecraft:cherry_log': BLOCK_IDS.CHERRY_TRUNK,
-  'minecraft:cherry_leaves': BLOCK_IDS.CHERRY_LEAVES,
-  'minecraft:sand': BLOCK_IDS.SAND,
-  'minecraft:gravel': BLOCK_IDS.GRAVEL,
-  'minecraft:red_sand': BLOCK_IDS.RED_SAND,
-  'minecraft:terracotta': BLOCK_IDS.TERRACOTTA,
-  'minecraft:ice': BLOCK_IDS.ICE,
-  'minecraft:packed_ice': BLOCK_IDS.PACKED_ICE,
-  'minecraft:snow_block': BLOCK_IDS.SNOW,
-  'minecraft:cactus': BLOCK_IDS.CACTUS,
-}
-
-const KEYWORD_MAPPING = [
-  { keywords: ['coal_ore'], id: BLOCK_IDS.COAL_ORE },
-  { keywords: ['iron_ore'], id: BLOCK_IDS.IRON_ORE },
-  { keywords: ['ochre_froglight'], id: BLOCK_IDS.OCHRE_FROGLIGHT },
-  { keywords: ['pearlescent_froglight'], id: BLOCK_IDS.PEARLESCENT_FROGLIGHT },
-  { keywords: ['cracked_polished_blackstone_bricks'], id: BLOCK_IDS.CRACKED_POLISHED_BLACKSTONE_BRICKS },
-  { keywords: ['polished_blackstone_bricks'], id: BLOCK_IDS.POLISHED_BLACKSTONE_BRICKS },
-  { keywords: ['polished_blackstone'], id: BLOCK_IDS.POLISHED_BLACKSTONE },
-  { keywords: ['polished_diorite'], id: BLOCK_IDS.POLISHED_DIORITE },
-  { keywords: ['diorite'], id: BLOCK_IDS.DIORITE },
-  { keywords: ['polished_andesite'], id: BLOCK_IDS.POLISHED_ANDESITE },
-  { keywords: ['andesite'], id: BLOCK_IDS.ANDESITE },
-  { keywords: ['red_sand'], id: BLOCK_IDS.RED_SAND },
-  { keywords: ['sand'], id: BLOCK_IDS.SAND },
-  { keywords: ['snow'], id: BLOCK_IDS.SNOW },
-  { keywords: ['packed_ice'], id: BLOCK_IDS.PACKED_ICE },
-  { keywords: ['ice'], id: BLOCK_IDS.ICE },
-  { keywords: ['gravel'], id: BLOCK_IDS.GRAVEL },
-  { keywords: ['terracotta', 'clay', 'mud_bricks'], id: BLOCK_IDS.TERRACOTTA },
-  { keywords: ['leaves'], id: BLOCK_IDS.TREE_LEAVES },
-  { keywords: ['birch_log'], id: BLOCK_IDS.BIRCH_TRUNK },
-  { keywords: ['cherry_log'], id: BLOCK_IDS.CHERRY_TRUNK },
-  { keywords: ['log', 'wood', 'stem', 'hyphae'], id: BLOCK_IDS.TREE_TRUNK },
-  { keywords: ['grass_block'], id: BLOCK_IDS.GRASS },
-  { keywords: ['dirt', 'podzol', 'coarse_dirt', 'mycelium'], id: BLOCK_IDS.DIRT },
-  { keywords: ['blackstone', 'deepslate', 'granite', 'cobblestone'], id: BLOCK_IDS.GRAVEL },
-]
+const ATLAS_TEXTURE_PREFIX = 'atlas:'
 
 /**
  * Litematica 原理图服务
@@ -359,7 +319,7 @@ class SchematicService {
   }
 
   _resolveProjectBlock(blockName, properties = {}) {
-    const cacheKey = `${blockName}::${this._buildBlockVariantKey(properties)}`
+    const cacheKey = `${blockName}::${buildVariantKey(properties)}`
     if (this._blockResolveCache.has(cacheKey)) {
       return this._blockResolveCache.get(cacheKey)
     }
@@ -370,34 +330,26 @@ class SchematicService {
       return result
     }
 
-    const exact = MC_TO_PROJECT_MAPPING[blockName]
-    if (exact) {
-      const result = { id: exact, source: 'exact' }
-      this._blockResolveCache.set(cacheKey, result)
-      return result
-    }
-
     const normalizedName = blockName.replace('minecraft:', '')
 
-    if (normalizedName.endsWith('_slab')) {
+    if (isSlabBlockName(normalizedName)) {
       const slabBaseName = normalizedName.replace(/_slab$/u, '')
-      const slabType = this._normalizeVariantString(properties?.type || properties?.slab_type || properties?.half)
-      const geometryType = slabType === 'top' ? 'slab_top' : 'slab_bottom'
+      const geometryType = slabGeometryTypeFromProperties(properties)
 
-      const slabTextureName = this._resolveBedrockTextureName(slabBaseName)
-        || this._resolveBedrockTextureName(`${slabBaseName}_planks`)
-        || this._resolveBedrockTextureName(`planks_${slabBaseName}`)
-        || this._resolveBedrockTextureName(normalizedName)
+      const slabTextureName = this._resolveTextureName(slabBaseName)
+        || this._resolveTextureName(`${slabBaseName}_planks`)
+        || this._resolveTextureName(`planks_${slabBaseName}`)
+        || this._resolveTextureName(normalizedName)
       if (slabTextureName) {
         const slabBlock = ensureDynamicBlockType(slabTextureName, {
           blockName: normalizedName,
-          geometryType: slabType === 'double' ? 'cube' : geometryType,
+          geometryType,
         })
 
         if (slabBlock?.id) {
           const result = {
             id: slabBlock.id,
-            source: 'bedrock-dynamic',
+            source: 'atlas-dynamic',
             textureName: slabTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
@@ -406,18 +358,15 @@ class SchematicService {
       }
     }
 
-    if (normalizedName.endsWith('_stairs')) {
+    if (isStairBlockName(normalizedName)) {
       const stairBaseName = normalizedName.replace(/_stairs$/u, '')
-      const stairTextureName = this._resolveBedrockTextureName(stairBaseName)
-        || this._resolveBedrockTextureName(`${stairBaseName}_planks`)
-        || this._resolveBedrockTextureName(`planks_${stairBaseName}`)
-        || this._resolveBedrockTextureName(normalizedName)
+      const stairTextureName = this._resolveTextureName(stairBaseName)
+        || this._resolveTextureName(`${stairBaseName}_planks`)
+        || this._resolveTextureName(`planks_${stairBaseName}`)
+        || this._resolveTextureName(normalizedName)
 
       if (stairTextureName) {
-        const facing = this._normalizeFacing(properties?.facing)
-        const half = this._normalizeVariantString(properties?.half) === 'top' ? 'top' : 'bottom'
-        const shape = this._normalizeStairShape(properties?.shape)
-        const geometryType = `stair_${half}_${facing}_${shape}`
+        const geometryType = this._stairGeometryTypeFromProperties(properties)
         const stairBlock = ensureDynamicBlockType(stairTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -426,7 +375,7 @@ class SchematicService {
         if (stairBlock?.id) {
           const result = {
             id: stairBlock.id,
-            source: 'bedrock-dynamic',
+            source: 'atlas-dynamic',
             textureName: stairTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
@@ -435,17 +384,14 @@ class SchematicService {
       }
     }
 
-    if (normalizedName.endsWith('_trapdoor')) {
+    if (isTrapdoorBlockName(normalizedName)) {
       const trapdoorBaseName = normalizedName.replace(/_trapdoor$/u, '')
-      const trapdoorTextureName = this._resolveBedrockTextureName(trapdoorBaseName)
-        || this._resolveBedrockTextureName(`${trapdoorBaseName}_trapdoor`)
-        || this._resolveBedrockTextureName(normalizedName)
+      const trapdoorTextureName = this._resolveTextureName(trapdoorBaseName)
+        || this._resolveTextureName(`${trapdoorBaseName}_trapdoor`)
+        || this._resolveTextureName(normalizedName)
 
       if (trapdoorTextureName) {
-        const facing = this._normalizeFacing(properties?.facing)
-        const half = this._normalizeVariantString(properties?.half) === 'top' ? 'top' : 'bottom'
-        const open = this._normalizeBoolean(properties?.open)
-        const geometryType = `trapdoor_${half}_${open ? 'open' : 'closed'}_${facing}`
+        const geometryType = trapdoorGeometryTypeFromProperties(properties)
         const trapdoorBlock = ensureDynamicBlockType(trapdoorTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -454,7 +400,7 @@ class SchematicService {
         if (trapdoorBlock?.id) {
           const result = {
             id: trapdoorBlock.id,
-            source: 'bedrock-dynamic',
+            source: 'atlas-dynamic',
             textureName: trapdoorTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
@@ -463,14 +409,10 @@ class SchematicService {
       }
     }
 
-    if (normalizedName === 'iron_bars') {
-      const barsTextureName = this._resolveBedrockTextureName(normalizedName)
+    if (isIronBarsBlockName(normalizedName)) {
+      const barsTextureName = this._resolveTextureName(normalizedName)
       if (barsTextureName) {
-        const north = this._normalizeBoolean(properties?.north)
-        const east = this._normalizeBoolean(properties?.east)
-        const south = this._normalizeBoolean(properties?.south)
-        const west = this._normalizeBoolean(properties?.west)
-        const geometryType = `bars_${north ? 1 : 0}${east ? 1 : 0}${south ? 1 : 0}${west ? 1 : 0}`
+        const geometryType = barsGeometryTypeFromProperties(properties)
         const barsBlock = ensureDynamicBlockType(barsTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -479,7 +421,7 @@ class SchematicService {
         if (barsBlock?.id) {
           const result = {
             id: barsBlock.id,
-            source: 'bedrock-dynamic',
+            source: 'atlas-dynamic',
             textureName: barsTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
@@ -488,19 +430,14 @@ class SchematicService {
       }
     }
 
-    if (normalizedName.endsWith('_wall')) {
+    if (isWallBlockName(normalizedName)) {
       const wallBaseName = normalizedName.replace(/_wall$/u, '')
-      const wallTextureName = this._resolveBedrockTextureName(wallBaseName)
-        || this._resolveBedrockTextureName(`${wallBaseName}_wall`)
-        || this._resolveBedrockTextureName(normalizedName)
+      const wallTextureName = this._resolveTextureName(wallBaseName)
+        || this._resolveTextureName(`${wallBaseName}_wall`)
+        || this._resolveTextureName(normalizedName)
 
       if (wallTextureName) {
-        const up = this._normalizeBoolean(properties?.up)
-        const north = this._normalizeWallSide(properties?.north)
-        const east = this._normalizeWallSide(properties?.east)
-        const south = this._normalizeWallSide(properties?.south)
-        const west = this._normalizeWallSide(properties?.west)
-        const geometryType = `wall_${up ? 1 : 0}_${north}${east}${south}${west}`
+        const geometryType = wallGeometryTypeFromProperties(properties)
         const wallBlock = ensureDynamicBlockType(wallTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -509,7 +446,7 @@ class SchematicService {
         if (wallBlock?.id) {
           const result = {
             id: wallBlock.id,
-            source: 'bedrock-dynamic',
+            source: 'atlas-dynamic',
             textureName: wallTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
@@ -518,65 +455,64 @@ class SchematicService {
       }
     }
 
-    const bedrockTextureName = this._resolveBedrockTextureName(normalizedName)
-    if (bedrockTextureName) {
-      const dynamicBlock = ensureDynamicBlockType(bedrockTextureName, {
+    const textureName = this._resolveTextureName(normalizedName)
+    if (textureName) {
+      const dynamicBlock = ensureDynamicBlockType(textureName, {
         blockName: normalizedName,
       })
 
       if (dynamicBlock?.id) {
         const result = {
           id: dynamicBlock.id,
-          source: 'bedrock-dynamic',
-          textureName: bedrockTextureName,
+          source: 'atlas-dynamic',
+          textureName,
         }
         this._blockResolveCache.set(cacheKey, result)
         return result
       }
     }
 
-    for (const rule of KEYWORD_MAPPING) {
-      if (rule.keywords.some(keyword => normalizedName.includes(keyword))) {
-        const result = { id: rule.id, source: 'keyword' }
-        this._blockResolveCache.set(cacheKey, result)
-        return result
+    const fallbackTextureName = this._resolveAtlasTextureName('stone') || `${ATLAS_TEXTURE_PREFIX}block/${normalizedName}`
+    const fallbackDynamicBlock = ensureDynamicBlockType(fallbackTextureName, {
+      blockName: normalizedName,
+    })
+
+    if (fallbackDynamicBlock?.id) {
+      const fallback = {
+        id: fallbackDynamicBlock.id,
+        source: 'default-atlas-fallback',
+        textureName: fallbackTextureName,
       }
+      this._blockResolveCache.set(cacheKey, fallback)
+      return fallback
     }
 
-    const fallback = { id: BLOCK_IDS.STONE, source: 'default-stone' }
-    this._blockResolveCache.set(cacheKey, fallback)
-    return fallback
+    const emptyFallback = { id: BLOCK_IDS.EMPTY, source: 'default-empty' }
+    this._blockResolveCache.set(cacheKey, emptyFallback)
+    return emptyFallback
   }
 
   _normalizeVariantString(value) {
-    if (value === undefined || value === null) {
-      return ''
-    }
-    const raw = typeof value === 'string'
-      ? value
-      : (typeof value === 'object' && 'value' in value ? value.value : String(value))
-    return String(raw).toLowerCase()
+    return variantString(value)
   }
 
   _normalizeFacing(value) {
-    const facing = this._normalizeVariantString(value)
-    if (['north', 'south', 'east', 'west'].includes(facing)) {
-      return facing
-    }
-    return 'north'
+    return normalizeFacing(value)
   }
 
   _normalizeStairShape(value) {
-    const shape = this._normalizeVariantString(value)
-    if (['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].includes(shape)) {
-      return shape
-    }
-    return 'straight'
+    return normalizeStairShape(value)
+  }
+
+  _stairGeometryTypeFromProperties(properties = {}) {
+    const facing = this._normalizeFacing(properties?.facing)
+    const half = this._normalizeVariantString(properties?.half) === 'top' ? 'top' : 'bottom'
+    const shape = this._normalizeStairShape(properties?.shape)
+    return `stair_${half}_${facing}_${shape}`
   }
 
   _normalizeBoolean(value) {
-    const normalized = this._normalizeVariantString(value)
-    return normalized === 'true' || normalized === '1' || normalized === 'yes'
+    return variantBoolean(value)
   }
 
   _normalizeWallSide(value) {
@@ -591,26 +527,29 @@ class SchematicService {
   }
 
   _buildBlockVariantKey(properties = {}) {
-    const type = this._normalizeVariantString(properties?.type || properties?.slab_type)
-    const half = this._normalizeVariantString(properties?.half)
-    const facing = this._normalizeFacing(properties?.facing)
-    const shape = this._normalizeVariantString(properties?.shape)
-    const open = this._normalizeBoolean(properties?.open) ? '1' : '0'
-    const up = this._normalizeBoolean(properties?.up) ? '1' : '0'
-    const north = this._normalizeWallSide(properties?.north)
-    const east = this._normalizeWallSide(properties?.east)
-    const south = this._normalizeWallSide(properties?.south)
-    const west = this._normalizeWallSide(properties?.west)
-    return `type=${type}|half=${half}|facing=${facing}|shape=${shape}|open=${open}|up=${up}|n=${north}|e=${east}|s=${south}|w=${west}`
+    return buildVariantKey(properties)
   }
 
-  _resolveBedrockTextureName(normalizedName) {
+  _resolveTextureName(normalizedName) {
+    return this._resolveAtlasTextureName(normalizedName)
+  }
+
+  _resolveAtlasTextureName(normalizedName) {
     if (!normalizedName) {
       return null
     }
 
-    const baseCandidates = this._buildBedrockBaseNameCandidates(normalizedName)
-    const candidates = []
+    const baseCandidates = this._buildTextureBaseNameCandidates(normalizedName)
+    const javaTextureHints = javaBlockTextureStemHintsByBlock[normalizedName]
+    if (Array.isArray(javaTextureHints)) {
+      for (const hint of javaTextureHints) {
+        if (typeof hint === 'string' && hint) {
+          baseCandidates.push(hint)
+        }
+      }
+    }
+
+    const atlasCandidates = []
     const seen = new Set()
 
     for (const base of baseCandidates) {
@@ -630,21 +569,21 @@ class SchematicService {
           continue
         }
         seen.add(variant)
-        candidates.push(variant)
+        atlasCandidates.push(variant)
       }
     }
 
-    for (const candidate of candidates) {
-      const textureName = bedrockTextureNameByStem[candidate] || bedrockTextureNameByRelative[candidate]
-      if (textureName) {
-        return textureName
+    for (const candidate of atlasCandidates) {
+      const rectKey = `block/${candidate}`
+      if (javaAtlasBlockTextureRects[rectKey]) {
+        return `${ATLAS_TEXTURE_PREFIX}${rectKey}`
       }
     }
 
     return null
   }
 
-  _buildBedrockBaseNameCandidates(normalizedName) {
+  _buildTextureBaseNameCandidates(normalizedName) {
     const candidates = [normalizedName]
 
     const shapeStripped = normalizedName.replace(/_(stairs|slab|wall|fence|fence_gate|door|trapdoor)$/u, '')
@@ -968,9 +907,9 @@ class SchematicService {
       skipped: 0,
       mappedByExact: 0,
       mappedByKeyword: 0,
-      mappedByBedrockDynamic: 0,
-      mappedByDefaultStone: 0,
-      unknownMappedToStone: 0,
+      mappedByAtlasDynamic: 0,
+      mappedByAtlasFallback: 0,
+      unknownMappedToAtlasFallback: 0,
       touchedChunks: 0,
       worldClearedChunks: 0,
       skippedOutOfHeight: 0,
@@ -1074,12 +1013,12 @@ class SchematicService {
               else if (projectBlock.source === 'keyword') {
                 stats.mappedByKeyword++
               }
-              else if (projectBlock.source === 'bedrock-dynamic') {
-                stats.mappedByBedrockDynamic++
+              else if (projectBlock.source === 'atlas-dynamic') {
+                stats.mappedByAtlasDynamic++
               }
-              else if (projectBlock.source === 'default-stone') {
-                stats.mappedByDefaultStone++
-                stats.unknownMappedToStone++
+              else if (projectBlock.source === 'default-atlas-fallback') {
+                stats.mappedByAtlasFallback++
+                stats.unknownMappedToAtlasFallback++
               }
 
               const worldX = x + region.position.x + offsetX
@@ -1120,13 +1059,13 @@ class SchematicService {
               stats.placed++
 
               const normalizedName = blockName.replace('minecraft:', '')
-              if (normalizedName.endsWith('_stairs')) {
+              if (isStairBlockName(normalizedName)) {
                 shapeUsage.stairs++
               }
-              else if (normalizedName.endsWith('_slab')) {
+              else if (isSlabBlockName(normalizedName)) {
                 shapeUsage.slabs++
               }
-              else if (normalizedName.endsWith('_wall')) {
+              else if (isWallBlockName(normalizedName)) {
                 shapeUsage.walls++
               }
 
