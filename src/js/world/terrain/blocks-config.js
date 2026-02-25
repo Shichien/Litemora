@@ -11,7 +11,7 @@ import aoFragmentShader from '../../../shaders/blocks/ao.frag.glsl'
 import aoVertexShader from '../../../shaders/blocks/ao.vert.glsl'
 // 导入动画着色器
 import windVertexShader from '../../../shaders/blocks/wind.vert.glsl'
-import { requestAtlasTexture } from './java-atlas-texture-provider.js'
+import { requestAtlasTexture, resolveAtlasVirtualTextureKey } from './java-atlas-texture-provider.js'
 
 // 方块 ID 常量，便于在代码中保持一致引用
 export const BLOCK_IDS = {
@@ -455,6 +455,13 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     geometryType,
   }
 
+  const hintSource = `${options.blockName || ''} ${textureName}`.toLowerCase()
+  if (hintSource.includes('glass') || hintSource.includes('ice')) {
+    blockType.transparent = true
+    blockType.opacity = 0.45
+    blockType.depthWrite = false
+  }
+
   const key = `dynamicBedrock_${dynamicIndex}`
   blocks[key] = blockType
   dynamicBlockBySignature.set(signature, blockType)
@@ -535,7 +542,8 @@ export function createMaterials(blockType, textureItems) {
   }
 
   const ensureTexture = (key) => {
-    const tex = requestAtlasTexture(key) || textureItems[key] || getOrCreateMissingTexture()
+    const atlasResolvedKey = resolveAtlasVirtualTextureKey(key)
+    const tex = requestAtlasTexture(atlasResolvedKey || key) || textureItems[key] || getOrCreateMissingTexture()
     tex.magFilter = THREE.NearestFilter
     tex.minFilter = THREE.NearestFilter
     tex.colorSpace = THREE.SRGBColorSpace
@@ -637,6 +645,10 @@ export function createMaterials(blockType, textureItems) {
     materialOptions.alphaTest = blockType.alphaTest
   if (blockType.transparent !== undefined)
     materialOptions.transparent = blockType.transparent
+  if (blockType.opacity !== undefined)
+    materialOptions.opacity = blockType.opacity
+  if (blockType.depthWrite !== undefined)
+    materialOptions.depthWrite = blockType.depthWrite
 
   // 六面贴图方块：草/树干（右、左、上、下、前、后）
   if (blockType.textureKeys?.side && blockType.textureKeys?.top && blockType.textureKeys?.bottom) {

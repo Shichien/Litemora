@@ -8,7 +8,7 @@ import Experience from '../../experience.js'
 import emitter from '../../utils/event/event-bus.js'
 
 import { ANIMATION_DEFAULTS, blocks, createMaterials, getBlockTypeById, getGeometryForBlockType, resources } from './blocks-config.js'
-import { isAtlasTextureVirtualKey, preloadAtlasTextureImage } from './java-atlas-texture-provider.js'
+import { canResolveTextureKeyFromAtlas, isAtlasTextureVirtualKey, preloadAtlasTextureImage } from './java-atlas-texture-provider.js'
 import TerrainContainer from './terrain-container.js'
 
 const RESOURCE_IDS = new Set(resources.map(r => r.id))
@@ -306,7 +306,9 @@ export default class TerrainRenderer {
     }
 
     const textureNames = Object.values(blockType.textureKeys).filter(Boolean)
-    return textureNames.filter(name => !isAtlasTextureVirtualKey(name) && !this.resources.items[name])
+    return textureNames.filter(name => !isAtlasTextureVirtualKey(name)
+      && !canResolveTextureKeyFromAtlas(name)
+      && !this.resources.items[name])
   }
 
   _queueTextureLoadForBlock(missingTextureNames = []) {

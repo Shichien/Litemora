@@ -5,6 +5,53 @@ import emitter from '../../utils/event/event-bus.js'
 const ATLAS_VIRTUAL_PREFIX = 'atlas:'
 const ATLAS_IMAGE_URL = '/textures/litematic/atlas.png'
 
+const LEGACY_TEXTURE_ALIAS_TO_ATLAS_RECT = {
+  allium_plant_Texture: 'block/allium',
+  andesite_Texture: 'block/andesite',
+  birchLeaves_Texture: 'block/birch_leaves',
+  birchTrunk_SideTexture: 'block/birch_log',
+  birchTrunk_TopTexture: 'block/birch_log_top',
+  cactusTrunk_SideTexture: 'block/cactus_side',
+  cactusTrunk_TopTexture: 'block/cactus_top',
+  cactus_flower_Texture: 'block/cactus_flower',
+  cherryLeaves_Texture: 'block/cherry_leaves',
+  cherryTrunk_SideTexture: 'block/cherry_log',
+  cherryTrunk_TopTexture: 'block/cherry_log_top',
+  coal_ore: 'block/coal_ore',
+  crackedPolishedBlackstoneBricks_Texture: 'block/cracked_polished_blackstone_bricks',
+  dandelion_plant_Texture: 'block/dandelion',
+  deadBush_plant_Texture: 'block/dead_bush',
+  diorite_Texture: 'block/diorite',
+  dirt: 'block/dirt',
+  grass: 'block/grass_block_top',
+  grass_block_side_texture: 'block/grass_block_side',
+  gravel_Texture: 'block/gravel',
+  ice_Texture: 'block/ice',
+  iron_ore: 'block/iron_ore',
+  ochreFroglight_SideTexture: 'block/ochre_froglight_side',
+  ochreFroglight_TopTexture: 'block/ochre_froglight_top',
+  oxeyeDaisy_plant_Texture: 'block/oxeye_daisy',
+  packedIce_Texture: 'block/packed_ice',
+  pearlescentFroglight_SideTexture: 'block/pearlescent_froglight_side',
+  pearlescentFroglight_TopTexture: 'block/pearlescent_froglight_top',
+  pink_tulip_Texture: 'block/pink_tulip',
+  polishedAndesite_Texture: 'block/polished_andesite',
+  polishedBlackstoneBricks_Texture: 'block/polished_blackstone_bricks',
+  polishedBlackstone_Texture: 'block/polished_blackstone',
+  polishedDiorite_Texture: 'block/polished_diorite',
+  poppy_plant_Texture: 'block/poppy',
+  red_sand: 'block/red_sand',
+  sand: 'block/sand',
+  shortDryGrass_plant_Texture: 'block/short_dry_grass',
+  shortGrass_plant_Texture: 'block/short_grass',
+  snow: 'block/snow',
+  stone: 'block/stone',
+  terracotta_yellow: 'block/yellow_terracotta',
+  treeLeaves_Texture: 'block/oak_leaves',
+  treeTrunk_SideTexture: 'block/oak_log',
+  treeTrunk_TopTexture: 'block/oak_log_top',
+}
+
 const atlasRectKeySet = new Set(Object.keys(javaAtlasBlockTextureRects))
 const atlasTextureCache = new Map()
 const atlasReadyEmitted = new Set()
@@ -37,6 +84,59 @@ export function toAtlasVirtualTextureKey(rectKey) {
 
 export function hasAtlasRectKey(rectKey) {
   return atlasRectKeySet.has(rectKey)
+}
+
+function toSnakeCase(value) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/gu, '$1_$2')
+    .replace(/_?texture$/iu, '')
+    .replace(/_+/gu, '_')
+    .toLowerCase()
+}
+
+export function resolveAtlasVirtualTextureKey(textureKey) {
+  if (typeof textureKey !== 'string' || !textureKey) {
+    return null
+  }
+
+  if (isAtlasTextureVirtualKey(textureKey)) {
+    return textureKey
+  }
+
+  const trimmedKey = textureKey.trim()
+  const candidates = []
+
+  const aliasRect = LEGACY_TEXTURE_ALIAS_TO_ATLAS_RECT[trimmedKey]
+  if (aliasRect) {
+    candidates.push(aliasRect)
+  }
+
+  if (trimmedKey.startsWith('minecraft:')) {
+    candidates.push(`block/${trimmedKey.slice('minecraft:'.length)}`)
+  }
+  else if (trimmedKey.startsWith('block/')) {
+    candidates.push(trimmedKey)
+  }
+  else {
+    candidates.push(`block/${trimmedKey}`)
+  }
+
+  const snakeCaseKey = toSnakeCase(trimmedKey)
+  if (snakeCaseKey && snakeCaseKey !== trimmedKey) {
+    candidates.push(`block/${snakeCaseKey}`)
+  }
+
+  for (const rectKey of candidates) {
+    if (hasAtlasRectKey(rectKey)) {
+      return toAtlasVirtualTextureKey(rectKey)
+    }
+  }
+
+  return null
+}
+
+export function canResolveTextureKeyFromAtlas(textureKey) {
+  return !!resolveAtlasVirtualTextureKey(textureKey)
 }
 
 export function preloadAtlasTextureImage() {
@@ -142,16 +242,17 @@ function createTextureFromAtlasRect(rectKey) {
 }
 
 export function requestAtlasTexture(textureKey) {
-  if (!isAtlasTextureVirtualKey(textureKey)) {
+  const resolvedTextureKey = resolveAtlasVirtualTextureKey(textureKey)
+  if (!resolvedTextureKey) {
     return null
   }
 
-  const cachedTexture = atlasTextureCache.get(textureKey)
+  const cachedTexture = atlasTextureCache.get(resolvedTextureKey)
   if (cachedTexture) {
     return cachedTexture
   }
 
-  const rectKey = getRectKeyFromVirtualTextureKey(textureKey)
+  const rectKey = getRectKeyFromVirtualTextureKey(resolvedTextureKey)
   if (!rectKey || !hasAtlasRectKey(rectKey)) {
     return null
   }
@@ -159,10 +260,10 @@ export function requestAtlasTexture(textureKey) {
   if (atlasImage) {
     const texture = createTextureFromAtlasRect(rectKey)
     if (texture) {
-      atlasTextureCache.set(textureKey, texture)
-      if (!atlasReadyEmitted.has(textureKey)) {
-        atlasReadyEmitted.add(textureKey)
-        emitter.emit('terrain:atlas-texture-ready', { textureKey })
+      atlasTextureCache.set(resolvedTextureKey, texture)
+      if (!atlasReadyEmitted.has(resolvedTextureKey)) {
+        atlasReadyEmitted.add(resolvedTextureKey)
+        emitter.emit('terrain:atlas-texture-ready', { textureKey: resolvedTextureKey })
       }
       return texture
     }
@@ -171,7 +272,7 @@ export function requestAtlasTexture(textureKey) {
 
   ensureAtlasImageLoaded()
     .then(() => {
-      if (atlasTextureCache.has(textureKey)) {
+      if (atlasTextureCache.has(resolvedTextureKey)) {
         return
       }
 
@@ -180,14 +281,14 @@ export function requestAtlasTexture(textureKey) {
         return
       }
 
-      atlasTextureCache.set(textureKey, loadedTexture)
-      if (!atlasReadyEmitted.has(textureKey)) {
-        atlasReadyEmitted.add(textureKey)
-        emitter.emit('terrain:atlas-texture-ready', { textureKey })
+      atlasTextureCache.set(resolvedTextureKey, loadedTexture)
+      if (!atlasReadyEmitted.has(resolvedTextureKey)) {
+        atlasReadyEmitted.add(resolvedTextureKey)
+        emitter.emit('terrain:atlas-texture-ready', { textureKey: resolvedTextureKey })
       }
     })
     .catch((error) => {
-      console.warn('[AtlasTextureProvider] Failed to resolve atlas texture:', textureKey, error)
+      console.warn('[AtlasTextureProvider] Failed to resolve atlas texture:', resolvedTextureKey, error)
     })
 
   return null
