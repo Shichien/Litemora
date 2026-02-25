@@ -44,6 +44,15 @@ export const BLOCK_IDS = {
   // snowLayer (ID: 20) 暂不实现（纹理缺失）
   // 其他
   GRAVEL: 21,
+  DIORITE: 22,
+  POLISHED_DIORITE: 23,
+  ANDESITE: 24,
+  POLISHED_ANDESITE: 25,
+  POLISHED_BLACKSTONE: 26,
+  POLISHED_BLACKSTONE_BRICKS: 27,
+  CRACKED_POLISHED_BLACKSTONE_BRICKS: 28,
+  OCHRE_FROGLIGHT: 29,
+  PEARLESCENT_FROGLIGHT: 30,
 }
 
 // 植物 ID 常量（使用 200+ 区间与方块区分）
@@ -294,6 +303,86 @@ export const blocks = {
     visible: true,
     textureKeys: {
       all: 'gravel_Texture',
+    },
+  },
+  // ===== 闪长岩（体素方块）=====
+  diorite: {
+    id: BLOCK_IDS.DIORITE,
+    name: 'diorite',
+    visible: true,
+    textureKeys: {
+      all: 'diorite_Texture',
+    },
+  },
+  polishedDiorite: {
+    id: BLOCK_IDS.POLISHED_DIORITE,
+    name: 'polished_diorite',
+    visible: true,
+    textureKeys: {
+      all: 'polishedDiorite_Texture',
+    },
+  },
+  // ===== 安山岩（体素方块）=====
+  andesite: {
+    id: BLOCK_IDS.ANDESITE,
+    name: 'andesite',
+    visible: true,
+    textureKeys: {
+      all: 'andesite_Texture',
+    },
+  },
+  polishedAndesite: {
+    id: BLOCK_IDS.POLISHED_ANDESITE,
+    name: 'polished_andesite',
+    visible: true,
+    textureKeys: {
+      all: 'polishedAndesite_Texture',
+    },
+  },
+  // ===== 黑石（体素方块）=====
+  polishedBlackstone: {
+    id: BLOCK_IDS.POLISHED_BLACKSTONE,
+    name: 'polished_blackstone',
+    visible: true,
+    textureKeys: {
+      all: 'polishedBlackstone_Texture',
+    },
+  },
+  polishedBlackstoneBricks: {
+    id: BLOCK_IDS.POLISHED_BLACKSTONE_BRICKS,
+    name: 'polished_blackstone_bricks',
+    visible: true,
+    textureKeys: {
+      all: 'polishedBlackstoneBricks_Texture',
+    },
+  },
+  crackedPolishedBlackstoneBricks: {
+    id: BLOCK_IDS.CRACKED_POLISHED_BLACKSTONE_BRICKS,
+    name: 'cracked_polished_blackstone_bricks',
+    visible: true,
+    textureKeys: {
+      all: 'crackedPolishedBlackstoneBricks_Texture',
+    },
+  },
+  // ===== 蛙明灯（体素方块）=====
+  ochreFroglight: {
+    id: BLOCK_IDS.OCHRE_FROGLIGHT,
+    name: 'ochre_froglight',
+    visible: true,
+    textureKeys: {
+      top: 'ochreFroglight_TopTexture',
+      bottom: 'ochreFroglight_TopTexture',
+      side: 'ochreFroglight_SideTexture',
+    },
+  },
+  pearlescentFroglight: {
+    id: BLOCK_IDS.PEARLESCENT_FROGLIGHT,
+    name: 'pearlescent_froglight',
+    visible: true,
+    textureKeys: {
+      top: 'pearlescentFroglight_TopTexture',
+      bottom: 'pearlescentFroglight_TopTexture',
+      side: 'pearlescentFroglight_SideTexture',
     },
   },
 }

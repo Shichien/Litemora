@@ -13,16 +13,16 @@ const MC_TO_PROJECT_MAPPING = {
   'minecraft:dirt': BLOCK_IDS.DIRT,
   'minecraft:stone': BLOCK_IDS.STONE,
   'minecraft:smooth_stone': BLOCK_IDS.STONE,
-  'minecraft:andesite': BLOCK_IDS.GRAVEL,
-  'minecraft:polished_andesite': BLOCK_IDS.STONE,
-  'minecraft:diorite': BLOCK_IDS.SNOW,
-  'minecraft:polished_diorite': BLOCK_IDS.PACKED_ICE,
+  'minecraft:andesite': BLOCK_IDS.ANDESITE,
+  'minecraft:polished_andesite': BLOCK_IDS.POLISHED_ANDESITE,
+  'minecraft:diorite': BLOCK_IDS.DIORITE,
+  'minecraft:polished_diorite': BLOCK_IDS.POLISHED_DIORITE,
   'minecraft:clay': BLOCK_IDS.TERRACOTTA,
-  'minecraft:polished_blackstone': BLOCK_IDS.TERRACOTTA,
-  'minecraft:polished_blackstone_bricks': BLOCK_IDS.TERRACOTTA,
-  'minecraft:cracked_polished_blackstone_bricks': BLOCK_IDS.GRAVEL,
-  'minecraft:ochre_froglight': BLOCK_IDS.SAND,
-  'minecraft:pearlescent_froglight': BLOCK_IDS.SNOW,
+  'minecraft:polished_blackstone': BLOCK_IDS.POLISHED_BLACKSTONE,
+  'minecraft:polished_blackstone_bricks': BLOCK_IDS.POLISHED_BLACKSTONE_BRICKS,
+  'minecraft:cracked_polished_blackstone_bricks': BLOCK_IDS.CRACKED_POLISHED_BLACKSTONE_BRICKS,
+  'minecraft:ochre_froglight': BLOCK_IDS.OCHRE_FROGLIGHT,
+  'minecraft:pearlescent_froglight': BLOCK_IDS.PEARLESCENT_FROGLIGHT,
   'minecraft:coal_ore': BLOCK_IDS.COAL_ORE,
   'minecraft:iron_ore': BLOCK_IDS.IRON_ORE,
   'minecraft:oak_log': BLOCK_IDS.TREE_TRUNK,
@@ -44,6 +44,15 @@ const MC_TO_PROJECT_MAPPING = {
 const KEYWORD_MAPPING = [
   { keywords: ['coal_ore'], id: BLOCK_IDS.COAL_ORE },
   { keywords: ['iron_ore'], id: BLOCK_IDS.IRON_ORE },
+  { keywords: ['ochre_froglight'], id: BLOCK_IDS.OCHRE_FROGLIGHT },
+  { keywords: ['pearlescent_froglight'], id: BLOCK_IDS.PEARLESCENT_FROGLIGHT },
+  { keywords: ['cracked_polished_blackstone_bricks'], id: BLOCK_IDS.CRACKED_POLISHED_BLACKSTONE_BRICKS },
+  { keywords: ['polished_blackstone_bricks'], id: BLOCK_IDS.POLISHED_BLACKSTONE_BRICKS },
+  { keywords: ['polished_blackstone'], id: BLOCK_IDS.POLISHED_BLACKSTONE },
+  { keywords: ['polished_diorite'], id: BLOCK_IDS.POLISHED_DIORITE },
+  { keywords: ['diorite'], id: BLOCK_IDS.DIORITE },
+  { keywords: ['polished_andesite'], id: BLOCK_IDS.POLISHED_ANDESITE },
+  { keywords: ['andesite'], id: BLOCK_IDS.ANDESITE },
   { keywords: ['red_sand'], id: BLOCK_IDS.RED_SAND },
   { keywords: ['sand'], id: BLOCK_IDS.SAND },
   { keywords: ['snow'], id: BLOCK_IDS.SNOW },
@@ -57,7 +66,7 @@ const KEYWORD_MAPPING = [
   { keywords: ['log', 'wood', 'stem', 'hyphae'], id: BLOCK_IDS.TREE_TRUNK },
   { keywords: ['grass_block'], id: BLOCK_IDS.GRASS },
   { keywords: ['dirt', 'podzol', 'coarse_dirt', 'mycelium'], id: BLOCK_IDS.DIRT },
-  { keywords: ['blackstone', 'deepslate', 'andesite', 'diorite', 'granite', 'cobblestone'], id: BLOCK_IDS.GRAVEL },
+  { keywords: ['blackstone', 'deepslate', 'granite', 'cobblestone'], id: BLOCK_IDS.GRAVEL },
 ]
 
 /**
@@ -69,6 +78,16 @@ class SchematicService {
     this.currentSchematic = null
     this.pako = null
     this._blockResolveCache = new Map()
+  }
+
+  async _yieldToMainThread() {
+    await new Promise((resolve) => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => resolve())
+        return
+      }
+      setTimeout(resolve, 0)
+    })
   }
 
   /**
@@ -171,6 +190,7 @@ class SchematicService {
         _decodedIndices: null,
         _paletteResolved: null,
         _solidBlockCount: null,
+        _solidYStats: null,
       }
     })
 
@@ -281,6 +301,60 @@ class SchematicService {
 
     region._solidBlockCount = solidCount
     return solidCount
+  }
+
+  _getSolidYStats(region) {
+    if (region._solidYStats) {
+      return region._solidYStats
+    }
+
+    const sizeX = Math.abs(region.size.x)
+    const sizeY = Math.abs(region.size.y)
+    const sizeZ = Math.abs(region.size.z)
+    const totalBlocks = sizeX * sizeY * sizeZ
+    if (totalBlocks <= 0) {
+      region._solidYStats = {
+        minY: null,
+        maxY: null,
+        belowZeroCount: 0,
+      }
+      return region._solidYStats
+    }
+
+    const blockIndices = this._getDecodedIndices(region)
+    const resolvedPalette = this._buildResolvedPalette(region)
+
+    let linearIndex = 0
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    let belowZeroCount = 0
+
+    for (let y = 0; y < sizeY; y++) {
+      for (let z = 0; z < sizeZ; z++) {
+        for (let x = 0; x < sizeX; x++) {
+          const paletteIndex = blockIndices[linearIndex++] ?? 0
+          const resolved = resolvedPalette[paletteIndex]
+          if (!resolved?.id || resolved.id === BLOCK_IDS.EMPTY) {
+            continue
+          }
+
+          const worldY = y + region.position.y
+          minY = Math.min(minY, worldY)
+          maxY = Math.max(maxY, worldY)
+          if (worldY < 0) {
+            belowZeroCount++
+          }
+        }
+      }
+    }
+
+    if (!Number.isFinite(minY)) {
+      minY = null
+      maxY = null
+    }
+
+    region._solidYStats = { minY, maxY, belowZeroCount }
+    return region._solidYStats
   }
 
   _resolveProjectBlock(blockName) {
@@ -432,9 +506,6 @@ class SchematicService {
       if (typeof chunkManager._applyChunkModifications === 'function') {
         chunkManager._applyChunkModifications(chunk)
       }
-
-      chunk.buildMesh()
-      chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
     }
 
     return chunk
@@ -457,6 +528,7 @@ class SchematicService {
       size,
       regionCount,
       blockCount: this._estimateSolidBlockCount(regions),
+      yStats: this._collectSolidYStats(regions),
     }
   }
 
@@ -476,11 +548,39 @@ class SchematicService {
     }, 0)
   }
 
+  _collectSolidYStats(regions) {
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    let belowZeroCount = 0
+
+    for (const region of Object.values(regions)) {
+      const stats = this._getSolidYStats(region)
+      if (stats.minY === null || stats.maxY === null) {
+        continue
+      }
+      minY = Math.min(minY, stats.minY)
+      maxY = Math.max(maxY, stats.maxY)
+      belowZeroCount += stats.belowZeroCount
+    }
+
+    if (!Number.isFinite(minY)) {
+      minY = null
+      maxY = null
+    }
+
+    return {
+      minY,
+      maxY,
+      hasBlocksBelowZero: belowZeroCount > 0,
+      blocksBelowZero: belowZeroCount,
+    }
+  }
+
   /**
    * 将原理图注入到世界
    * 这是一个占位符，实现需要与 World/Terrain 系统集成
    */
-  async applyToWorld(chunkManager, worldOffset = { x: 0, y: 0, z: 0 }) {
+  async applyToWorld(chunkManager, worldOffset = { x: 0, y: 0, z: 0 }, options = {}) {
     if (!this.currentSchematic) {
       throw new Error('No schematic loaded')
     }
@@ -490,6 +590,8 @@ class SchematicService {
     }
 
     const schematic = this.currentSchematic
+    const replaceWorld = options.replaceWorld !== false
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
 
     const offsetX = Math.floor(worldOffset.x ?? 0)
     const offsetY = Math.floor(worldOffset.y ?? 0)
@@ -504,9 +606,69 @@ class SchematicService {
       mappedByDefaultStone: 0,
       unknownMappedToStone: 0,
       touchedChunks: 0,
+      worldClearedChunks: 0,
+      skippedOutOfHeight: 0,
+    }
+
+    const blocksPerFrame = 1400
+    const chunksPerFrame = 6
+    let processedSinceYield = 0
+
+    const totalSolidBlocks = this._estimateSolidBlockCount(schematic.regions)
+    let processedSolidBlocks = 0
+    const reportProgress = (phase, extra = {}) => {
+      if (!onProgress) {
+        return
+      }
+      const progress = totalSolidBlocks > 0 ? Math.min(1, processedSolidBlocks / totalSolidBlocks) : 1
+      onProgress({
+        phase,
+        processedBlocks: processedSolidBlocks,
+        totalBlocks: totalSolidBlocks,
+        progress,
+        ...extra,
+      })
     }
 
     const touchedChunkKeys = new Set()
+
+    reportProgress('prepare', {
+      replaceWorld,
+    })
+
+    if (replaceWorld) {
+      chunkManager.setSchematicOnlyMode?.(true)
+      chunkManager.persistence?.clearAllModifications?.()
+
+      const loadedChunks = Array.from(chunkManager.chunks?.values?.() || [])
+      for (let index = 0; index < loadedChunks.length; index++) {
+        const chunk = loadedChunks[index]
+        if (!chunk || chunk.state === 'disposed') {
+          continue
+        }
+
+        if (chunk.state === 'init') {
+          chunk.generator.params.seed = chunkManager.seed
+          const generated = chunk.generateData()
+          if (!generated) {
+            continue
+          }
+        }
+
+        chunk.container.clear()
+        touchedChunkKeys.add(`${chunk.chunkX},${chunk.chunkZ}`)
+        stats.worldClearedChunks++
+
+        reportProgress('clearing-world', {
+          clearedChunks: stats.worldClearedChunks,
+          totalLoadedChunks: loadedChunks.length,
+        })
+
+        if ((index + 1) % chunksPerFrame === 0) {
+          await this._yieldToMainThread()
+        }
+      }
+    }
 
     for (const region of Object.values(schematic.regions)) {
       const sizeX = Math.abs(region.size.x)
@@ -548,19 +710,25 @@ class SchematicService {
             const worldY = y + region.position.y + offsetY
             const worldZ = z + region.position.z + offsetZ
 
+            if (worldY < 0 || worldY >= chunkManager.chunkHeight) {
+              stats.skipped++
+              stats.skippedOutOfHeight++
+              continue
+            }
+
             const chunkX = Math.floor(worldX / chunkManager.chunkWidth)
             const chunkZ = Math.floor(worldZ / chunkManager.chunkWidth)
             const chunkKey = `${chunkX},${chunkZ}`
-            if (!touchedChunkKeys.has(chunkKey)) {
-              const chunk = this._ensureChunkReady(chunkManager, chunkX, chunkZ)
-              if (!chunk) {
-                stats.skipped++
-                continue
-              }
-              touchedChunkKeys.add(chunkKey)
+
+            const chunk = this._ensureChunkReady(chunkManager, chunkX, chunkZ)
+            if (!chunk) {
+              stats.skipped++
+              continue
             }
 
-            const existing = chunkManager.getBlockWorld(worldX, worldY, worldZ)
+            const localX = Math.floor(worldX - chunkX * chunkManager.chunkWidth)
+            const localZ = Math.floor(worldZ - chunkZ * chunkManager.chunkWidth)
+            const existing = chunk.container.getBlock(localX, worldY, localZ)
             if (!existing) {
               stats.skipped++
               continue
@@ -571,27 +739,69 @@ class SchematicService {
             }
 
             if (existing.id !== BLOCK_IDS.EMPTY) {
-              chunkManager.removeBlockWorld(worldX, worldY, worldZ)
               stats.replaced++
             }
+            stats.placed++
 
-            const added = chunkManager.addBlockWorld(worldX, worldY, worldZ, projectBlockId)
-            if (added) {
-              stats.placed++
-            }
-            else {
-              stats.skipped++
+            chunk.container.setBlockId(localX, worldY, localZ, projectBlockId)
+            chunkManager.persistence.recordModification(worldX, worldY, worldZ, projectBlockId, chunkManager.chunkWidth)
+            touchedChunkKeys.add(chunkKey)
+            processedSolidBlocks++
+
+            processedSinceYield++
+            if (processedSinceYield >= blocksPerFrame) {
+              processedSinceYield = 0
+              reportProgress('placing-blocks', {
+                touchedChunks: touchedChunkKeys.size,
+              })
+              await this._yieldToMainThread()
             }
           }
         }
       }
     }
 
+    const touchedChunks = Array.from(touchedChunkKeys)
+    for (let index = 0; index < touchedChunks.length; index++) {
+      const chunkKey = touchedChunks[index]
+      const [chunkX, chunkZ] = chunkKey.split(',').map(Number)
+      const chunk = chunkManager.getChunk(chunkX, chunkZ)
+      if (!chunk || chunk.state === 'disposed') {
+        continue
+      }
+
+      if (chunk.state === 'dataReady') {
+        const built = chunk.buildMesh()
+        if (built) {
+          chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
+        }
+      }
+      else if (chunk.state === 'meshReady') {
+        chunk.renderer?._rebuildFromContainer?.()
+        chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
+      }
+
+      if ((index + 1) % chunksPerFrame === 0) {
+        reportProgress('rebuilding-chunks', {
+          rebuiltChunks: index + 1,
+          totalTouchedChunks: touchedChunks.length,
+        })
+        await this._yieldToMainThread()
+      }
+    }
+
+    chunkManager.persistence.save()
+
     stats.touchedChunks = touchedChunkKeys.size
+
+    reportProgress('done', {
+      touchedChunks: stats.touchedChunks,
+      skipped: stats.skipped,
+    })
 
     return {
       status: 'applied',
-      totalBlocks: this._estimateSolidBlockCount(schematic.regions),
+      totalBlocks: totalSolidBlocks,
       offset: { x: offsetX, y: offsetY, z: offsetZ },
       ...stats,
     }

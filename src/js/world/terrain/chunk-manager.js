@@ -53,6 +53,7 @@ export default class ChunkManager {
 
     this._lastPlayerChunkX = null
     this._lastPlayerChunkZ = null
+    this.schematicOnlyMode = false
 
     // 持久化管理器
     this.persistence = new TerrainPersistence({
@@ -149,6 +150,14 @@ export default class ChunkManager {
   }
 
   /**
+   * 设置是否启用原理图纯净世界模式
+   * 启用后，新生成的区块会被清空为纯空气（仅保留持久化修改）
+   */
+  setSchematicOnlyMode(enabled = true) {
+    this.schematicOnlyMode = !!enabled
+  }
+
+  /**
    * Lightweight world regeneration entry point
    * @param {object} options - { seed, terrain, trees, water, biome, centerPos, forceSyncCenterChunk }
    */
@@ -194,6 +203,9 @@ export default class ChunkManager {
       if (currentChunk?.state === 'init') {
         currentChunk.generator.params.seed = this.seed
         currentChunk.generateData()
+        if (this.schematicOnlyMode) {
+          currentChunk.container.clear()
+        }
         currentChunk.buildMesh()
         currentChunk.renderer.group.scale.setScalar(this.renderParams.scale)
       }
@@ -579,6 +591,10 @@ export default class ChunkManager {
       const ok = chunk.generateData()
       if (!ok)
         return
+
+      if (this.schematicOnlyMode) {
+        chunk.container.clear()
+      }
 
       // ===== 应用玩家修改 =====
       this._applyChunkModifications(chunk)

@@ -191,6 +191,65 @@ export default [
     type: 'texture',
     path: 'textures/blocks/gravel.png',
   },
+  // ===== 闪长岩（体素方块）=====
+  {
+    name: 'diorite_Texture',
+    type: 'texture',
+    path: 'textures/blocks/diorite.png',
+  },
+  {
+    name: 'polishedDiorite_Texture',
+    type: 'texture',
+    path: 'textures/blocks/diorite_smooth.png',
+  },
+  // ===== 安山岩（体素方块）=====
+  {
+    name: 'andesite_Texture',
+    type: 'texture',
+    path: 'textures/blocks/andesite.png',
+  },
+  {
+    name: 'polishedAndesite_Texture',
+    type: 'texture',
+    path: 'textures/blocks/andesite_smooth.png',
+  },
+  // ===== 黑石（体素方块）=====
+  {
+    name: 'polishedBlackstone_Texture',
+    type: 'texture',
+    path: 'textures/blocks/polished_blackstone.png',
+  },
+  {
+    name: 'polishedBlackstoneBricks_Texture',
+    type: 'texture',
+    path: 'textures/blocks/polished_blackstone_bricks.png',
+  },
+  {
+    name: 'crackedPolishedBlackstoneBricks_Texture',
+    type: 'texture',
+    path: 'textures/blocks/cracked_polished_blackstone_bricks.png',
+  },
+  // ===== 蛙明灯（体素方块）=====
+  {
+    name: 'ochreFroglight_SideTexture',
+    type: 'texture',
+    path: 'textures/blocks/ochre_froglight_side.png',
+  },
+  {
+    name: 'ochreFroglight_TopTexture',
+    type: 'texture',
+    path: 'textures/blocks/ochre_froglight_top.png',
+  },
+  {
+    name: 'pearlescentFroglight_SideTexture',
+    type: 'texture',
+    path: 'textures/blocks/pearlescent_froglight_side.png',
+  },
+  {
+    name: 'pearlescentFroglight_TopTexture',
+    type: 'texture',
+    path: 'textures/blocks/pearlescent_froglight_top.png',
+  },
 
   // 植物
   {

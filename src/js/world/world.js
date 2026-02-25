@@ -57,7 +57,13 @@ export default class World {
     emitter.on('schematic:apply-request', async (payload = {}) => {
       try {
         const offset = payload.offset || { x: 0, y: 0, z: 0 }
-        const result = await schematicService.applyToWorld(this.chunkManager, offset)
+        const options = {
+          ...(payload.options || {}),
+          onProgress: (progress) => {
+            emitter.emit('schematic:apply-progress', progress)
+          },
+        }
+        const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
         emitter.emit('schematic:apply-result', { ok: true, result })
       }
       catch (error) {
@@ -343,6 +349,8 @@ export default class World {
       console.warn('[World] Cannot reset: chunkManager not initialized')
       return
     }
+
+    this.chunkManager.setSchematicOnlyMode?.(false)
 
     // Use the new lightweight regeneration API
     this.chunkManager.regenerateAll({
