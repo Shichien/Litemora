@@ -456,7 +456,7 @@ class SchematicService {
         || this._resolveTextureName(normalizedName)
 
       if (wallTextureName) {
-        const geometryType = wallGeometryTypeFromProperties(properties)
+        const geometryType = this._wallGeometryTypeFromProperties(properties)
         const wallBlock = ensureDynamicBlockType(wallTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -604,6 +604,17 @@ class SchematicService {
   _lanternGeometryTypeFromProperties(properties = {}) {
     const hanging = this._normalizeBoolean(properties?.hanging)
     return hanging ? 'lantern_hanging' : 'lantern_standing'
+  }
+
+  _wallGeometryTypeFromProperties(properties = {}) {
+    const hasUp = properties?.up !== undefined && properties?.up !== null
+    if (hasUp) {
+      return wallGeometryTypeFromProperties(properties)
+    }
+    return wallGeometryTypeFromProperties({
+      ...properties,
+      up: true,
+    })
   }
 
   _buildBlockVariantKey(properties = {}) {
