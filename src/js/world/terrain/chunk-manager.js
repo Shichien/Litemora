@@ -81,6 +81,7 @@ export default class ChunkManager {
    */
   initInitialGrid() {
     if (this.schematicOnlyMode) {
+      this._restoreSchematicOnlyChunks()
       return
     }
 
@@ -164,6 +165,45 @@ export default class ChunkManager {
     this.schematicOnlyMode = nextMode
     this.persistence?.setWorldState?.({ schematicOnlyMode: nextMode })
     this.persistence?.save?.()
+
+    if (nextMode) {
+      this._restoreSchematicOnlyChunks()
+    }
+  }
+
+  _restoreSchematicOnlyChunks() {
+    const coords = this.persistence?.getModifiedChunkCoords?.() || []
+    if (!coords.length) {
+      this._updateStats()
+      return
+    }
+
+    for (const { chunkX, chunkZ } of coords) {
+      const chunk = this._ensureChunk(chunkX, chunkZ)
+      if (!chunk || chunk.state === 'disposed') {
+        continue
+      }
+
+      if (chunk.state === 'init') {
+        chunk.container.clear()
+        chunk.state = 'dataReady'
+      }
+
+      this._applyChunkModifications(chunk)
+
+      if (chunk.state === 'dataReady') {
+        const built = chunk.buildMesh()
+        if (built) {
+          chunk.renderer.group.scale.setScalar(this.renderParams.scale)
+        }
+      }
+      else if (chunk.state === 'meshReady') {
+        chunk.renderer?._rebuildFromContainer?.()
+        chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
+      }
+    }
+
+    this._updateStats()
   }
 
   _prepareChunkData(chunk) {
@@ -493,6 +533,14 @@ export default class ChunkManager {
   updateStreaming(playerPos, force = false) {
     if (!playerPos)
       return
+
+    if (this.schematicOnlyMode) {
+      if (force && this.chunks.size === 0) {
+        this._restoreSchematicOnlyChunks()
+      }
+      this._updateStats()
+      return
+    }
 
     const pcx = Math.floor(playerPos.x / this.chunkWidth)
     const pcz = Math.floor(playerPos.z / this.chunkWidth)

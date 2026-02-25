@@ -82,6 +82,22 @@ export default class TerrainPersistence {
   }
 
   /**
+   * 获取所有存在修改记录的 chunk 坐标
+   * @returns {Array<{chunkX:number, chunkZ:number}>}
+   */
+  getModifiedChunkCoords() {
+    const coords = []
+    for (const chunkKey of this.modifications.keys()) {
+      const [chunkX, chunkZ] = chunkKey.split(',').map(Number)
+      if (!Number.isFinite(chunkX) || !Number.isFinite(chunkZ)) {
+        continue
+      }
+      coords.push({ chunkX, chunkZ })
+    }
+    return coords
+  }
+
+  /**
    * 清除某个 chunk 的修改记录
    */
   clearChunkModifications(chunkX, chunkZ) {
