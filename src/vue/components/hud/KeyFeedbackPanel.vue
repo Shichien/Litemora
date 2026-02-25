@@ -31,7 +31,6 @@ function handleInputUpdate(inputKeys) {
   keys.x = inputKeys.x || false
   keys.c = inputKeys.c || false
   keys.v = inputKeys.v || false
-  keys.q = inputKeys.q || false
   keys.r = inputKeys.r || false
 }
 
@@ -42,6 +41,7 @@ function handleFlightModeChanged(payload) {
 
 function handleCameraPerspectiveChanged(payload) {
   keys.y = !!payload?.firstPerson
+  keys.q = payload?.mode === 'bird-perspective'
 }
 
 function resetKeys() {
@@ -55,7 +55,6 @@ function resetKeys() {
   keys.x = false
   keys.c = false
   keys.v = false
-  keys.q = false
   keys.r = false
 }
 
@@ -108,33 +107,35 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="key-row">
-      <div class="key-cap" :class="{ pressed: keys.y }">
-        Y
+    <div class="lower-rows">
+      <div class="key-row key-row-right">
+        <div class="key-cap" :class="{ pressed: keys.y }">
+          Y
+        </div>
+        <div class="key-cap" :class="{ pressed: keys.q }">
+          Q
+        </div>
+        <div class="key-cap" :class="{ pressed: keys.r }">
+          R
+        </div>
+        <div class="key-cap" :class="{ pressed: keys.f }">
+          F
+        </div>
       </div>
-      <div class="key-cap" :class="{ pressed: keys.q }">
-        Q
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.r }">
-        R
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.f }">
-        F
-      </div>
-    </div>
 
-    <div class="key-row">
-      <div class="key-cap" :class="{ pressed: keys.z }">
-        Z
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.x }">
-        X
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.c }">
-        C
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.v }">
-        V
+      <div class="key-row key-row-right">
+        <div class="key-cap" :class="{ pressed: keys.z }">
+          Z
+        </div>
+        <div class="key-cap" :class="{ pressed: keys.x }">
+          X
+        </div>
+        <div class="key-cap" :class="{ pressed: keys.c }">
+          C
+        </div>
+        <div class="key-cap" :class="{ pressed: keys.v }">
+          V
+        </div>
       </div>
     </div>
   </div>
@@ -148,6 +149,8 @@ onUnmounted(() => {
   gap: calc(2px * var(--hud-scale));
   padding-top: calc(4px * var(--hud-scale));
   pointer-events: none;
+  transform: scale(0.6);
+  transform-origin: top right;
 }
 
 .movement-layout {
@@ -172,6 +175,17 @@ onUnmounted(() => {
   justify-content: center;
 }
 
+.key-row-right {
+  justify-content: flex-end;
+}
+
+.lower-rows {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--hud-scale));
+}
+
 .key-cap {
   width: calc(16px * var(--hud-scale));
   height: calc(16px * var(--hud-scale));
@@ -188,7 +202,7 @@ onUnmounted(() => {
 }
 
 .key-cap.wide {
-  width: calc(52px * var(--hud-scale));
+  width: calc(40px * var(--hud-scale));
 }
 
 .key-cap.pressed {
