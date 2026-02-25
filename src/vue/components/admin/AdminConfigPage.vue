@@ -1,4 +1,11 @@
 <script setup>
+import { useSettingsStore } from '@pinia/settingsStore.js'
+import {
+  buildWorldGenParams,
+  DEFAULT_WORLDGEN_DRAFT,
+  WORLDGEN_PRESET_IDS,
+  WORLDGEN_PRESETS,
+} from '@three/config/worldgen-presets.js'
 import emitter from '@three/utils/event/event-bus.js'
 
 import {
@@ -12,9 +19,13 @@ import schematicService from '@three/world/terrain/schematic-service.js'
 import JsonTreeNode from '@ui-components/admin/JsonTreeNode.vue'
 import SchematicPreviewCanvas from '@ui-components/admin/SchematicPreviewCanvas.vue'
 
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 const ADMIN_PASSWORD = 'admin123'
+const SEED_MAX = 2_000_000_000
+const SEED_REGEX = /^\d+$/
+
+const settingsStore = useSettingsStore()
 
 const isAuthenticated = ref(false)
 const passwordInput = ref('')
@@ -35,6 +46,18 @@ const isBuildingSchematicPreview = ref(false)
 const schematicOffsetX = ref(0)
 const schematicOffsetY = ref(0)
 const schematicOffsetZ = ref(0)
+const schematicApplyProgress = ref(null)
+
+const worldGenSeedDraft = ref('')
+const worldGenSeedError = ref('')
+const isApplyingWorldGen = ref(false)
+const adminWorldGenDraft = reactive({
+  presetId: DEFAULT_WORLDGEN_DRAFT.presetId,
+  magnitude: DEFAULT_WORLDGEN_DRAFT.magnitude,
+  treeMinHeight: DEFAULT_WORLDGEN_DRAFT.treeMinHeight,
+  treeMaxHeight: DEFAULT_WORLDGEN_DRAFT.treeMaxHeight,
+  viewDistance: 2,
+})
 
 const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
@@ -61,6 +84,38 @@ const lastSavedSnapshot = ref('')
 const isDirty = computed(() => {
   return normalizedSnapshot.value !== lastSavedSnapshot.value
 })
+
+const schematicYStats = computed(() => {
+  return schematicPreview.value?.yStats || null
+})
+
+const schematicProgressPercent = computed(() => {
+  if (!schematicApplyProgress.value) {
+    return 0
+  }
+  return Math.round((schematicApplyProgress.value.progress || 0) * 100)
+})
+
+const schematicProgressLabel = computed(() => {
+  const phase = schematicApplyProgress.value?.phase
+  if (!phase) {
+    return ''
+  }
+
+  const labelMap = {
+    'prepare': '准备中',
+    'clearing-world': '清空世界',
+    'placing-blocks': '写入方块',
+    'rebuilding-chunks': '重建区块网格',
+    'done': '完成',
+  }
+
+  return labelMap[phase] || phase
+})
+
+function onSchematicApplyProgress(payload) {
+  schematicApplyProgress.value = payload
+}
 
 function setStatus(message, type = 'neutral') {
   statusText.value = message
@@ -194,7 +249,16 @@ async function handleSchematicFileSelect(event) {
     schematicPreview.value = schematicService.getPreview()
     isBuildingSchematicPreview.value = true
     schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 12000 })
-    setStatus(`已加载原理图: ${schematic.name} (${schematicPreview.value.blockCount} 方块)`, 'success')
+    const yInfo = schematicPreview.value?.yStats
+    if (yInfo?.hasBlocksBelowZero) {
+      setStatus(
+        `已加载原理图: ${schematic.name} (${schematicPreview.value.blockCount} 方块)，检测到 Y<0 方块 ${yInfo.blocksBelowZero}`,
+        'warning',
+      )
+    }
+    else {
+      setStatus(`已加载原理图: ${schematic.name} (${schematicPreview.value.blockCount} 方块)`, 'success')
+    }
   }
   catch (error) {
     schematicPreview.value = null
@@ -224,6 +288,12 @@ async function applySchematic() {
   }
 
   isApplying.value = true
+  schematicApplyProgress.value = {
+    phase: 'prepare',
+    progress: 0,
+    processedBlocks: 0,
+    totalBlocks: schematicPreview.value?.blockCount || 0,
+  }
   try {
     const offset = {
       x: Number(schematicOffsetX.value) || 0,
@@ -234,7 +304,7 @@ async function applySchematic() {
     const resultPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('原理图应用超时，请重试'))
-      }, 45000)
+      }, 120000)
 
       emitter.once('schematic:apply-result', (payload) => {
         clearTimeout(timeout)
@@ -242,7 +312,12 @@ async function applySchematic() {
       })
     })
 
-    emitter.emit('schematic:apply-request', { offset })
+    emitter.emit('schematic:apply-request', {
+      offset,
+      options: {
+        replaceWorld: true,
+      },
+    })
 
     const payload = await resultPromise
     if (!payload?.ok) {
@@ -250,8 +325,17 @@ async function applySchematic() {
     }
 
     const result = payload.result
+    const minPlacedY = (schematicPreview.value?.yStats?.minY ?? 0) + offset.y
+    if (minPlacedY < 0) {
+      setStatus(
+        `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}（其中越界 ${result.skippedOutOfHeight || 0}），注意最小Y=${minPlacedY} 低于 0`,
+        'warning',
+      )
+      return
+    }
+
     setStatus(
-      `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}，涉及 ${result.touchedChunks} 个区块`,
+      `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}，清空区块 ${result.worldClearedChunks || 0}，涉及 ${result.touchedChunks} 个区块`,
       'success',
     )
   }
@@ -260,11 +344,98 @@ async function applySchematic() {
   }
   finally {
     isApplying.value = false
+    if (schematicApplyProgress.value) {
+      schematicApplyProgress.value = {
+        ...schematicApplyProgress.value,
+        phase: 'done',
+        progress: 1,
+      }
+    }
+
+    setTimeout(() => {
+      if (!isApplying.value) {
+        schematicApplyProgress.value = null
+      }
+    }, 1200)
+  }
+}
+
+function setWorldGenSeedDraft(value) {
+  worldGenSeedDraft.value = value
+  if (value.trim() !== '' && !SEED_REGEX.test(value.trim())) {
+    worldGenSeedError.value = 'Seed must be numeric only'
+  }
+  else {
+    worldGenSeedError.value = ''
+  }
+}
+
+function randomizeWorldGenSeed() {
+  const randomSeed = Math.floor(Math.random() * SEED_MAX)
+  worldGenSeedDraft.value = String(randomSeed)
+  worldGenSeedError.value = ''
+}
+
+function getOrCreateWorldGenSeed() {
+  const trimmed = worldGenSeedDraft.value.trim()
+  if (trimmed === '') {
+    return Math.floor(Math.random() * SEED_MAX)
+  }
+  return Number.parseInt(trimmed, 10)
+}
+
+function applyWorldGenPresetInAdmin(presetId) {
+  const preset = WORLDGEN_PRESETS[presetId]
+  if (!preset) {
+    return
+  }
+
+  adminWorldGenDraft.presetId = presetId
+  adminWorldGenDraft.magnitude = preset.terrain.magnitude
+  adminWorldGenDraft.treeMinHeight = preset.trees.minHeight
+  adminWorldGenDraft.treeMaxHeight = preset.trees.maxHeight
+}
+
+async function applyAdminWorldGen() {
+  if (worldGenSeedDraft.value.trim() !== '' && !SEED_REGEX.test(worldGenSeedDraft.value.trim())) {
+    worldGenSeedError.value = 'Seed must be numeric only'
+    setStatus('Seed 只能输入数字', 'warning')
+    return
+  }
+
+  isApplyingWorldGen.value = true
+  try {
+    const seed = getOrCreateWorldGenSeed()
+    const { terrain, trees } = buildWorldGenParams(adminWorldGenDraft.presetId, {
+      magnitude: adminWorldGenDraft.magnitude,
+      treeMinHeight: adminWorldGenDraft.treeMinHeight,
+      treeMaxHeight: adminWorldGenDraft.treeMaxHeight,
+    })
+
+    settingsStore.setChunkViewDistance(adminWorldGenDraft.viewDistance)
+    emitter.emit('game:reset_world', { seed, terrain, trees })
+
+    setStatus(
+      `已应用世界生成：Seed ${seed}，类型 ${WORLDGEN_PRESETS[adminWorldGenDraft.presetId]?.name || 'Default'}`,
+      'success',
+    )
+  }
+  catch (error) {
+    setStatus(`应用世界生成失败: ${error?.message || 'Unknown error'}`, 'warning')
+  }
+  finally {
+    isApplyingWorldGen.value = false
   }
 }
 
 onMounted(async () => {
+  emitter.on('schematic:apply-progress', onSchematicApplyProgress)
   await loadCurrentConfig()
+  adminWorldGenDraft.viewDistance = Number(settingsStore.chunkViewDistance) || 2
+})
+
+onBeforeUnmount(() => {
+  emitter.off('schematic:apply-progress', onSchematicApplyProgress)
 })
 </script>
 
@@ -468,12 +639,31 @@ onMounted(async () => {
               <div v-if="schematicPreview">
                 <strong>方块数:</strong> {{ schematicPreview.blockCount }}
               </div>
+              <div v-if="schematicYStats">
+                <strong>Y 范围:</strong> {{ schematicYStats.minY ?? '-' }} ~ {{ schematicYStats.maxY ?? '-' }}
+              </div>
+              <div v-if="schematicYStats?.hasBlocksBelowZero">
+                <strong>Y &lt; 0 方块:</strong> {{ schematicYStats.blocksBelowZero }}
+              </div>
             </div>
 
             <div class="setting-row grid-three">
               <label>偏移 X <input v-model.number="schematicOffsetX" type="number"></label>
               <label>偏移 Y <input v-model.number="schematicOffsetY" type="number"></label>
               <label>偏移 Z <input v-model.number="schematicOffsetZ" type="number"></label>
+            </div>
+
+            <div v-if="schematicApplyProgress" class="schematic-progress">
+              <div class="schematic-progress-head">
+                <span>{{ schematicProgressLabel }}</span>
+                <span>{{ schematicProgressPercent }}%</span>
+              </div>
+              <div class="schematic-progress-track">
+                <div class="schematic-progress-fill" :style="{ width: `${schematicProgressPercent}%` }" />
+              </div>
+              <div class="schematic-progress-meta">
+                {{ schematicApplyProgress.processedBlocks || 0 }} / {{ schematicApplyProgress.totalBlocks || 0 }}
+              </div>
             </div>
 
             <div class="setting-row schematic-preview-row">
@@ -494,6 +684,60 @@ onMounted(async () => {
                 清除
               </button>
             </div>
+          </div>
+        </section>
+
+        <section class="setting-section">
+          <h3>创建世界（与开始界面一致）</h3>
+          <div class="setting-row">
+            <label class="full">
+              Seed（留空随机）
+              <input
+                type="text"
+                inputmode="numeric"
+                pattern="\d*"
+                :value="worldGenSeedDraft"
+                placeholder="留空以使用随机种子"
+                @input="setWorldGenSeedDraft($event.target.value)"
+              >
+            </label>
+          </div>
+          <div v-if="worldGenSeedError" class="warning-text">
+            {{ worldGenSeedError }}
+          </div>
+
+          <div class="setting-row">
+            <span class="row-label">世界类型</span>
+            <div class="option-group">
+              <button
+                v-for="presetId in WORLDGEN_PRESET_IDS"
+                :key="`wg-preset-${presetId}`"
+                class="option-btn"
+                :class="{ active: adminWorldGenDraft.presetId === presetId }"
+                @click="applyWorldGenPresetInAdmin(presetId)"
+              >
+                {{ WORLDGEN_PRESETS[presetId].name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="setting-row grid-three">
+            <label>地形高度 <input v-model.number="adminWorldGenDraft.magnitude" min="0" max="32" type="number"></label>
+            <label>树最小高 <input v-model.number="adminWorldGenDraft.treeMinHeight" min="1" max="16" type="number"></label>
+            <label>树最大高 <input v-model.number="adminWorldGenDraft.treeMaxHeight" min="1" max="32" type="number"></label>
+          </div>
+
+          <div class="setting-row">
+            <label class="full">视距 <input v-model.number="adminWorldGenDraft.viewDistance" min="1" max="8" type="range"></label>
+          </div>
+
+          <div class="preview-actions-right" style="margin-top: 12px;">
+            <button class="btn" @click="randomizeWorldGenSeed">
+              随机种子
+            </button>
+            <button class="btn primary" :disabled="isApplyingWorldGen" @click="applyAdminWorldGen">
+              {{ isApplyingWorldGen ? '应用中...' : '创建/重置世界' }}
+            </button>
           </div>
         </section>
 
@@ -830,6 +1074,12 @@ input::placeholder {
   flex-shrink: 0;
 }
 
+.warning-text {
+  margin: 0 0 10px;
+  color: #fca5a5;
+  font-size: 12px;
+}
+
 .option-group {
   display: flex;
   flex-wrap: wrap;
@@ -1036,6 +1286,42 @@ input::placeholder {
 
 .schematic-preview-row {
   margin-top: 12px;
+}
+
+.schematic-progress {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(94, 203, 149, 0.35);
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.schematic-progress-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #bbf7d0;
+}
+
+.schematic-progress-track {
+  margin-top: 6px;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.schematic-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #34d399 0%, #22c55e 100%);
+  transition: width 0.15s linear;
+}
+
+.schematic-progress-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #cbd5e1;
 }
 
 .schematic-preview-placeholder {

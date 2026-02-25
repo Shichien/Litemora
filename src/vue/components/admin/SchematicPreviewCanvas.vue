@@ -17,7 +17,9 @@ let camera = null
 let previewGroup = null
 let animationFrameId = null
 let resizeObserver = null
+let originMarker = null
 const orbitTarget = new THREE.Vector3(0, 0, 0)
+const VOXEL_CENTER_OFFSET = 0.5
 
 const orbitState = {
   yaw: 0.9,
@@ -49,6 +51,15 @@ const colorByBlockId = {
   18: '#5ab0ea',
   19: '#f5f8ff',
   21: '#8f8f8f',
+  22: '#d8d8d8',
+  23: '#ececec',
+  24: '#8f8f94',
+  25: '#a3a3a8',
+  26: '#3b3b44',
+  27: '#464650',
+  28: '#373740',
+  29: '#d7b465',
+  30: '#cfbf92',
 }
 
 const hasModel = computed(() => {
@@ -91,6 +102,7 @@ function updateCameraPosition() {
     orbitTarget.z + Math.cos(orbitState.yaw) * cosPitch * orbitState.distance,
   )
   camera.lookAt(orbitTarget)
+  camera.updateMatrixWorld()
 }
 
 function buildPreviewMesh() {
@@ -111,7 +123,6 @@ function buildPreviewMesh() {
     min: { x: 0, y: 0, z: 0 },
     max: { x: 0, y: 0, z: 0 },
   }
-
   if (blocks.length === 0) {
     scene.add(previewGroup)
     return
@@ -121,14 +132,14 @@ function buildPreviewMesh() {
   const centerY = (bounds.min.y + bounds.max.y) * 0.5
   const centerZ = (bounds.min.z + bounds.max.z) * 0.5
 
+  const correctedCenterX = centerX + VOXEL_CENTER_OFFSET
+  const correctedCenterY = centerY + VOXEL_CENTER_OFFSET
+  const correctedCenterZ = centerZ + VOXEL_CENTER_OFFSET
+
   const sizeX = Math.max(1, bounds.max.x - bounds.min.x + 1)
   const sizeY = Math.max(1, bounds.max.y - bounds.min.y + 1)
   const sizeZ = Math.max(1, bounds.max.z - bounds.min.z + 1)
   const maxSize = Math.max(sizeX, sizeY, sizeZ)
-
-  orbitState.distance = Math.max(24, maxSize * 1.3)
-  orbitTarget.set(0, 0, 0)
-  updateCameraPosition()
 
   const groups = new Map()
   for (const block of blocks) {
@@ -154,9 +165,9 @@ function buildPreviewMesh() {
 
     entries.forEach((entry, index) => {
       matrix.makeTranslation(
-        entry.x - centerX,
-        entry.y - centerY,
-        entry.z - centerZ,
+        entry.x + VOXEL_CENTER_OFFSET - correctedCenterX,
+        entry.y + VOXEL_CENTER_OFFSET - correctedCenterY,
+        entry.z + VOXEL_CENTER_OFFSET - correctedCenterZ,
       )
       mesh.setMatrixAt(index, matrix)
     })
@@ -165,19 +176,30 @@ function buildPreviewMesh() {
     previewGroup.add(mesh)
   })
 
+  orbitState.distance = Math.max(24, Math.min(360, maxSize * 1.3))
+  orbitState.yaw = 0.9
+  orbitState.pitch = 0.5
+  orbitTarget.set(0, 0, 0)
+  updateCameraPosition()
+
   scene.add(previewGroup)
 }
 
 function handlePointerDown(event) {
+  if (event.button !== 0 && event.button !== 1) {
+    return
+  }
+
   event.preventDefault()
 
   orbitState.dragging = true
-  orbitState.dragMode = event.button === 2 ? 'pan' : 'rotate'
+  orbitState.dragMode = event.button === 1 ? 'pan' : 'rotate'
   orbitState.lastX = event.clientX
   orbitState.lastY = event.clientY
 
   const canvas = renderer?.domElement
   canvas?.setPointerCapture?.(event.pointerId)
+  canvas.style.cursor = orbitState.dragMode === 'pan' ? 'move' : 'grabbing'
 }
 
 function handlePointerMove(event) {
@@ -209,17 +231,24 @@ function handlePointerMove(event) {
 }
 
 function handlePointerUp(event) {
+  if (!orbitState.dragging) {
+    return
+  }
+
   event.preventDefault()
   orbitState.dragging = false
 
   const canvas = renderer?.domElement
   canvas?.releasePointerCapture?.(event.pointerId)
+  canvas.style.cursor = 'grab'
 }
 
 function handleWheel(event) {
   event.preventDefault()
+
   orbitState.distance *= event.deltaY > 0 ? 1.1 : 0.92
-  orbitState.distance = Math.max(10, Math.min(260, orbitState.distance))
+  orbitState.distance = Math.max(8, Math.min(320, orbitState.distance))
+
   updateCameraPosition()
 }
 
@@ -277,6 +306,10 @@ function initScene() {
   grid.position.y = -0.55
   scene.add(grid)
 
+  originMarker = new THREE.AxesHelper(6)
+  originMarker.position.set(0, 0, 0)
+  scene.add(originMarker)
+
   resize()
   animate()
 
@@ -317,6 +350,11 @@ function destroyScene() {
     previewGroup = null
   }
 
+  if (originMarker && scene) {
+    scene.remove(originMarker)
+    originMarker = null
+  }
+
   if (renderer) {
     renderer.dispose()
     renderer.domElement.remove()
@@ -347,7 +385,7 @@ onBeforeUnmount(() => {
   <div class="schematic-canvas-panel">
     <div class="schematic-canvas-toolbar">
       <span>模型预览</span>
-      <span v-if="hasModel" class="hint">拖拽旋转 · 滚轮缩放</span>
+      <span v-if="hasModel" class="hint">左键拖拽旋转 · 中键拖拽平移 · 滚轮缩放</span>
       <span v-else class="hint">暂无可预览方块</span>
     </div>
     <div ref="containerRef" class="schematic-canvas" />
