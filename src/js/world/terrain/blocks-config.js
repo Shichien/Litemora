@@ -461,6 +461,11 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     blockType.opacity = 0.45
     blockType.depthWrite = false
   }
+  else if (hintSource.includes('iron_bars') || hintSource.includes('_bars')) {
+    blockType.transparent = true
+    blockType.alphaTest = 0.5
+    blockType.depthWrite = false
+  }
 
   const key = `dynamicBedrock_${dynamicIndex}`
   blocks[key] = blockType
