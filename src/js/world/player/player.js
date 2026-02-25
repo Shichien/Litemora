@@ -229,10 +229,17 @@ export default class Player {
       if (this.isMining) {
         return
       }
+      if (this.movement.isFlying) {
+        return
+      }
       if (this.movement.isGrounded && this.animation.stateMachine.currentState.name !== AnimationStates.COMBAT) {
         this.movement.jump()
         this.animation.triggerJump()
       }
+    })
+
+    emitter.on('input:toggle_flight', () => {
+      this.movement.toggleFlight()
     })
 
     // ==================== 攻击输入 ====================

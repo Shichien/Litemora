@@ -16,6 +16,7 @@ export class PlayerMovementController {
     this.config = config
 
     this.isGrounded = false
+    this.isFlying = false
 
     // 自研碰撞参数
     this.gravity = -9.81
@@ -69,17 +70,56 @@ export class PlayerMovementController {
    * @param {boolean} isCombatActive 是否处于战斗减速
    */
   update(inputState, isCombatActive) {
+    if (this.isFlying) {
+      this._updateFlightPhysics(inputState, isCombatActive)
+      return
+    }
     this._updateCustomPhysics(inputState, isCombatActive)
+  }
+
+  toggleFlight() {
+    this.isFlying = !this.isFlying
+    this.isGrounded = false
+    this.worldVelocity.set(0, 0, 0)
   }
 
   /**
    * 角色跳跃：依赖当前分支调用不同实现
    */
   jump() {
+    if (this.isFlying) {
+      return
+    }
+
     if (this.isGrounded) {
       this.worldVelocity.y = this.config.jumpForce
       this.isGrounded = false
     }
+  }
+
+  _updateFlightPhysics(inputState, isCombatActive) {
+    const rawDt = this.experience.time.delta * 0.001
+    const clampedDt = Math.min(rawDt, 0.05)
+
+    const { worldX, worldZ } = this._computeWorldDirection(inputState)
+    const ascend = inputState.space ? 1 : 0
+    const descend = inputState.shift || inputState.v ? 1 : 0
+    const verticalInput = ascend - descend
+
+    let speed = this.config.speed.run * 1.8
+    if (isCombatActive) {
+      speed *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
+    }
+
+    this.worldVelocity.set(
+      worldX * speed,
+      verticalInput * speed,
+      worldZ * speed,
+    )
+
+    this.position.addScaledVector(this.worldVelocity, clampedDt)
+    this.isGrounded = false
+    this._syncMeshCustom()
   }
 
   /**

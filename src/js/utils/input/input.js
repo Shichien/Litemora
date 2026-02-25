@@ -19,6 +19,8 @@ export default class InputManager {
       x: false,
       c: false,
       q: false,
+      r: false,
+      f: false,
     }
 
     // 鼠标按键状态
@@ -152,6 +154,12 @@ export default class InputManager {
           emitter.emit('input:respawn')
         }
         this.keys.r = isPressed
+        break
+      case 'f':
+        if (isPressed && !this.keys.f) {
+          emitter.emit('input:toggle_flight')
+        }
+        this.keys.f = isPressed
         break
     }
 
