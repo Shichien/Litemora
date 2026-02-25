@@ -362,12 +362,6 @@ function setWorldGenSeedDraft(value) {
   }
 }
 
-function randomizeWorldGenSeed() {
-  const randomSeed = Math.floor(Math.random() * SEED_MAX)
-  worldGenSeedDraft.value = String(randomSeed)
-  worldGenSeedError.value = ''
-}
-
 function getOrCreateWorldGenSeed() {
   const trimmed = worldGenSeedDraft.value.trim()
   if (trimmed === '') {
@@ -437,7 +431,6 @@ onBeforeUnmount(() => {
     <div v-if="!isAuthenticated" class="auth-modal">
       <div class="auth-container">
         <h2>管理后台</h2>
-        <p>世界设置 - 需要密码访问</p>
         <input
           v-model="passwordInput"
           type="password"
@@ -463,10 +456,7 @@ onBeforeUnmount(() => {
     <div v-else class="admin-shell">
       <header class="admin-header">
         <div>
-          <h2>管理后台 · 世界设置</h2>
-          <p class="subtitle">
-            仅管理员可见，普通玩家不开放
-          </p>
+          <h2>控制台</h2>
         </div>
         <div class="header-right">
           <span class="dirty" :class="{ active: isDirty }">{{ isDirty ? '未保存' : '已保存' }}</span>
@@ -508,6 +498,9 @@ onBeforeUnmount(() => {
             <label>Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
             <label>Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
             <label>Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
+          </div>
+          <div class="setting-row">
+            <label class="full">视距 <input v-model.number="adminWorldGenDraft.viewDistance" min="1" max="8" type="range"></label>
           </div>
           <div class="setting-row toggles">
             <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
@@ -585,7 +578,7 @@ onBeforeUnmount(() => {
         </section>
 
         <section class="setting-section">
-          <h3>导入原理图</h3>
+          <h3>导入 Litematica 投影文件</h3>
           <div class="setting-row">
             <input
               type="file"
@@ -745,14 +738,7 @@ onBeforeUnmount(() => {
             <label>树最大高 <input v-model.number="adminWorldGenDraft.treeMaxHeight" min="1" max="32" type="number"></label>
           </div>
 
-          <div class="setting-row">
-            <label class="full">视距 <input v-model.number="adminWorldGenDraft.viewDistance" min="1" max="8" type="range"></label>
-          </div>
-
           <div class="preview-actions-right" style="margin-top: 12px;">
-            <button class="btn" @click="randomizeWorldGenSeed">
-              随机种子
-            </button>
             <button class="btn primary" :disabled="isApplyingWorldGen" @click="applyAdminWorldGen">
               {{ isApplyingWorldGen ? '应用中...' : '创建/重置世界' }}
             </button>
