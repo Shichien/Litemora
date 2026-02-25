@@ -82,7 +82,7 @@ export class PlayerMovementController {
       return
     }
 
-    this.isInWater = this._isPositionInWater(this.position)
+    this.isInWater = false
     this._updateCustomPhysics(inputState, isCombatActive)
   }
 
@@ -211,18 +211,25 @@ export class PlayerMovementController {
       }
 
       if (this.isInWater) {
-        const swimSpeed = this.config.speed.walk * 0.8
+        const swimSpeed = this.config.speed.walk * 0.9
         const ascend = inputState.space ? 1 : 0
         const descend = inputState.v ? 1 : 0
         const verticalInput = ascend - descend
-
-        const targetVerticalSpeed = verticalInput * swimSpeed
-        this.worldVelocity.y = THREE.MathUtils.lerp(this.worldVelocity.y, targetVerticalSpeed, 0.28)
-
         const surfaceY = this._getWaterSurfaceY()
+        const immersion = surfaceY === null
+          ? 0
+          : THREE.MathUtils.clamp((surfaceY - this.position.y + 0.6) / 1.4, 0, 1)
+
+        const targetVerticalSpeed = verticalInput * swimSpeed + (verticalInput === 0 ? immersion * 1.35 : 0)
+        this.worldVelocity.y = THREE.MathUtils.lerp(this.worldVelocity.y, targetVerticalSpeed, 0.24)
+
         if (surfaceY !== null && this.position.y < surfaceY - 0.45 && verticalInput === 0) {
           this.worldVelocity.y = Math.max(this.worldVelocity.y, 0.6)
         }
+
+        const horizontalDrag = Math.max(0, 1 - stepDt * 2.6)
+        this.worldVelocity.x *= horizontalDrag
+        this.worldVelocity.z *= horizontalDrag
       }
       else {
         // 重力
@@ -242,7 +249,7 @@ export class PlayerMovementController {
       this.collision.resolveCollisions(collisions, playerState)
 
       // 补充地面检测：支持基于后端模型的贴地行走
-      if (!playerState.isGrounded && this.groundSampler) {
+      if (!this.isInWater && !playerState.isGrounded && this.groundSampler) {
         const sampledY = this.groundSampler(
           playerState.basePosition.x,
           playerState.basePosition.z,
@@ -263,7 +270,7 @@ export class PlayerMovementController {
       }
 
       // 低帧率防穿地：体素地形兜底恢复
-      if (!playerState.isGrounded && provider?.getTopSolidYWorld && playerState.worldVelocity.y <= 0) {
+      if (!this.isInWater && !playerState.isGrounded && provider?.getTopSolidYWorld && playerState.worldVelocity.y <= 0) {
         const topY = provider.getTopSolidYWorld(playerState.basePosition.x, playerState.basePosition.z)
         if (topY !== null && topY !== undefined) {
           const targetY = topY + 0.55
@@ -464,8 +471,6 @@ export class PlayerMovementController {
    * @returns {LocomotionProfiles} 当前档位
    */
   getSpeedProfile(inputState) {
-    if (this.isInWater)
-      return LocomotionProfiles.CROUCH
     if (inputState.shift)
       return LocomotionProfiles.RUN
     if (inputState.v)
@@ -503,7 +508,6 @@ export class PlayerMovementController {
       return false
     }
 
-    const chestY = position.y + 1.1
-    return chestY <= surfaceY + 0.35
+    return position.y <= surfaceY + 0.3
   }
 }
