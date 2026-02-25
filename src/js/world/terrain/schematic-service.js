@@ -1,6 +1,11 @@
+/* eslint-disable node/prefer-global/buffer */
 // eslint-disable-next-line unicorn/prefer-node-protocol
-import { Buffer } from 'buffer'
-import { parse } from 'prismarine-nbt'
+import { Buffer as BufferPolyfill } from 'buffer'
+import { parse, simplify } from 'prismarine-nbt'
+
+if (typeof globalThis.Buffer === 'undefined') {
+  globalThis.Buffer = BufferPolyfill
+}
 
 /**
  * Litematica 原理图服务
@@ -60,21 +65,22 @@ class SchematicService {
     // Litematica 文件是 gzip 压缩的 NBT 格式
     const pako = await this._loadPako()
     const decompressed = pako.inflate(arrayBuffer)
-    const { parsed } = await parse(Buffer.from(decompressed))
+    const { parsed } = await parse(BufferPolyfill.from(decompressed))
+    const simplified = simplify(parsed)
 
-    const metadata = parsed.value.Metadata || {}
-    const regions = parsed.value.Regions || {}
+    const metadata = simplified.Metadata || {}
+    const regions = simplified.Regions || {}
 
     return {
-      name: metadata.Name?.[0] || 'Unknown',
-      author: metadata.Author?.[0] || 'Unknown',
+      name: metadata.Name || 'Unknown',
+      author: metadata.Author || 'Unknown',
       size: {
-        x: metadata.Width?.[0] || 0,
-        y: metadata.Height?.[0] || 0,
-        z: metadata.Length?.[0] || 0,
+        x: metadata.EnclosingSize?.x || 0,
+        y: metadata.EnclosingSize?.y || 0,
+        z: metadata.EnclosingSize?.z || 0,
       },
       regions: this._parseRegions(regions),
-      rawNBT: parsed,
+      rawNBT: simplified,
     }
   }
 
@@ -84,27 +90,26 @@ class SchematicService {
   _parseRegions(regionData) {
     const regions = {}
 
-    if (!regionData || !regionData.value) {
+    if (!regionData) {
       return regions
     }
 
-    Object.entries(regionData.value).forEach(([regionName, regionValue]) => {
-      const region = regionValue.value || {}
-      const position = region.Position?.[0] || {}
-      const size = region.Size?.[0] || {}
-      const blockStates = region.BlockStates?.[0] || Buffer.alloc(0)
-      const palette = region.Palette?.[0]?.value || {}
+    Object.entries(regionData).forEach(([regionName, region]) => {
+      const position = region.Position || {}
+      const size = region.Size || {}
+      const blockStates = region.BlockStates || BufferPolyfill.alloc(0)
+      const palette = region.BlockStatePalette || []
 
       regions[regionName] = {
         position: {
-          x: position.x?.[0] || 0,
-          y: position.y?.[0] || 0,
-          z: position.z?.[0] || 0,
+          x: position.x || 0,
+          y: position.y || 0,
+          z: position.z || 0,
         },
         size: {
-          x: size.x?.[0] || 0,
-          y: size.y?.[0] || 0,
-          z: size.z?.[0] || 0,
+          x: size.x || 0,
+          y: size.y || 0,
+          z: size.z || 0,
         },
         palette: this._parsePalette(palette),
         blockData: blockStates,
@@ -120,18 +125,13 @@ class SchematicService {
   _parsePalette(paletteData) {
     const palette = {}
 
-    Object.entries(paletteData).forEach(([index, entry]) => {
-      const blockName = entry.value?.Name?.[0] || 'minecraft:air'
-      const properties = entry.value?.Properties?.[0]?.value || {}
+    paletteData.forEach((entry, index) => {
+      const blockName = entry.Name || 'minecraft:air'
+      const properties = entry.Properties || {}
 
-      palette[Number.parseInt(index)] = {
+      palette[index] = {
         name: blockName,
-        properties: Object.fromEntries(
-          Object.entries(properties).map(([key, val]) => [
-            key,
-            val[0] || val,
-          ]),
-        ),
+        properties,
       }
     })
 
