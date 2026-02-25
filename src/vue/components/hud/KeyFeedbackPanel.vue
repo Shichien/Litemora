@@ -1,18 +1,14 @@
 <script setup>
 import emitter from '@three/utils/event/event-bus.js'
-/**
- * KeyFeedbackPanel - Displays user key presses (WASD, ZXC, V)
- * Highlighting keys based on input:update events
- */
 import { onMounted, onUnmounted, reactive } from 'vue'
 
-// Key states
 const keys = reactive({
   w: false,
   a: false,
   s: false,
   d: false,
   shift: false,
+  space: false,
   z: false,
   x: false,
   c: false,
@@ -24,15 +20,13 @@ const keys = reactive({
   flyMode: false,
 })
 
-/**
- * Handle input update from InputManager
- */
 function handleInputUpdate(inputKeys) {
   keys.w = inputKeys.forward
   keys.a = inputKeys.left
   keys.s = inputKeys.backward
   keys.d = inputKeys.right
   keys.shift = inputKeys.shift || false
+  keys.space = inputKeys.space || false
   keys.z = inputKeys.z || false
   keys.x = inputKeys.x || false
   keys.c = inputKeys.c || false
@@ -50,15 +44,13 @@ function handleCameraPerspectiveChanged(payload) {
   keys.y = !!payload?.firstPerson
 }
 
-/**
- * Reset all keys (prevent stuck keys on blur or chat open)
- */
 function resetKeys() {
   keys.w = false
   keys.a = false
   keys.s = false
   keys.d = false
   keys.shift = false
+  keys.space = false
   keys.z = false
   keys.x = false
   keys.c = false
@@ -86,13 +78,42 @@ onUnmounted(() => {
 
 <template>
   <div class="key-feedback mc-text">
-    <!-- Movement Keys -->
+    <div class="movement-layout">
+      <div class="movement-left">
+        <div class="key-row key-row-center">
+          <div class="key-cap" :class="{ pressed: keys.w }">
+            W
+          </div>
+        </div>
+        <div class="key-row">
+          <div class="key-cap" :class="{ pressed: keys.a }">
+            A
+          </div>
+          <div class="key-cap" :class="{ pressed: keys.s }">
+            S
+          </div>
+          <div class="key-cap" :class="{ pressed: keys.d }">
+            D
+          </div>
+        </div>
+      </div>
+
+      <div class="movement-right">
+        <div class="key-cap wide" :class="{ pressed: keys.shift }">
+          SHIFT
+        </div>
+        <div class="key-cap wide" :class="{ pressed: keys.space }">
+          SPACE
+        </div>
+      </div>
+    </div>
+
     <div class="key-row">
+      <div class="key-cap" :class="{ pressed: keys.y }">
+        Y
+      </div>
       <div class="key-cap" :class="{ pressed: keys.q }">
         Q
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.w }">
-        W
       </div>
       <div class="key-cap" :class="{ pressed: keys.r }">
         R
@@ -100,30 +121,8 @@ onUnmounted(() => {
       <div class="key-cap" :class="{ pressed: keys.f }">
         F
       </div>
-      <div class="key-cap" :class="{ pressed: keys.y }">
-        Y
-      </div>
-    </div>
-    <div class="key-row">
-      <div class="key-cap" :class="{ pressed: keys.a }">
-        A
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.s }">
-        S
-      </div>
-      <div class="key-cap" :class="{ pressed: keys.d }">
-        D
-      </div>
-    </div>
-    <!-- Shift (Sprint) -->
-    <div class="key-row">
-      <div class="key-cap wide" :class="{ pressed: keys.shift }">
-        <span>SHIFT</span> ⇧
-      </div>
     </div>
 
-    <!-- Action/Combat Keys -->
-    <div class="key-row spacer-v" />
     <div class="key-row">
       <div class="key-cap" :class="{ pressed: keys.z }">
         Z
@@ -145,20 +144,32 @@ onUnmounted(() => {
 .key-feedback {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: calc(2px * var(--hud-scale));
   padding-top: calc(4px * var(--hud-scale));
   pointer-events: none;
 }
 
+.movement-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(6px * var(--hud-scale));
+}
+
+.movement-left,
+.movement-right {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--hud-scale));
+}
+
 .key-row {
   display: flex;
   gap: calc(2px * var(--hud-scale));
-  justify-content: flex-end;
 }
 
-.spacer-v {
-  height: calc(2px * var(--hud-scale));
+.key-row-center {
+  justify-content: center;
 }
 
 .key-cap {
