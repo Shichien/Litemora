@@ -776,10 +776,18 @@ class SchematicService {
     }
 
     if (chunk.state === 'init') {
-      chunk.generator.params.seed = chunkManager.seed
-      const generated = chunk.generateData()
-      if (!generated) {
-        return null
+      if (typeof chunkManager._prepareChunkData === 'function') {
+        const prepared = chunkManager._prepareChunkData(chunk)
+        if (!prepared) {
+          return null
+        }
+      }
+      else {
+        chunk.generator.params.seed = chunkManager.seed
+        const generated = chunk.generateData()
+        if (!generated) {
+          return null
+        }
       }
 
       if (typeof chunkManager._applyChunkModifications === 'function') {
@@ -987,10 +995,18 @@ class SchematicService {
           }
 
           if (chunk.state === 'init') {
-            chunk.generator.params.seed = chunkManager.seed
-            const generated = chunk.generateData()
-            if (!generated) {
-              continue
+            if (typeof chunkManager._prepareChunkData === 'function') {
+              const prepared = chunkManager._prepareChunkData(chunk)
+              if (!prepared) {
+                continue
+              }
+            }
+            else {
+              chunk.generator.params.seed = chunkManager.seed
+              const generated = chunk.generateData()
+              if (!generated) {
+                continue
+              }
             }
           }
 
