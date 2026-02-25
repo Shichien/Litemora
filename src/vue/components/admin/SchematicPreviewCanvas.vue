@@ -8,6 +8,19 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  previewOffset: {
+    type: Object,
+    default: () => ({ x: 0, y: 0, z: 0 }),
+  },
+  environment: {
+    type: Object,
+    default: () => ({
+      skyMode: 'DayCycle',
+      sunIntensity: 1.75,
+      ambientIntensity: 0.75,
+      fogDensity: 0.01,
+    }),
+  },
 })
 
 const containerRef = ref(null)
@@ -19,7 +32,12 @@ let previewGroup = null
 let animationFrameId = null
 let resizeObserver = null
 let originMarker = null
+let ambientLight = null
+let keyLight = null
+let fillLight = null
 const orbitTarget = new THREE.Vector3(0, 0, 0)
+const modelCenterLocal = new THREE.Vector3(0, 0, 0)
+const modelCenterWorld = new THREE.Vector3(0, 0, 0)
 const VOXEL_CENTER_OFFSET = 0.5
 
 const orbitState = {
@@ -122,6 +140,57 @@ function updateCameraPosition() {
   camera.updateMatrixWorld()
 }
 
+function getNormalizedPreviewOffset() {
+  const x = Number(props.previewOffset?.x ?? 0)
+  const y = Number(props.previewOffset?.y ?? 0)
+  const z = Number(props.previewOffset?.z ?? 0)
+  return {
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0,
+    z: Number.isFinite(z) ? z : 0,
+  }
+}
+
+function applyPreviewOffsetAndTarget() {
+  const offset = getNormalizedPreviewOffset()
+
+  if (previewGroup) {
+    previewGroup.position.set(offset.x, offset.y, offset.z)
+  }
+
+  modelCenterWorld.copy(modelCenterLocal)
+  modelCenterWorld.x += offset.x
+  modelCenterWorld.y += offset.y
+  modelCenterWorld.z += offset.z
+  orbitTarget.copy(modelCenterWorld)
+  updateCameraPosition()
+}
+
+function syncEnvironment() {
+  if (!scene) {
+    return
+  }
+
+  const skyMode = props.environment?.skyMode || 'DayCycle'
+  const sunIntensity = Number(props.environment?.sunIntensity ?? 1.75)
+  const ambientIntensity = Number(props.environment?.ambientIntensity ?? 0.75)
+  const fogDensity = Number(props.environment?.fogDensity ?? 0.01)
+
+  const bgColor = skyMode === 'HDR' ? '#0F172A' : '#87A9D8'
+  scene.background = new THREE.Color(bgColor)
+  scene.fog = new THREE.FogExp2(bgColor, Math.max(0, fogDensity * 0.8))
+
+  if (ambientLight) {
+    ambientLight.intensity = Math.max(0, ambientIntensity)
+  }
+  if (keyLight) {
+    keyLight.intensity = Math.max(0, sunIntensity * 0.52)
+  }
+  if (fillLight) {
+    fillLight.intensity = Math.max(0, ambientIntensity * 0.42)
+  }
+}
+
 function buildPreviewMesh() {
   if (!scene || !props.modelData) {
     return
@@ -141,6 +210,8 @@ function buildPreviewMesh() {
     max: { x: 0, y: 0, z: 0 },
   }
   if (blocks.length === 0) {
+    modelCenterLocal.set(0, 0, 0)
+    applyPreviewOffsetAndTarget()
     scene.add(previewGroup)
     return
   }
@@ -209,8 +280,8 @@ function buildPreviewMesh() {
   orbitState.distance = Math.max(24, Math.min(360, maxPreviewSize * 1.35))
   orbitState.yaw = 0.9
   orbitState.pitch = 0.5
-  orbitTarget.copy(previewCenter)
-  updateCameraPosition()
+  modelCenterLocal.copy(previewCenter)
+  applyPreviewOffsetAndTarget()
 
   scene.add(previewGroup)
 }
@@ -252,6 +323,7 @@ function handlePointerMove(event) {
     orbitTarget.addScaledVector(up, dy * panScale)
   }
   else {
+    orbitTarget.copy(modelCenterWorld)
     orbitState.yaw -= dx * 0.01
     orbitState.pitch -= dy * 0.01
     orbitState.pitch = Math.max(-1.2, Math.min(1.2, orbitState.pitch))
@@ -311,7 +383,7 @@ function initScene() {
   }
 
   scene = new THREE.Scene()
-  scene.background = new THREE.Color('#111827')
+  scene.background = new THREE.Color('#87A9D8')
 
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000)
   updateCameraPosition()
@@ -321,16 +393,18 @@ function initScene() {
   renderer.outputColorSpace = THREE.SRGBColorSpace
   containerRef.value.appendChild(renderer.domElement)
 
-  const ambient = new THREE.AmbientLight(0xFFFFFF, 0.72)
-  scene.add(ambient)
+  ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.72)
+  scene.add(ambientLight)
 
-  const keyLight = new THREE.DirectionalLight(0xFFFFFF, 0.8)
+  keyLight = new THREE.DirectionalLight(0xFFFFFF, 0.8)
   keyLight.position.set(24, 40, 18)
   scene.add(keyLight)
 
-  const fillLight = new THREE.DirectionalLight(0x8AB4FF, 0.32)
+  fillLight = new THREE.DirectionalLight(0x8AB4FF, 0.32)
   fillLight.position.set(-18, 18, -16)
   scene.add(fillLight)
+
+  syncEnvironment()
 
   const grid = new THREE.GridHelper(260, 26, 0x334155, 0x1F2937)
   grid.position.y = -0.55
@@ -393,11 +467,26 @@ function destroyScene() {
 
   scene = null
   camera = null
+  ambientLight = null
+  keyLight = null
+  fillLight = null
 }
 
 watch(() => props.modelData, () => {
   if (renderer) {
     buildPreviewMesh()
+  }
+}, { deep: true })
+
+watch(() => props.previewOffset, () => {
+  if (renderer) {
+    applyPreviewOffsetAndTarget()
+  }
+}, { deep: true })
+
+watch(() => props.environment, () => {
+  if (renderer) {
+    syncEnvironment()
   }
 }, { deep: true })
 

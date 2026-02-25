@@ -694,6 +694,8 @@ onBeforeUnmount(() => {
               <SchematicPreviewCanvas
                 v-if="schematicModelData"
                 :model-data="schematicModelData"
+                :preview-offset="{ x: schematicOffsetX, y: schematicOffsetY, z: schematicOffsetZ }"
+                :environment="configDraft.settings.environment"
               />
               <div v-else class="schematic-preview-placeholder">
                 {{ isBuildingSchematicPreview ? '正在生成预览模型...' : '暂无预览模型' }}
