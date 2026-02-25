@@ -124,9 +124,8 @@ export default class TerrainChunk {
     this.plantRenderer.group.position.set(this.originX, 0, this.originZ)
     this.plantRenderer.group.scale.setScalar(sharedRenderParams?.scale ?? 1)
 
-    // ===== 水面 mesh =====
+    // ===== 水面 mesh（已禁用，仅保留字段避免旧逻辑引用报错）=====
     this.waterMesh = null
-    this._createWaterMesh()
   }
 
   // #region 水面相关方法
@@ -240,7 +239,7 @@ export default class TerrainChunk {
     // 重建渲染层
     this.buildMesh()
 
-    // 刷新水面
+    // 刷新水面（当前禁用）
     this.refreshWater()
   }
 

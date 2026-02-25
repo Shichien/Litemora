@@ -1,4 +1,3 @@
-import * as THREE from 'three'
 import { useSettingsStore } from '../../pinia/settingsStore.js'
 import { useUiStore } from '../../pinia/uiStore.js'
 import CameraRig from '../camera/camera-rig.js'
@@ -33,8 +32,6 @@ export default class World {
     this.scene = this.experience.scene
     this.resources = this.experience.resources
     this.backendConfig = null
-
-    this.scene.add(new THREE.AxesHelper(5))
 
     emitter.on('core:ready', async () => {
       this.backendConfig = await loadBackendWorldConfig()
