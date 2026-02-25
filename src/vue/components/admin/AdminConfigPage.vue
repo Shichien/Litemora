@@ -45,6 +45,7 @@ const schematicOffsetX = ref(0)
 const schematicOffsetY = ref(0)
 const schematicOffsetZ = ref(0)
 const schematicApplyProgress = ref(null)
+const schematicImportLogs = ref([])
 
 const worldGenSeedDraft = ref('')
 const worldGenSeedError = ref('')
@@ -224,6 +225,22 @@ function clearSchematicFile() {
   setStatus('已清除原理图', 'neutral')
 }
 
+function appendSchematicImportLog(entry) {
+  const logEntry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+    ...entry,
+  }
+  schematicImportLogs.value.unshift(logEntry)
+  if (schematicImportLogs.value.length > 30) {
+    schematicImportLogs.value.length = 30
+  }
+}
+
+function clearSchematicImportLogs() {
+  schematicImportLogs.value = []
+}
+
 async function applySchematic() {
   if (!schematicPreview.value) {
     setStatus('未装载原理图', 'warning')
@@ -270,22 +287,52 @@ async function applySchematic() {
     }
 
     const result = payload.result
+    const shapeUsage = result?.importDiagnostics?.shapeUsage || { stairs: 0, slabs: 0, walls: 0 }
+    const topTextures = result?.importDiagnostics?.topTextures || []
     const minPlacedY = (schematicPreview.value?.yStats?.minY ?? 0) + offset.y
     if (minPlacedY < 0) {
       setStatus(
-        `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}（其中越界 ${result.skippedOutOfHeight || 0}），注意最小Y=${minPlacedY} 低于 0`,
+        `应用完成：放置 ${result.placed}，替换 ${result.replaced}，楼梯 ${shapeUsage.stairs}，台阶 ${shapeUsage.slabs}，墙 ${shapeUsage.walls}，跳过 ${result.skipped}（其中越界 ${result.skippedOutOfHeight || 0}），注意最小Y=${minPlacedY} 低于 0`,
         'warning',
       )
+      appendSchematicImportLog({
+        level: 'warning',
+        summary: `导入完成（Y 越界警告）: 楼梯 ${shapeUsage.stairs} / 台阶 ${shapeUsage.slabs} / 墙 ${shapeUsage.walls}`,
+        details: {
+          placed: result.placed,
+          replaced: result.replaced,
+          skipped: result.skipped,
+          skippedOutOfHeight: result.skippedOutOfHeight || 0,
+          touchedChunks: result.touchedChunks,
+          topTextures,
+        },
+      })
       return
     }
 
     setStatus(
-      `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}，清空区块 ${result.worldClearedChunks || 0}，涉及 ${result.touchedChunks} 个区块`,
+      `应用完成：放置 ${result.placed}，替换 ${result.replaced}，楼梯 ${shapeUsage.stairs}，台阶 ${shapeUsage.slabs}，墙 ${shapeUsage.walls}，跳过 ${result.skipped}，清空区块 ${result.worldClearedChunks || 0}，涉及 ${result.touchedChunks} 个区块`,
       'success',
     )
+    appendSchematicImportLog({
+      level: 'success',
+      summary: `导入完成: 楼梯 ${shapeUsage.stairs} / 台阶 ${shapeUsage.slabs} / 墙 ${shapeUsage.walls}`,
+      details: {
+        placed: result.placed,
+        replaced: result.replaced,
+        skipped: result.skipped,
+        touchedChunks: result.touchedChunks,
+        topTextures,
+      },
+    })
   }
   catch (error) {
     setStatus(`应用失败: ${error.message}`, 'warning')
+    appendSchematicImportLog({
+      level: 'error',
+      summary: `导入失败: ${error.message}`,
+      details: null,
+    })
   }
   finally {
     isApplying.value = false
@@ -608,6 +655,52 @@ onBeforeUnmount(() => {
               <button class="btn ghost" @click="clearSchematicFile">
                 清除
               </button>
+            </div>
+
+            <div class="schematic-console">
+              <div class="schematic-console-head">
+                <strong>导入控制台</strong>
+                <div class="preview-actions-right">
+                  <span class="schematic-console-count">{{ schematicImportLogs.length }} 条</span>
+                  <button class="btn ghost" @click="clearSchematicImportLogs">
+                    清空日志
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="!schematicImportLogs.length" class="schematic-console-empty">
+                还没有导入日志，应用原理图后会在这里显示楼梯/台阶/墙统计和贴图命中信息。
+              </div>
+
+              <div v-else class="schematic-console-list">
+                <div
+                  v-for="log in schematicImportLogs"
+                  :key="log.id"
+                  class="schematic-console-item"
+                  :class="`is-${log.level}`"
+                >
+                  <div class="schematic-console-item-head">
+                    <span class="time">{{ log.timestamp }}</span>
+                    <span class="level">{{ log.level }}</span>
+                  </div>
+                  <div class="summary">
+                    {{ log.summary }}
+                  </div>
+                  <div v-if="log.details" class="details">
+                    放置 {{ log.details.placed || 0 }} · 替换 {{ log.details.replaced || 0 }} · 跳过 {{ log.details.skipped || 0 }} · 区块 {{ log.details.touchedChunks || 0 }}
+                  </div>
+                  <div v-if="log.details?.topTextures?.length" class="textures">
+                    TOP 贴图：
+                    <span
+                      v-for="item in log.details.topTextures.slice(0, 6)"
+                      :key="`${log.id}-${item.name}`"
+                      class="texture-chip"
+                    >
+                      {{ item.name }} ({{ item.count }})
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -1132,6 +1225,105 @@ input::placeholder {
   justify-content: center;
   min-height: 320px;
   width: 100%;
+}
+
+.schematic-console {
+  margin-top: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 10px;
+}
+
+.schematic-console-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.schematic-console-count {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.schematic-console-empty {
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.schematic-console-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.schematic-console-item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(30, 41, 59, 0.45);
+}
+
+.schematic-console-item.is-success {
+  border-color: rgba(34, 197, 94, 0.45);
+}
+
+.schematic-console-item.is-warning {
+  border-color: rgba(245, 158, 11, 0.55);
+}
+
+.schematic-console-item.is-error {
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.schematic-console-item-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.schematic-console-item-head .level {
+  text-transform: uppercase;
+}
+
+.schematic-console-item .summary {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.schematic-console-item .details {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.schematic-console-item .textures {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #cbd5e1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.texture-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 input[type='file'] {
