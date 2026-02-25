@@ -261,7 +261,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="admin-overlay" @click.self="backToGame">
+  <div class="admin-overlay">
     <!-- 认证守卫 -->
     <div v-if="!isAuthenticated" class="auth-modal">
       <div class="auth-container">
