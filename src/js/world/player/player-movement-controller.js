@@ -103,84 +103,105 @@ export class PlayerMovementController {
    * @param {boolean} isCombatActive 是否战斗减速
    */
   _updateCustomPhysics(inputState, isCombatActive) {
-    const dt = this.experience.time.delta * 0.001
-    this.collision.prepareFrame()
+    const rawDt = this.experience.time.delta * 0.001
+    const clampedDt = Math.min(rawDt, 0.05)
+    const subStep = 1 / 90
+    const stepCount = Math.max(1, Math.min(6, Math.ceil(clampedDt / subStep)))
+    const stepDt = clampedDt / stepCount
 
-    // 计算输入方向（世界坐标）
-    const { worldX, worldZ } = this._computeWorldDirection(inputState)
+    for (let i = 0; i < stepCount; i++) {
+      this.collision.prepareFrame()
 
-    // 水平速度
-    if (isCombatActive) {
-      this.worldVelocity.multiplyScalar(MOVEMENT_CONSTANTS.COMBAT_DECELERATION)
-    }
-    else {
-      let currentSpeed = this.config.speed.walk
-      let profile = 'walk'
-      if (inputState.shift) {
-        currentSpeed = this.config.speed.run
-        profile = 'run'
+      // 计算输入方向（世界坐标）
+      const { worldX, worldZ } = this._computeWorldDirection(inputState)
+
+      // 水平速度
+      if (isCombatActive) {
+        this.worldVelocity.multiplyScalar(MOVEMENT_CONSTANTS.COMBAT_DECELERATION)
       }
-      else if (inputState.v) {
-        currentSpeed = this.config.speed.crouch
-        profile = 'crouch'
+      else {
+        let currentSpeed = this.config.speed.walk
+        let profile = 'walk'
+        if (inputState.shift) {
+          currentSpeed = this.config.speed.run
+          profile = 'run'
+        }
+        else if (inputState.v) {
+          currentSpeed = this.config.speed.crouch
+          profile = 'crouch'
+        }
+
+        const dirScale = this._computeDirectionScale(profile, inputState)
+        this.worldVelocity.x = worldX * currentSpeed * dirScale
+        this.worldVelocity.z = worldZ * currentSpeed * dirScale
       }
 
-      const dirScale = this._computeDirectionScale(profile, inputState)
-      this.worldVelocity.x = worldX * currentSpeed * dirScale
-      this.worldVelocity.z = worldZ * currentSpeed * dirScale
-    }
+      // 重力
+      this.worldVelocity.y += this.gravity * stepDt
 
-    // 重力
-    this.worldVelocity.y += this.gravity * dt
+      // 预测位置
+      const nextPosition = new THREE.Vector3().copy(this.position).addScaledVector(this.worldVelocity, stepDt)
 
-    // 预测位置
-    const nextPosition = new THREE.Vector3().copy(this.position).addScaledVector(this.worldVelocity, dt)
+      // 构建胶囊状态（继承上一帧的 isGrounded 状态，避免高频切换）
+      const playerState = this._buildPlayerState(nextPosition, this.isGrounded)
 
-    // 构建胶囊状态（继承上一帧的 isGrounded 状态，避免高频切换）
-    const playerState = this._buildPlayerState(nextPosition, this.isGrounded)
+      // 地形查询提供者：优先使用 experience 挂载的 ChunkManager
+      const provider = this.experience.terrainDataManager || this.terrainProvider
+      const candidates = this.collision.broadPhase(playerState, provider)
+      const collisions = this.collision.narrowPhase(candidates, playerState)
+      this.collision.resolveCollisions(collisions, playerState)
 
-    // 地形查询提供者：优先使用 experience 挂载的 ChunkManager
-    const provider = this.experience.terrainDataManager || this.terrainProvider
-    const candidates = this.collision.broadPhase(playerState, provider)
-    const collisions = this.collision.narrowPhase(candidates, playerState)
-    this.collision.resolveCollisions(collisions, playerState)
+      // 补充地面检测：支持基于后端模型的贴地行走
+      if (!playerState.isGrounded && this.groundSampler) {
+        const sampledY = this.groundSampler(
+          playerState.basePosition.x,
+          playerState.basePosition.z,
+          playerState.basePosition.y,
+        )
 
-    // 补充地面检测：支持基于后端模型的贴地行走
-    if (!playerState.isGrounded && this.groundSampler) {
-      const sampledY = this.groundSampler(
-        playerState.basePosition.x,
-        playerState.basePosition.z,
-        playerState.basePosition.y,
-      )
+        if (sampledY !== null && sampledY !== undefined && playerState.worldVelocity.y <= 0) {
+          const targetY = sampledY + 0.05
+          const dropDistance = playerState.basePosition.y - targetY
 
-      if (sampledY !== null && sampledY !== undefined && playerState.worldVelocity.y <= 0) {
-        const targetY = sampledY + 0.05
-        const dropDistance = playerState.basePosition.y - targetY
-
-        // 仅在可接受下落距离内吸附到地面，避免穿模/瞬移
-        if (dropDistance <= 0.6) {
-          playerState.basePosition.y = targetY
-          playerState.worldVelocity.y = 0
-          playerState.isGrounded = true
+          // 仅在可接受下落距离内吸附到地面，避免穿模/瞬移
+          if (dropDistance <= 0.6) {
+            playerState.basePosition.y = targetY
+            playerState.worldVelocity.y = 0
+            playerState.isGrounded = true
+          }
         }
       }
-    }
 
-    // 同步结果
-    // 状态保持：如果上一帧是 grounded，且当前没有明显上升速度，保持 grounded 状态
-    // 这样可以避免因数值精度或微小振荡导致的高频切换
-    if (this.isGrounded && !playerState.isGrounded && playerState.worldVelocity.y < 0.5) {
-      // 上一帧在地面，当前帧未检测到地面碰撞，但速度向下或很小，保持 grounded
-      playerState.isGrounded = true
-    }
-    // 如果明显上升（跳跃），则清除 grounded 状态
-    if (playerState.worldVelocity.y > 1.0) {
-      playerState.isGrounded = false
-    }
+      // 低帧率防穿地：体素地形兜底恢复
+      if (!playerState.isGrounded && provider?.getTopSolidYWorld && playerState.worldVelocity.y <= 0) {
+        const topY = provider.getTopSolidYWorld(playerState.basePosition.x, playerState.basePosition.z)
+        if (topY !== null && topY !== undefined) {
+          const targetY = topY + 0.55
+          const penetration = targetY - playerState.basePosition.y
+          if (penetration > 0 && penetration <= 1.2) {
+            playerState.basePosition.y = targetY
+            playerState.worldVelocity.y = 0
+            playerState.isGrounded = true
+          }
+        }
+      }
 
-    this.isGrounded = playerState.isGrounded
-    this.position.copy(playerState.basePosition)
-    this.worldVelocity.copy(playerState.worldVelocity)
+      // 同步结果
+      // 状态保持：如果上一帧是 grounded，且当前没有明显上升速度，保持 grounded 状态
+      // 这样可以避免因数值精度或微小振荡导致的高频切换
+      if (this.isGrounded && !playerState.isGrounded && playerState.worldVelocity.y < 0.5) {
+        // 上一帧在地面，当前帧未检测到地面碰撞，但速度向下或很小，保持 grounded
+        playerState.isGrounded = true
+      }
+      // 如果明显上升（跳跃），则清除 grounded 状态
+      if (playerState.worldVelocity.y > 1.0) {
+        playerState.isGrounded = false
+      }
+
+      this.isGrounded = playerState.isGrounded
+      this.position.copy(playerState.basePosition)
+      this.worldVelocity.copy(playerState.worldVelocity)
+    }
 
     // 超界重生
     this._checkRespawn()

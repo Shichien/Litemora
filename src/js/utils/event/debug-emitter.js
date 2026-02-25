@@ -108,7 +108,12 @@ const debugEmitter = {
       debugStateMonitor.logEvent('on', `${eventName} (once)`, null, source)
     }
 
-    return baseEmitter.once(eventName, handler)
+    const onceHandler = (data) => {
+      baseEmitter.off(eventName, onceHandler)
+      handler(data)
+    }
+
+    return baseEmitter.on(eventName, onceHandler)
   },
 
   /**
