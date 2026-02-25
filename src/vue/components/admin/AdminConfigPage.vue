@@ -625,19 +625,6 @@ onBeforeUnmount(() => {
               <label>偏移 Z <input v-model.number="schematicOffsetZ" type="number"></label>
             </div>
 
-            <div v-if="schematicApplyProgress" class="schematic-progress">
-              <div class="schematic-progress-head">
-                <span>{{ schematicProgressLabel }}</span>
-                <span>{{ schematicProgressPercent }}%</span>
-              </div>
-              <div class="schematic-progress-track">
-                <div class="schematic-progress-fill" :style="{ width: `${schematicProgressPercent}%` }" />
-              </div>
-              <div class="schematic-progress-meta">
-                {{ schematicApplyProgress.processedBlocks || 0 }} / {{ schematicApplyProgress.totalBlocks || 0 }}
-              </div>
-            </div>
-
             <div class="setting-row schematic-preview-row">
               <SchematicPreviewCanvas
                 v-if="schematicModelData"
@@ -655,6 +642,19 @@ onBeforeUnmount(() => {
               <button class="btn ghost" @click="clearSchematicFile">
                 清除
               </button>
+            </div>
+
+            <div v-if="schematicApplyProgress" class="schematic-progress">
+              <div class="schematic-progress-head">
+                <span>{{ schematicProgressLabel }}</span>
+                <span>{{ schematicProgressPercent }}%</span>
+              </div>
+              <div class="schematic-progress-track">
+                <div class="schematic-progress-fill" :style="{ width: `${schematicProgressPercent}%` }" />
+              </div>
+              <div class="schematic-progress-meta">
+                {{ schematicApplyProgress.processedBlocks || 0 }} / {{ schematicApplyProgress.totalBlocks || 0 }}
+              </div>
             </div>
 
             <div class="schematic-console">
@@ -1223,7 +1223,7 @@ input::placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 320px;
+  min-height: 640px;
   width: 100%;
 }
 

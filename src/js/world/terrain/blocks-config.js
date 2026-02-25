@@ -818,6 +818,7 @@ const stairGeometries = {
 const trapdoorGeometryCache = new Map()
 const barsGeometryCache = new Map()
 const wallGeometryCache = new Map()
+const lanternGeometryCache = new Map()
 
 function createTrapdoorGeometry({ half = 'bottom', facing = 'north', open = false } = {}) {
   const thickness = 0.1875
@@ -928,6 +929,26 @@ function createWallGeometry({ up = true, north = 0, east = 0, south = 0, west = 
   return merged
 }
 
+function createLanternGeometry({ hanging = false } = {}) {
+  const pieces = []
+
+  const body = new THREE.BoxGeometry(0.5, 0.5, 0.5)
+  body.translate(0, -0.125, 0)
+  pieces.push(body)
+
+  const topCap = new THREE.BoxGeometry(0.375, 0.125, 0.375)
+  topCap.translate(0, 0.1875, 0)
+  pieces.push(topCap)
+
+  const stem = new THREE.BoxGeometry(0.125, hanging ? 0.3125 : 0.25, 0.125)
+  stem.translate(0, hanging ? 0.34375 : 0.3125, 0)
+  pieces.push(stem)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
 export function getGeometryForBlockType(blockType) {
   const geometryType = blockType?.geometryType || 'cube'
   if (geometryType === 'slab_bottom') {
@@ -977,6 +998,16 @@ export function getGeometryForBlockType(blockType) {
       }))
     }
     return wallGeometryCache.get(geometryType)
+  }
+
+  const lanternMatch = geometryType.match(/^lantern_(hanging|standing)$/u)
+  if (lanternMatch) {
+    if (!lanternGeometryCache.has(geometryType)) {
+      lanternGeometryCache.set(geometryType, createLanternGeometry({
+        hanging: lanternMatch[1] === 'hanging',
+      }))
+    }
+    return lanternGeometryCache.get(geometryType)
   }
 
   return sharedGeometry

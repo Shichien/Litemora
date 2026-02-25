@@ -20,6 +20,7 @@ import { loadBackendWorldConfig } from './backend-world-config.js'
 import Environment from './environment.js'
 import Player from './player/player.js'
 import ChunkManager from './terrain/chunk-manager.js'
+import { preloadAtlasTextureImage } from './terrain/java-atlas-texture-provider.js'
 import schematicService from './terrain/schematic-service.js'
 
 /**
@@ -39,6 +40,14 @@ export default class World {
       this.backendConfig = await loadBackendWorldConfig()
 
       this._initTerrain(this.backendConfig)
+
+      try {
+        await preloadAtlasTextureImage()
+      }
+      catch (error) {
+        console.warn('[World] Atlas preload failed before player spawn:', error)
+      }
+
       this._initPlayerAndCamera()
       this._initEnvironment()
       this._initBlockInteraction()

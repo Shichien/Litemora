@@ -6,6 +6,7 @@ import { javaAtlasBlockTextureRects } from '../../generated/java-atlas-textures.
 import { javaBlockTextureStemHintsByBlock } from '../../generated/java-block-texture-hints.js'
 import {
   isIronBarsBlockName,
+  isLanternBlockName,
   isSlabBlockName,
   isStairBlockName,
   isTrapdoorBlockName,
@@ -455,6 +456,27 @@ class SchematicService {
       }
     }
 
+    if (isLanternBlockName(normalizedName)) {
+      const lanternTextureName = this._resolveTextureName(normalizedName)
+      if (lanternTextureName) {
+        const geometryType = this._lanternGeometryTypeFromProperties(properties)
+        const lanternBlock = ensureDynamicBlockType(lanternTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (lanternBlock?.id) {
+          const result = {
+            id: lanternBlock.id,
+            source: 'atlas-dynamic',
+            textureName: lanternTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
     const textureName = this._resolveTextureName(normalizedName)
     if (textureName) {
       const dynamicBlock = ensureDynamicBlockType(textureName, {
@@ -524,6 +546,11 @@ class SchematicService {
       return 1
     }
     return 0
+  }
+
+  _lanternGeometryTypeFromProperties(properties = {}) {
+    const hanging = this._normalizeBoolean(properties?.hanging)
+    return hanging ? 'lantern_hanging' : 'lantern_standing'
   }
 
   _buildBlockVariantKey(properties = {}) {

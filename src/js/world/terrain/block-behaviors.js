@@ -29,6 +29,11 @@ export function isWallBlockName(name) {
   return normalizeName(name).endsWith('_wall')
 }
 
+export function isLanternBlockName(name) {
+  const normalized = normalizeName(name)
+  return normalized === 'lantern' || normalized === 'soul_lantern'
+}
+
 export function isSlabBlockType(blockType) {
   const geometryType = geometryTypeOf(blockType)
   return geometryType.startsWith('slab_') || isSlabBlockName(blockType?.name)

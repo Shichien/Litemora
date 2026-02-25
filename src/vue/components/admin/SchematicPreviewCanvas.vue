@@ -1,6 +1,6 @@
 <script setup>
-import * as THREE from 'three'
 import { getGeometryForBlockType } from '@three/world/terrain/blocks-config.js'
+import * as THREE from 'three'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -441,6 +441,6 @@ onBeforeUnmount(() => {
 
 .schematic-canvas {
   width: 100%;
-  height: 320px;
+  height: 640px;
 }
 </style>
