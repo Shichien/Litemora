@@ -17,6 +17,7 @@ export class PlayerMovementController {
 
     this.isGrounded = false
     this.isFlying = false
+    this.isInWater = false
     this.flightConfig = {
       speedMultiplier: 2.4,
       ignoreMiningSlowdown: true,
@@ -76,9 +77,12 @@ export class PlayerMovementController {
    */
   update(inputState, isCombatActive) {
     if (this.isFlying) {
+      this.isInWater = false
       this._updateFlightPhysics(inputState, isCombatActive)
       return
     }
+
+    this.isInWater = this._isPositionInWater(this.position)
     this._updateCustomPhysics(inputState, isCombatActive)
   }
 
@@ -206,8 +210,24 @@ export class PlayerMovementController {
         this.worldVelocity.z = worldZ * currentSpeed * dirScale
       }
 
-      // 重力
-      this.worldVelocity.y += this.gravity * stepDt
+      if (this.isInWater) {
+        const swimSpeed = this.config.speed.walk * 0.8
+        const ascend = inputState.space ? 1 : 0
+        const descend = inputState.v ? 1 : 0
+        const verticalInput = ascend - descend
+
+        const targetVerticalSpeed = verticalInput * swimSpeed
+        this.worldVelocity.y = THREE.MathUtils.lerp(this.worldVelocity.y, targetVerticalSpeed, 0.28)
+
+        const surfaceY = this._getWaterSurfaceY()
+        if (surfaceY !== null && this.position.y < surfaceY - 0.45 && verticalInput === 0) {
+          this.worldVelocity.y = Math.max(this.worldVelocity.y, 0.6)
+        }
+      }
+      else {
+        // 重力
+        this.worldVelocity.y += this.gravity * stepDt
+      }
 
       // 预测位置
       const nextPosition = new THREE.Vector3().copy(this.position).addScaledVector(this.worldVelocity, stepDt)
@@ -271,6 +291,10 @@ export class PlayerMovementController {
       this.isGrounded = playerState.isGrounded
       this.position.copy(playerState.basePosition)
       this.worldVelocity.copy(playerState.worldVelocity)
+
+      if (this.isInWater) {
+        this.isGrounded = false
+      }
     }
 
     // 超界重生
@@ -440,6 +464,8 @@ export class PlayerMovementController {
    * @returns {LocomotionProfiles} 当前档位
    */
   getSpeedProfile(inputState) {
+    if (this.isInWater)
+      return LocomotionProfiles.CROUCH
     if (inputState.shift)
       return LocomotionProfiles.RUN
     if (inputState.v)
@@ -454,5 +480,30 @@ export class PlayerMovementController {
    */
   isMoving(inputState) {
     return inputState.forward || inputState.backward || inputState.left || inputState.right
+  }
+
+  _getWaterSurfaceY() {
+    const provider = this.experience.terrainDataManager || this.terrainProvider
+    if (!provider) {
+      return null
+    }
+
+    const waterOffset = provider.waterParams?.waterOffset
+    if (!Number.isFinite(waterOffset)) {
+      return null
+    }
+
+    const heightScale = provider.renderParams?.heightScale ?? 1
+    return waterOffset * heightScale
+  }
+
+  _isPositionInWater(position) {
+    const surfaceY = this._getWaterSurfaceY()
+    if (surfaceY === null) {
+      return false
+    }
+
+    const chestY = position.y + 1.1
+    return chestY <= surfaceY + 0.35
   }
 }

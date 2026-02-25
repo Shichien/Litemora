@@ -393,7 +393,7 @@ export default class Player {
       inputState: effectiveInput,
       directionWeights: blockedByMining ? { forward: 0, backward: 0, left: 0, right: 0 } : weights, // Pass normalized weights
       isMoving: blockedByMining ? false : this.movement.isMoving(effectiveInput),
-      isGrounded: simulateGroundWalk ? true : this.movement.isGrounded,
+      isGrounded: simulateGroundWalk ? true : (this.movement.isInWater ? true : this.movement.isGrounded),
       speedProfile: this.movement.getSpeedProfile(effectiveInput),
       isMining: blockedByMining,
     }
