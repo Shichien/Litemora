@@ -111,7 +111,7 @@ export default class BlockInteractionManager {
     const targetY = worldBlock.y + ny
     const targetZ = worldBlock.z + nz
 
-    // Use selected block from Hotbar and resolve smart variants for slabs/stairs
+    // Use selected block from Hotbar and resolve smart variants for slabs/stairs/connectables
     const blockToPlace = this._resolvePlacementBlockId(
       this._selectedBlockId,
       target,
@@ -131,6 +131,7 @@ export default class BlockInteractionManager {
       if (this._isStairBlockType(placedBlockType)) {
         this._refreshConnectedStairs(targetX, targetY, targetZ)
       }
+      this._refreshConnectedThinBlocks(targetX, targetY, targetZ)
 
       // Consume one item from Hotbar
       emitter.emit('hud:consume-selected-item')
@@ -148,17 +149,18 @@ export default class BlockInteractionManager {
 
     const geometryType = blockType.geometryType || 'cube'
     const blockName = blockType.name || ''
+    const textureName = this._getTextureName(blockType)
 
     const isSlab = geometryType.startsWith('slab_') || blockName.endsWith('_slab')
     const isStair = geometryType.startsWith('stair_') || blockName.endsWith('_stairs')
+    const isTrapdoor = geometryType.startsWith('trapdoor_') || blockName.endsWith('_trapdoor')
+    const isIronBars = geometryType.startsWith('bars_') || blockName === 'iron_bars'
+    const isWall = geometryType.startsWith('wall_') || blockName.endsWith('_wall')
 
-    if (!isSlab && !isStair) {
+    if (!isSlab && !isStair && !isTrapdoor && !isIronBars && !isWall) {
       return selectedBlockId
     }
 
-    const textureName = blockType?.textureKeys?.all
-      || blockType?.textureKeys?.top
-      || blockType?.textureKeys?.side
     if (!textureName) {
       return selectedBlockId
     }
@@ -171,6 +173,33 @@ export default class BlockInteractionManager {
         geometryType: half === 'top' ? 'slab_top' : 'slab_bottom',
       })
       return slabBlock?.id || selectedBlockId
+    }
+
+    if (isTrapdoor) {
+      const trapHalf = this._resolvePlacementHalf(target, normal)
+      const trapFacing = this._resolvePlacementFacingByNormalOrCamera(normal)
+      const trapOpen = false
+      const trapdoorBlock = ensureDynamicBlockType(textureName, {
+        blockName: blockName || 'dynamic_trapdoor',
+        geometryType: `trapdoor_${trapHalf}_${trapOpen ? 'open' : 'closed'}_${trapFacing}`,
+      })
+      return trapdoorBlock?.id || selectedBlockId
+    }
+
+    if (isIronBars && placementPosition) {
+      const barsBlock = ensureDynamicBlockType(textureName, {
+        blockName: blockName || 'iron_bars',
+        geometryType: this._resolveBarsGeometryTypeForPosition(placementPosition),
+      })
+      return barsBlock?.id || selectedBlockId
+    }
+
+    if (isWall && placementPosition) {
+      const wallBlock = ensureDynamicBlockType(textureName, {
+        blockName: blockName || 'dynamic_wall',
+        geometryType: this._resolveWallGeometryTypeForPosition(placementPosition),
+      })
+      return wallBlock?.id || selectedBlockId
     }
 
     const facing = this._resolvePlacementFacing()
@@ -190,6 +219,52 @@ export default class BlockInteractionManager {
     }
     const geometryType = blockType.geometryType || ''
     return geometryType.startsWith('stair_') || blockType.name?.endsWith?.('_stairs')
+  }
+
+  _isBarsBlockType(blockType) {
+    if (!blockType) {
+      return false
+    }
+    const geometryType = blockType.geometryType || ''
+    return geometryType.startsWith('bars_') || blockType.name === 'iron_bars'
+  }
+
+  _isWallBlockType(blockType) {
+    if (!blockType) {
+      return false
+    }
+    const geometryType = blockType.geometryType || ''
+    return geometryType.startsWith('wall_') || blockType.name?.endsWith?.('_wall')
+  }
+
+  _getTextureName(blockType) {
+    return blockType?.textureKeys?.all
+      || blockType?.textureKeys?.top
+      || blockType?.textureKeys?.side
+      || null
+  }
+
+  _isFilledBlockAt(x, y, z) {
+    const block = this.chunkManager?.getBlockWorld?.(x, y, z)
+    return Boolean(block && block.id && block.id !== 0)
+  }
+
+  _resolveBarsGeometryTypeForPosition(position) {
+    const north = this._isFilledBlockAt(position.x, position.y, position.z - 1) ? 1 : 0
+    const east = this._isFilledBlockAt(position.x + 1, position.y, position.z) ? 1 : 0
+    const south = this._isFilledBlockAt(position.x, position.y, position.z + 1) ? 1 : 0
+    const west = this._isFilledBlockAt(position.x - 1, position.y, position.z) ? 1 : 0
+    return `bars_${north}${east}${south}${west}`
+  }
+
+  _resolveWallGeometryTypeForPosition(position) {
+    const north = this._isFilledBlockAt(position.x, position.y, position.z - 1) ? 1 : 0
+    const east = this._isFilledBlockAt(position.x + 1, position.y, position.z) ? 1 : 0
+    const south = this._isFilledBlockAt(position.x, position.y, position.z + 1) ? 1 : 0
+    const west = this._isFilledBlockAt(position.x - 1, position.y, position.z) ? 1 : 0
+    const connectedCount = north + east + south + west
+    const up = connectedCount === 0 ? 1 : 0
+    return `wall_${up}_${north}${east}${south}${west}`
   }
 
   _parseStairGeometryType(blockType) {
@@ -344,6 +419,55 @@ export default class BlockInteractionManager {
     })
   }
 
+  _refreshConnectedThinBlocks(centerX, centerY, centerZ) {
+    const offsets = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: -1, z: 0 },
+      { x: 0, z: 1 },
+      { x: 0, z: -1 },
+    ]
+
+    offsets.forEach((offset) => {
+      const x = centerX + offset.x
+      const y = centerY
+      const z = centerZ + offset.z
+      const current = this.chunkManager?.getBlockWorld?.(x, y, z)
+      const currentType = getBlockTypeById(current?.id)
+      if (!currentType) {
+        return
+      }
+
+      const textureName = this._getTextureName(currentType)
+      if (!textureName) {
+        return
+      }
+
+      if (this._isBarsBlockType(currentType)) {
+        const geometryType = this._resolveBarsGeometryTypeForPosition({ x, y, z })
+        const nextBlock = ensureDynamicBlockType(textureName, {
+          blockName: currentType.name || 'iron_bars',
+          geometryType,
+        })
+        if (nextBlock?.id && nextBlock.id !== current.id) {
+          this.chunkManager.addBlockWorld(x, y, z, nextBlock.id)
+        }
+        return
+      }
+
+      if (this._isWallBlockType(currentType)) {
+        const geometryType = this._resolveWallGeometryTypeForPosition({ x, y, z })
+        const nextBlock = ensureDynamicBlockType(textureName, {
+          blockName: currentType.name || 'dynamic_wall',
+          geometryType,
+        })
+        if (nextBlock?.id && nextBlock.id !== current.id) {
+          this.chunkManager.addBlockWorld(x, y, z, nextBlock.id)
+        }
+      }
+    })
+  }
+
   _resolvePlacementHalf(target, normal) {
     if (normal?.ny < 0) {
       return 'top'
@@ -381,6 +505,22 @@ export default class BlockInteractionManager {
       west: 'east',
     }
     return opposite[playerFacing] || 'north'
+  }
+
+  _resolvePlacementFacingByNormalOrCamera(normal) {
+    if (normal?.nx === 1) {
+      return 'east'
+    }
+    if (normal?.nx === -1) {
+      return 'west'
+    }
+    if (normal?.nz === 1) {
+      return 'south'
+    }
+    if (normal?.nz === -1) {
+      return 'north'
+    }
+    return this._resolvePlacementFacing()
   }
 
   destroy() {
