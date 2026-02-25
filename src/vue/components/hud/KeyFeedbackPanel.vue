@@ -19,6 +19,8 @@ const keys = reactive({
   v: false,
   q: false,
   r: false,
+  f: false,
+  flyMode: false,
 })
 
 /**
@@ -36,6 +38,11 @@ function handleInputUpdate(inputKeys) {
   keys.v = inputKeys.v || false
   keys.q = inputKeys.q || false
   keys.r = inputKeys.r || false
+  keys.f = inputKeys.f || false
+}
+
+function handleFlightModeChanged(payload) {
+  keys.flyMode = !!payload?.enabled
 }
 
 /**
@@ -53,16 +60,19 @@ function resetKeys() {
   keys.v = false
   keys.q = false
   keys.r = false
+  keys.f = false
 }
 
 onMounted(() => {
   emitter.on('input:update', handleInputUpdate)
+  emitter.on('hud:flight-mode-changed', handleFlightModeChanged)
   emitter.on('ui:chat-opened', resetKeys)
   window.addEventListener('blur', resetKeys)
 })
 
 onUnmounted(() => {
   emitter.off('input:update', handleInputUpdate)
+  emitter.off('hud:flight-mode-changed', handleFlightModeChanged)
   emitter.off('ui:chat-opened', resetKeys)
   window.removeEventListener('blur', resetKeys)
 })
@@ -80,6 +90,9 @@ onUnmounted(() => {
       </div>
       <div class="key-cap" :class="{ pressed: keys.r }">
         R
+      </div>
+      <div class="key-cap" :class="{ pressed: keys.f }">
+        F
       </div>
     </div>
     <div class="key-row">
@@ -102,6 +115,11 @@ onUnmounted(() => {
 
     <!-- Action/Combat Keys -->
     <div class="key-row spacer-v" />
+    <div class="key-row">
+      <div class="key-cap wide" :class="{ pressed: keys.flyMode }">
+        <span>FLY</span> {{ keys.flyMode ? 'ON' : 'OFF' }}
+      </div>
+    </div>
     <div class="key-row">
       <div class="key-cap" :class="{ pressed: keys.z }">
         Z

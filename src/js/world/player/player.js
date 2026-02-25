@@ -240,6 +240,9 @@ export default class Player {
 
     emitter.on('input:toggle_flight', () => {
       this.movement.toggleFlight()
+      emitter.emit('hud:flight-mode-changed', {
+        enabled: this.movement.isFlying,
+      })
     })
 
     // ==================== 攻击输入 ====================
