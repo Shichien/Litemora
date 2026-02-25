@@ -17,12 +17,14 @@ let camera = null
 let previewGroup = null
 let animationFrameId = null
 let resizeObserver = null
+const orbitTarget = new THREE.Vector3(0, 0, 0)
 
 const orbitState = {
   yaw: 0.9,
   pitch: 0.5,
   distance: 40,
   dragging: false,
+  dragMode: 'rotate',
   lastX: 0,
   lastY: 0,
 }
@@ -84,11 +86,11 @@ function updateCameraPosition() {
 
   const cosPitch = Math.cos(orbitState.pitch)
   camera.position.set(
-    Math.sin(orbitState.yaw) * cosPitch * orbitState.distance,
-    Math.sin(orbitState.pitch) * orbitState.distance,
-    Math.cos(orbitState.yaw) * cosPitch * orbitState.distance,
+    orbitTarget.x + Math.sin(orbitState.yaw) * cosPitch * orbitState.distance,
+    orbitTarget.y + Math.sin(orbitState.pitch) * orbitState.distance,
+    orbitTarget.z + Math.cos(orbitState.yaw) * cosPitch * orbitState.distance,
   )
-  camera.lookAt(0, 0, 0)
+  camera.lookAt(orbitTarget)
 }
 
 function buildPreviewMesh() {
@@ -125,6 +127,7 @@ function buildPreviewMesh() {
   const maxSize = Math.max(sizeX, sizeY, sizeZ)
 
   orbitState.distance = Math.max(24, maxSize * 1.3)
+  orbitTarget.set(0, 0, 0)
   updateCameraPosition()
 
   const groups = new Map()
@@ -165,30 +168,52 @@ function buildPreviewMesh() {
   scene.add(previewGroup)
 }
 
-function handleMouseDown(event) {
+function handlePointerDown(event) {
+  event.preventDefault()
+
   orbitState.dragging = true
+  orbitState.dragMode = event.button === 2 ? 'pan' : 'rotate'
   orbitState.lastX = event.clientX
   orbitState.lastY = event.clientY
+
+  const canvas = renderer?.domElement
+  canvas?.setPointerCapture?.(event.pointerId)
 }
 
-function handleMouseMove(event) {
+function handlePointerMove(event) {
   if (!orbitState.dragging) {
     return
   }
+
+  event.preventDefault()
 
   const dx = event.clientX - orbitState.lastX
   const dy = event.clientY - orbitState.lastY
   orbitState.lastX = event.clientX
   orbitState.lastY = event.clientY
 
-  orbitState.yaw -= dx * 0.01
-  orbitState.pitch -= dy * 0.01
-  orbitState.pitch = Math.max(-1.2, Math.min(1.2, orbitState.pitch))
+  if (orbitState.dragMode === 'pan') {
+    const panScale = Math.max(0.01, orbitState.distance * 0.0014)
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0)
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1)
+    orbitTarget.addScaledVector(right, -dx * panScale)
+    orbitTarget.addScaledVector(up, dy * panScale)
+  }
+  else {
+    orbitState.yaw -= dx * 0.01
+    orbitState.pitch -= dy * 0.01
+    orbitState.pitch = Math.max(-1.2, Math.min(1.2, orbitState.pitch))
+  }
+
   updateCameraPosition()
 }
 
-function handleMouseUp() {
+function handlePointerUp(event) {
+  event.preventDefault()
   orbitState.dragging = false
+
+  const canvas = renderer?.domElement
+  canvas?.releasePointerCapture?.(event.pointerId)
 }
 
 function handleWheel(event) {
@@ -196,6 +221,10 @@ function handleWheel(event) {
   orbitState.distance *= event.deltaY > 0 ? 1.1 : 0.92
   orbitState.distance = Math.max(10, Math.min(260, orbitState.distance))
   updateCameraPosition()
+}
+
+function handleContextMenu(event) {
+  event.preventDefault()
 }
 
 function resize() {
@@ -213,10 +242,6 @@ function resize() {
 
 function animate() {
   animationFrameId = requestAnimationFrame(animate)
-
-  if (!orbitState.dragging && previewGroup) {
-    previewGroup.rotation.y += 0.002
-  }
 
   renderer?.render(scene, camera)
 }
@@ -256,10 +281,13 @@ function initScene() {
   animate()
 
   const canvas = renderer.domElement
-  canvas.addEventListener('mousedown', handleMouseDown)
-  window.addEventListener('mousemove', handleMouseMove)
-  window.addEventListener('mouseup', handleMouseUp)
+  canvas.style.cursor = 'grab'
+  canvas.addEventListener('pointerdown', handlePointerDown)
+  canvas.addEventListener('pointermove', handlePointerMove)
+  canvas.addEventListener('pointerup', handlePointerUp)
+  canvas.addEventListener('pointercancel', handlePointerUp)
   canvas.addEventListener('wheel', handleWheel, { passive: false })
+  canvas.addEventListener('contextmenu', handleContextMenu)
 
   resizeObserver = new ResizeObserver(() => resize())
   resizeObserver.observe(containerRef.value)
@@ -272,11 +300,13 @@ function destroyScene() {
   }
 
   if (renderer?.domElement) {
-    renderer.domElement.removeEventListener('mousedown', handleMouseDown)
+    renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
+    renderer.domElement.removeEventListener('pointermove', handlePointerMove)
+    renderer.domElement.removeEventListener('pointerup', handlePointerUp)
+    renderer.domElement.removeEventListener('pointercancel', handlePointerUp)
     renderer.domElement.removeEventListener('wheel', handleWheel)
+    renderer.domElement.removeEventListener('contextmenu', handleContextMenu)
   }
-  window.removeEventListener('mousemove', handleMouseMove)
-  window.removeEventListener('mouseup', handleMouseUp)
 
   resizeObserver?.disconnect()
   resizeObserver = null
