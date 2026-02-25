@@ -120,6 +120,7 @@ export const blocks = {
       bottom: 'dirt',
       side: 'grass_block_side_texture',
     },
+    mixColor: 0x7FBF3F,
   },
   dirt: {
     id: BLOCK_IDS.DIRT,
@@ -179,6 +180,7 @@ export const blocks = {
     textureKeys: {
       all: 'treeLeaves_Texture',
     },
+    mixColor: 0x5E9C45,
     alphaTest: 0.5,
     transparent: true,
     // 动画配置：风动效果
@@ -213,6 +215,7 @@ export const blocks = {
     textureKeys: {
       all: 'birchLeaves_Texture',
     },
+    mixColor: 0x77AD5D,
     alphaTest: 0.5,
     transparent: true,
     // 动画配置：风动效果
@@ -238,6 +241,7 @@ export const blocks = {
     textureKeys: {
       all: 'cherryLeaves_Texture',
     },
+    mixColor: 0xD9B7C8,
     alphaTest: 0.5,
     transparent: true,
     // 动画配置：风动效果
@@ -467,6 +471,16 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     blockType.depthWrite = false
   }
 
+  if (hintSource.includes('leaves')) {
+    blockType.mixColor = 0x5E9C45
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.transparent = true
+  }
+
+  if (hintSource.includes('grass_block') || hintSource.includes('grass')) {
+    blockType.mixColor = blockType.mixColor ?? 0x7FBF3F
+  }
+
   const key = `dynamicBedrock_${dynamicIndex}`
   blocks[key] = blockType
   dynamicBlockBySignature.set(signature, blockType)
@@ -650,6 +664,8 @@ export function createMaterials(blockType, textureItems) {
     materialOptions.alphaTest = blockType.alphaTest
   if (blockType.transparent !== undefined)
     materialOptions.transparent = blockType.transparent
+  if (blockType.mixColor !== undefined)
+    materialOptions.color = new THREE.Color(blockType.mixColor)
   if (blockType.opacity !== undefined)
     materialOptions.opacity = blockType.opacity
   if (blockType.depthWrite !== undefined)
