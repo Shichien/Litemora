@@ -178,6 +178,18 @@ function buildBedrockBaseNameCandidates(normalizedName) {
     if (source === 'nether_bricks') {
       candidates.push('nether_brick')
     }
+    if (source.endsWith('_brick')) {
+      candidates.push(`${source}s`)
+    }
+    if (source.endsWith('_bricks')) {
+      candidates.push(source.slice(0, -1))
+    }
+    if (source.endsWith('_tile')) {
+      candidates.push(`${source}s`)
+    }
+    if (source.endsWith('_tiles')) {
+      candidates.push(source.slice(0, -1))
+    }
   }
 
   return [...new Set(candidates)]
@@ -246,15 +258,15 @@ function resolveProjectBlock(blockName) {
     }
   }
 
+  const bedrockTextureName = resolveBedrockTextureName(normalizedName)
+  if (bedrockTextureName) {
+    return { id: 1000, source: 'bedrock-dynamic', textureName: bedrockTextureName }
+  }
+
   for (const rule of KEYWORD_MAPPING) {
     if (rule.keywords.some(keyword => normalizedName.includes(keyword))) {
       return { id: rule.id, source: 'keyword' }
     }
-  }
-
-  const bedrockTextureName = resolveBedrockTextureName(normalizedName)
-  if (bedrockTextureName) {
-    return { id: 1000, source: 'bedrock-dynamic', textureName: bedrockTextureName }
   }
 
   return { id: BLOCK_IDS.STONE, source: 'default-stone' }

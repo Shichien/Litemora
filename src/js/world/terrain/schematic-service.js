@@ -435,14 +435,6 @@ class SchematicService {
       }
     }
 
-    for (const rule of KEYWORD_MAPPING) {
-      if (rule.keywords.some(keyword => normalizedName.includes(keyword))) {
-        const result = { id: rule.id, source: 'keyword' }
-        this._blockResolveCache.set(cacheKey, result)
-        return result
-      }
-    }
-
     const bedrockTextureName = this._resolveBedrockTextureName(normalizedName)
     if (bedrockTextureName) {
       const dynamicBlock = ensureDynamicBlockType(bedrockTextureName, {
@@ -455,6 +447,14 @@ class SchematicService {
           source: 'bedrock-dynamic',
           textureName: bedrockTextureName,
         }
+        this._blockResolveCache.set(cacheKey, result)
+        return result
+      }
+    }
+
+    for (const rule of KEYWORD_MAPPING) {
+      if (rule.keywords.some(keyword => normalizedName.includes(keyword))) {
+        const result = { id: rule.id, source: 'keyword' }
         this._blockResolveCache.set(cacheKey, result)
         return result
       }
@@ -572,6 +572,18 @@ class SchematicService {
       }
       if (source === 'nether_bricks') {
         candidates.push('nether_brick')
+      }
+      if (source.endsWith('_brick')) {
+        candidates.push(`${source}s`)
+      }
+      if (source.endsWith('_bricks')) {
+        candidates.push(source.slice(0, -1))
+      }
+      if (source.endsWith('_tile')) {
+        candidates.push(`${source}s`)
+      }
+      if (source.endsWith('_tiles')) {
+        candidates.push(source.slice(0, -1))
       }
     }
 
