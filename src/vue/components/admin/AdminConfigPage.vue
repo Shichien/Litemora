@@ -10,6 +10,7 @@ import {
 } from '@three/world/backend-world-config.js'
 import schematicService from '@three/world/terrain/schematic-service.js'
 import JsonTreeNode from '@ui-components/admin/JsonTreeNode.vue'
+import SchematicPreviewCanvas from '@ui-components/admin/SchematicPreviewCanvas.vue'
 
 import { computed, onMounted, ref } from 'vue'
 
@@ -28,7 +29,9 @@ const previewMode = ref('code')
 // 原理图导入状态
 const schematicFile = ref(null)
 const schematicPreview = ref(null)
+const schematicModelData = ref(null)
 const isParsingSchematic = ref(false)
+const isBuildingSchematicPreview = ref(false)
 const schematicOffsetX = ref(0)
 const schematicOffsetY = ref(0)
 const schematicOffsetZ = ref(0)
@@ -189,13 +192,17 @@ async function handleSchematicFileSelect(event) {
     const schematic = await schematicService.parseFile(file)
     schematicFile.value = file.name
     schematicPreview.value = schematicService.getPreview()
+    isBuildingSchematicPreview.value = true
+    schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 12000 })
     setStatus(`已加载原理图: ${schematic.name} (${schematicPreview.value.blockCount} 方块)`, 'success')
   }
   catch (error) {
     schematicPreview.value = null
+    schematicModelData.value = null
     setStatus(`解析失败: ${error.message}`, 'warning')
   }
   finally {
+    isBuildingSchematicPreview.value = false
     isParsingSchematic.value = false
   }
 }
@@ -203,6 +210,7 @@ async function handleSchematicFileSelect(event) {
 function clearSchematicFile() {
   schematicFile.value = null
   schematicPreview.value = null
+  schematicModelData.value = null
   schematicOffsetX.value = 0
   schematicOffsetY.value = 0
   schematicOffsetZ.value = 0
@@ -466,6 +474,16 @@ onMounted(async () => {
               <label>偏移 X <input v-model.number="schematicOffsetX" type="number"></label>
               <label>偏移 Y <input v-model.number="schematicOffsetY" type="number"></label>
               <label>偏移 Z <input v-model.number="schematicOffsetZ" type="number"></label>
+            </div>
+
+            <div class="setting-row schematic-preview-row">
+              <SchematicPreviewCanvas
+                v-if="schematicModelData"
+                :model-data="schematicModelData"
+              />
+              <div v-else class="schematic-preview-placeholder">
+                {{ isBuildingSchematicPreview ? '正在生成预览模型...' : '暂无预览模型' }}
+              </div>
             </div>
 
             <div class="preview-actions-right" style="margin-top: 12px;">
@@ -1014,6 +1032,22 @@ input::placeholder {
 
 .preview-info strong {
   color: #5ecb95;
+}
+
+.schematic-preview-row {
+  margin-top: 12px;
+}
+
+.schematic-preview-placeholder {
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  width: 100%;
 }
 
 input[type='file'] {
