@@ -20,6 +20,7 @@ const keys = reactive({
   q: false,
   r: false,
   f: false,
+  y: false,
   flyMode: false,
 })
 
@@ -45,6 +46,10 @@ function handleFlightModeChanged(payload) {
   keys.f = keys.flyMode
 }
 
+function handleCameraPerspectiveChanged(payload) {
+  keys.y = !!payload?.firstPerson
+}
+
 /**
  * Reset all keys (prevent stuck keys on blur or chat open)
  */
@@ -65,6 +70,7 @@ function resetKeys() {
 onMounted(() => {
   emitter.on('input:update', handleInputUpdate)
   emitter.on('hud:flight-mode-changed', handleFlightModeChanged)
+  emitter.on('hud:camera-perspective-changed', handleCameraPerspectiveChanged)
   emitter.on('ui:chat-opened', resetKeys)
   window.addEventListener('blur', resetKeys)
 })
@@ -72,6 +78,7 @@ onMounted(() => {
 onUnmounted(() => {
   emitter.off('input:update', handleInputUpdate)
   emitter.off('hud:flight-mode-changed', handleFlightModeChanged)
+  emitter.off('hud:camera-perspective-changed', handleCameraPerspectiveChanged)
   emitter.off('ui:chat-opened', resetKeys)
   window.removeEventListener('blur', resetKeys)
 })
@@ -92,6 +99,9 @@ onUnmounted(() => {
       </div>
       <div class="key-cap" :class="{ pressed: keys.f }">
         F
+      </div>
+      <div class="key-cap" :class="{ pressed: keys.y }">
+        Y
       </div>
     </div>
     <div class="key-row">

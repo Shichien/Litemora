@@ -24,6 +24,7 @@ export default class Camera {
 
     // 视角模式枚举（仅保留第三人称与鸟瞰）
     this.cameraModes = {
+      FIRST_PERSON: 'first-person',
       THIRD_PERSON: 'third-person',
       BIRD_PERSPECTIVE: 'bird-perspective',
     }
@@ -64,9 +65,17 @@ export default class Camera {
     emitter.on('input:toggle_camera_side', () => {
       this.toggleSide()
     })
+    emitter.on('input:toggle_perspective', () => {
+      if (this.currentMode === this.cameraModes.FIRST_PERSON) {
+        this.switchMode(this.cameraModes.THIRD_PERSON)
+      }
+      else {
+        this.switchMode(this.cameraModes.FIRST_PERSON)
+      }
+    })
     emitter.on('terrain:data-ready', () => {
       this._terrainInfo = this._getTerrainInfo()
-      if (this.currentMode !== this.cameraModes.THIRD_PERSON) {
+      if (this.currentMode === this.cameraModes.BIRD_PERSPECTIVE) {
         this._applyTopViewPlacement()
       }
     })
@@ -157,7 +166,7 @@ export default class Camera {
     // 重新挂载控制器到当前相机
     this.setControls()
 
-    if (mode === this.cameraModes.THIRD_PERSON) {
+    if (mode === this.cameraModes.FIRST_PERSON || mode === this.cameraModes.THIRD_PERSON) {
       // 第三人称跟随：禁用 Orbit，使用自定义逻辑
       this.orbitControls.enabled = false
       this.trackballControls.enabled = false
@@ -177,6 +186,10 @@ export default class Camera {
     this._createCameraHelper()
 
     this._notifyRenderer()
+    emitter.emit('hud:camera-perspective-changed', {
+      mode,
+      firstPerson: mode === this.cameraModes.FIRST_PERSON,
+    })
   }
 
   /**
@@ -260,7 +273,13 @@ export default class Camera {
   }
 
   _translateMode(mode) {
-    return mode === this.cameraModes.THIRD_PERSON ? '第三人称' : '鸟瞰透视'
+    if (mode === this.cameraModes.FIRST_PERSON) {
+      return '第一人称'
+    }
+    if (mode === this.cameraModes.BIRD_PERSPECTIVE) {
+      return '鸟瞰透视'
+    }
+    return '第三人称'
   }
 
   // #region
@@ -280,6 +299,12 @@ export default class Camera {
       this._modeBinding = modeFolder.addBinding(this._modeLabel, 'current', {
         label: '当前模式',
         readonly: true,
+      })
+
+      modeFolder.addButton({
+        title: '第一人称',
+      }).on('click', () => {
+        this.switchMode(this.cameraModes.FIRST_PERSON)
       })
 
       modeFolder.addButton({
@@ -372,6 +397,31 @@ export default class Camera {
   }
 
   update() {
+    if (this.currentMode === this.cameraModes.FIRST_PERSON) {
+      if (!this.rig || !this.rig.target) {
+        return
+      }
+
+      const output = this.rig.update()
+      if (!output) {
+        return
+      }
+
+      const playerPos = this.rig.target.getPosition()
+      this.instance.position.set(playerPos.x, playerPos.y + 1.62, playerPos.z)
+      this.instance.lookAt(output.targetPos)
+
+      if (this.instance.fov !== output.fov) {
+        this.instance.fov = output.fov
+        this.instance.updateProjectionMatrix()
+      }
+
+      this.orbitControls.target.copy(output.targetPos)
+      this.trackballControls.target.copy(output.targetPos)
+      this.trackballControls.update()
+      return
+    }
+
     // 鸟瞰透视：Orbit 控制视角
     if (this.currentMode === this.cameraModes.BIRD_PERSPECTIVE) {
       this.orbitControls.update()
