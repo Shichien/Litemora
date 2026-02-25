@@ -199,10 +199,17 @@ function buildPreviewMesh() {
     previewGroup.add(mesh)
   })
 
-  orbitState.distance = Math.max(24, Math.min(360, maxSize * 1.3))
+  const previewBounds = new THREE.Box3().setFromObject(previewGroup)
+  const previewCenter = new THREE.Vector3()
+  const previewSize = new THREE.Vector3()
+  previewBounds.getCenter(previewCenter)
+  previewBounds.getSize(previewSize)
+
+  const maxPreviewSize = Math.max(previewSize.x, previewSize.y, previewSize.z, maxSize)
+  orbitState.distance = Math.max(24, Math.min(360, maxPreviewSize * 1.35))
   orbitState.yaw = 0.9
   orbitState.pitch = 0.5
-  orbitTarget.set(0, 0, 0)
+  orbitTarget.copy(previewCenter)
   updateCameraPosition()
 
   scene.add(previewGroup)
@@ -421,6 +428,9 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   overflow: hidden;
   background: rgba(15, 23, 42, 0.75);
+  width: 50%;
+  min-width: 320px;
+  margin: 0 auto;
 }
 
 .schematic-canvas-toolbar {
@@ -441,6 +451,13 @@ onBeforeUnmount(() => {
 
 .schematic-canvas {
   width: 100%;
-  height: 640px;
+  height: 320px;
+}
+
+@media (max-width: 980px) {
+  .schematic-canvas-panel {
+    width: 100%;
+    min-width: 0;
+  }
 }
 </style>

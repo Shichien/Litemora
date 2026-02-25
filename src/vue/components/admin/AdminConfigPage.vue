@@ -564,6 +564,29 @@ onBeforeUnmount(() => {
               </div>
             </label>
           </div>
+          <div class="setting-row grid-three">
+            <label>
+              阳光强度
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.environment.sunIntensity" min="0" max="5" step="0.05" type="range">
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.sunIntensity, 5, 2) }}</span>
+              </div>
+            </label>
+            <label>
+              环境光
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.environment.ambientIntensity" min="0" max="3" step="0.05" type="range">
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.ambientIntensity, 3, 2) }}</span>
+              </div>
+            </label>
+            <label>
+              雾浓度
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.environment.fogDensity" min="0" max="0.05" step="0.001" type="range">
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.fogDensity, 0.05, 3) }}</span>
+              </div>
+            </label>
+          </div>
           <div class="setting-row">
             <span class="row-label">相机风格</span>
             <div class="option-group">
@@ -592,10 +615,6 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-
-          <div class="subsection-title">
-            环境设置
-          </div>
           <div class="setting-row">
             <span class="row-label">天空</span>
             <div class="option-group">
@@ -609,29 +628,6 @@ onBeforeUnmount(() => {
                 {{ option }}
               </button>
             </div>
-          </div>
-          <div class="setting-row grid-three">
-            <label>
-              阳光强度
-              <div class="range-wrap">
-                <input v-model.number="configDraft.settings.environment.sunIntensity" min="0" max="5" step="0.05" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.sunIntensity, 5, 2) }}</span>
-              </div>
-            </label>
-            <label>
-              环境光
-              <div class="range-wrap">
-                <input v-model.number="configDraft.settings.environment.ambientIntensity" min="0" max="3" step="0.05" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.ambientIntensity, 3, 2) }}</span>
-              </div>
-            </label>
-            <label>
-              雾浓度
-              <div class="range-wrap">
-                <input v-model.number="configDraft.settings.environment.fogDensity" min="0" max="0.05" step="0.001" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.fogDensity, 0.05, 3) }}</span>
-              </div>
-            </label>
           </div>
 
           <div class="subsection-title">
@@ -1334,8 +1330,10 @@ input::placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 640px;
-  width: 100%;
+  min-height: 320px;
+  width: 50%;
+  min-width: 320px;
+  margin: 0 auto;
 }
 
 .schematic-console {
