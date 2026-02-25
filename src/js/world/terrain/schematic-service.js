@@ -408,8 +408,7 @@ class SchematicService {
         || this._resolveTextureName(normalizedName)
 
       if (trapdoorTextureName) {
-        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
-        const geometryType = trapdoorGeometryTypeFromProperties(mappedProperties)
+        const geometryType = trapdoorGeometryTypeFromProperties(properties)
         const trapdoorBlock = ensureDynamicBlockType(trapdoorTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -430,8 +429,7 @@ class SchematicService {
     if (isIronBarsBlockName(normalizedName)) {
       const barsTextureName = this._resolveTextureName(normalizedName)
       if (barsTextureName) {
-        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
-        const geometryType = barsGeometryTypeFromProperties(mappedProperties)
+        const geometryType = barsGeometryTypeFromProperties(properties)
         const barsBlock = ensureDynamicBlockType(barsTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -456,8 +454,7 @@ class SchematicService {
         || this._resolveTextureName(normalizedName)
 
       if (wallTextureName) {
-        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
-        const geometryType = wallGeometryTypeFromProperties(mappedProperties)
+        const geometryType = wallGeometryTypeFromProperties(properties)
         const wallBlock = ensureDynamicBlockType(wallTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -537,47 +534,12 @@ class SchematicService {
     return variantString(value)
   }
 
-  _mapHorizontalFacingForWorld(facing) {
-    if (facing === 'east') {
-      return 'west'
-    }
-    if (facing === 'west') {
-      return 'east'
-    }
-    return facing
-  }
-
-  _mapStairShapeForWorld(shape) {
-    if (shape === 'inner_left') {
-      return 'inner_right'
-    }
-    if (shape === 'inner_right') {
-      return 'inner_left'
-    }
-    if (shape === 'outer_left') {
-      return 'outer_right'
-    }
-    if (shape === 'outer_right') {
-      return 'outer_left'
-    }
-    return shape
-  }
-
-  _mapHorizontalPropertiesForWorld(properties = {}) {
-    return {
-      ...properties,
-      facing: this._mapHorizontalFacingForWorld(variantString(properties?.facing)),
-      east: properties?.west,
-      west: properties?.east,
-    }
-  }
-
   _normalizeFacing(value) {
-    return this._mapHorizontalFacingForWorld(normalizeFacing(value))
+    return normalizeFacing(value)
   }
 
   _normalizeStairShape(value) {
-    return this._mapStairShapeForWorld(normalizeStairShape(value))
+    return normalizeStairShape(value)
   }
 
   _stairGeometryTypeFromProperties(properties = {}) {
