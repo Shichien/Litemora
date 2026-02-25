@@ -435,6 +435,89 @@ class SchematicService {
       }
     }
 
+    if (normalizedName.endsWith('_trapdoor')) {
+      const trapdoorBaseName = normalizedName.replace(/_trapdoor$/u, '')
+      const trapdoorTextureName = this._resolveBedrockTextureName(trapdoorBaseName)
+        || this._resolveBedrockTextureName(`${trapdoorBaseName}_trapdoor`)
+        || this._resolveBedrockTextureName(normalizedName)
+
+      if (trapdoorTextureName) {
+        const facing = this._normalizeFacing(properties?.facing)
+        const half = this._normalizeVariantString(properties?.half) === 'top' ? 'top' : 'bottom'
+        const open = this._normalizeBoolean(properties?.open)
+        const geometryType = `trapdoor_${half}_${open ? 'open' : 'closed'}_${facing}`
+        const trapdoorBlock = ensureDynamicBlockType(trapdoorTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (trapdoorBlock?.id) {
+          const result = {
+            id: trapdoorBlock.id,
+            source: 'bedrock-dynamic',
+            textureName: trapdoorTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (normalizedName === 'iron_bars') {
+      const barsTextureName = this._resolveBedrockTextureName(normalizedName)
+      if (barsTextureName) {
+        const north = this._normalizeBoolean(properties?.north)
+        const east = this._normalizeBoolean(properties?.east)
+        const south = this._normalizeBoolean(properties?.south)
+        const west = this._normalizeBoolean(properties?.west)
+        const geometryType = `bars_${north ? 1 : 0}${east ? 1 : 0}${south ? 1 : 0}${west ? 1 : 0}`
+        const barsBlock = ensureDynamicBlockType(barsTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (barsBlock?.id) {
+          const result = {
+            id: barsBlock.id,
+            source: 'bedrock-dynamic',
+            textureName: barsTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (normalizedName.endsWith('_wall')) {
+      const wallBaseName = normalizedName.replace(/_wall$/u, '')
+      const wallTextureName = this._resolveBedrockTextureName(wallBaseName)
+        || this._resolveBedrockTextureName(`${wallBaseName}_wall`)
+        || this._resolveBedrockTextureName(normalizedName)
+
+      if (wallTextureName) {
+        const up = this._normalizeBoolean(properties?.up)
+        const north = this._normalizeWallSide(properties?.north)
+        const east = this._normalizeWallSide(properties?.east)
+        const south = this._normalizeWallSide(properties?.south)
+        const west = this._normalizeWallSide(properties?.west)
+        const geometryType = `wall_${up ? 1 : 0}_${north}${east}${south}${west}`
+        const wallBlock = ensureDynamicBlockType(wallTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (wallBlock?.id) {
+          const result = {
+            id: wallBlock.id,
+            source: 'bedrock-dynamic',
+            textureName: wallTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
     const bedrockTextureName = this._resolveBedrockTextureName(normalizedName)
     if (bedrockTextureName) {
       const dynamicBlock = ensureDynamicBlockType(bedrockTextureName, {
@@ -491,12 +574,34 @@ class SchematicService {
     return 'straight'
   }
 
+  _normalizeBoolean(value) {
+    const normalized = this._normalizeVariantString(value)
+    return normalized === 'true' || normalized === '1' || normalized === 'yes'
+  }
+
+  _normalizeWallSide(value) {
+    const normalized = this._normalizeVariantString(value)
+    if (normalized === 'tall') {
+      return 2
+    }
+    if (normalized === 'low' || normalized === 'true' || normalized === '1') {
+      return 1
+    }
+    return 0
+  }
+
   _buildBlockVariantKey(properties = {}) {
     const type = this._normalizeVariantString(properties?.type || properties?.slab_type)
     const half = this._normalizeVariantString(properties?.half)
     const facing = this._normalizeFacing(properties?.facing)
     const shape = this._normalizeVariantString(properties?.shape)
-    return `type=${type}|half=${half}|facing=${facing}|shape=${shape}`
+    const open = this._normalizeBoolean(properties?.open) ? '1' : '0'
+    const up = this._normalizeBoolean(properties?.up) ? '1' : '0'
+    const north = this._normalizeWallSide(properties?.north)
+    const east = this._normalizeWallSide(properties?.east)
+    const south = this._normalizeWallSide(properties?.south)
+    const west = this._normalizeWallSide(properties?.west)
+    return `type=${type}|half=${half}|facing=${facing}|shape=${shape}|open=${open}|up=${up}|n=${north}|e=${east}|s=${south}|w=${west}`
   }
 
   _resolveBedrockTextureName(normalizedName) {
@@ -892,6 +997,12 @@ class SchematicService {
     }
 
     const touchedChunkKeys = new Set()
+    const textureUsage = new Map()
+    const shapeUsage = {
+      stairs: 0,
+      slabs: 0,
+      walls: 0,
+    }
 
     reportProgress('prepare', {
       replaceWorld,
@@ -1008,6 +1119,26 @@ class SchematicService {
               }
               stats.placed++
 
+              const normalizedName = blockName.replace('minecraft:', '')
+              if (normalizedName.endsWith('_stairs')) {
+                shapeUsage.stairs++
+              }
+              else if (normalizedName.endsWith('_slab')) {
+                shapeUsage.slabs++
+              }
+              else if (normalizedName.endsWith('_wall')) {
+                shapeUsage.walls++
+              }
+
+              const blockType = getBlockTypeById(projectBlockId)
+              const textureName = projectBlock.textureName
+                || blockType?.textureKeys?.all
+                || blockType?.textureKeys?.top
+                || blockType?.textureKeys?.side
+              if (textureName) {
+                textureUsage.set(textureName, (textureUsage.get(textureName) || 0) + 1)
+              }
+
               chunk.container.setBlockId(localX, worldY, localZ, projectBlockId)
               if (persistModifications) {
                 chunkManager.persistence.recordChunkLocalModification(
@@ -1074,12 +1205,22 @@ class SchematicService {
       reportProgress('done', {
         touchedChunks: stats.touchedChunks,
         skipped: stats.skipped,
+        importedShapes: shapeUsage,
       })
+
+      const topTextures = [...textureUsage.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([name, count]) => ({ name, count }))
 
       return {
         status: 'applied',
         totalBlocks: totalSolidBlocks,
         offset: { x: offsetX, y: offsetY, z: offsetZ },
+        importDiagnostics: {
+          shapeUsage,
+          topTextures,
+        },
         ...stats,
       }
     }

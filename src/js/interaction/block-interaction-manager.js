@@ -112,7 +112,12 @@ export default class BlockInteractionManager {
     const targetZ = worldBlock.z + nz
 
     // Use selected block from Hotbar and resolve smart variants for slabs/stairs
-    const blockToPlace = this._resolvePlacementBlockId(this._selectedBlockId, target, { nx, ny, nz })
+    const blockToPlace = this._resolvePlacementBlockId(
+      this._selectedBlockId,
+      target,
+      { nx, ny, nz },
+      { x: targetX, y: targetY, z: targetZ },
+    )
     if (!blockToPlace) {
       return
     }
@@ -122,6 +127,11 @@ export default class BlockInteractionManager {
     if (this.chunkManager) {
       this.chunkManager.addBlockWorld(targetX, targetY, targetZ, blockToPlace)
 
+      const placedBlockType = getBlockTypeById(blockToPlace)
+      if (this._isStairBlockType(placedBlockType)) {
+        this._refreshConnectedStairs(targetX, targetY, targetZ)
+      }
+
       // Consume one item from Hotbar
       emitter.emit('hud:consume-selected-item')
 
@@ -130,7 +140,7 @@ export default class BlockInteractionManager {
     }
   }
 
-  _resolvePlacementBlockId(selectedBlockId, target, normal) {
+  _resolvePlacementBlockId(selectedBlockId, target, normal, placementPosition = null) {
     const blockType = getBlockTypeById(selectedBlockId)
     if (!blockType) {
       return selectedBlockId
@@ -164,11 +174,174 @@ export default class BlockInteractionManager {
     }
 
     const facing = this._resolvePlacementFacing()
+    const shape = placementPosition
+      ? this._resolveStairShapeForPosition(placementPosition, half, facing, textureName)
+      : 'straight'
     const stairBlock = ensureDynamicBlockType(textureName, {
       blockName: blockName || 'dynamic_stairs',
-      geometryType: `stair_${half}_${facing}_straight`,
+      geometryType: `stair_${half}_${facing}_${shape}`,
     })
     return stairBlock?.id || selectedBlockId
+  }
+
+  _isStairBlockType(blockType) {
+    if (!blockType) {
+      return false
+    }
+    const geometryType = blockType.geometryType || ''
+    return geometryType.startsWith('stair_') || blockType.name?.endsWith?.('_stairs')
+  }
+
+  _parseStairGeometryType(blockType) {
+    const geometryType = blockType?.geometryType || ''
+    const match = geometryType.match(/^stair_(top|bottom)_(north|south|east|west)(?:_(straight|inner_left|inner_right|outer_left|outer_right))?$/u)
+    if (!match) {
+      return null
+    }
+    return {
+      half: match[1],
+      facing: match[2],
+      shape: match[3] || 'straight',
+    }
+  }
+
+  _facingOffset(facing) {
+    const mapping = {
+      north: { x: 0, z: -1 },
+      south: { x: 0, z: 1 },
+      east: { x: 1, z: 0 },
+      west: { x: -1, z: 0 },
+    }
+    return mapping[facing] || mapping.north
+  }
+
+  _leftFacing(facing) {
+    const mapping = {
+      north: 'west',
+      west: 'south',
+      south: 'east',
+      east: 'north',
+    }
+    return mapping[facing] || 'west'
+  }
+
+  _rightFacing(facing) {
+    const mapping = {
+      north: 'east',
+      east: 'south',
+      south: 'west',
+      west: 'north',
+    }
+    return mapping[facing] || 'east'
+  }
+
+  _isPerpendicularFacing(a, b) {
+    const pair = `${a}:${b}`
+    return pair === 'north:east'
+      || pair === 'north:west'
+      || pair === 'south:east'
+      || pair === 'south:west'
+      || pair === 'east:north'
+      || pair === 'east:south'
+      || pair === 'west:north'
+      || pair === 'west:south'
+  }
+
+  _getStairInfoAt(x, y, z, expectedHalf = null, expectedTexture = null) {
+    if (!this.chunkManager) {
+      return null
+    }
+
+    const block = this.chunkManager.getBlockWorld(x, y, z)
+    const blockType = getBlockTypeById(block?.id)
+    if (!this._isStairBlockType(blockType)) {
+      return null
+    }
+
+    const parsed = this._parseStairGeometryType(blockType)
+    if (!parsed) {
+      return null
+    }
+
+    const textureName = blockType?.textureKeys?.all
+      || blockType?.textureKeys?.top
+      || blockType?.textureKeys?.side
+
+    if (expectedHalf && parsed.half !== expectedHalf) {
+      return null
+    }
+
+    if (expectedTexture && textureName && textureName !== expectedTexture) {
+      return null
+    }
+
+    return {
+      ...parsed,
+      textureName,
+      blockType,
+      id: block.id,
+    }
+  }
+
+  _resolveStairShapeForPosition(position, half, facing, textureName) {
+    const offset = this._facingOffset(facing)
+    const front = this._getStairInfoAt(position.x + offset.x, position.y, position.z + offset.z, half, textureName)
+    const back = this._getStairInfoAt(position.x - offset.x, position.y, position.z - offset.z, half, textureName)
+    const leftFacing = this._leftFacing(facing)
+    const rightFacing = this._rightFacing(facing)
+
+    if (front && this._isPerpendicularFacing(front.facing, facing)) {
+      if (front.facing === leftFacing) {
+        return 'outer_left'
+      }
+      if (front.facing === rightFacing) {
+        return 'outer_right'
+      }
+    }
+
+    if (back && this._isPerpendicularFacing(back.facing, facing)) {
+      if (back.facing === leftFacing) {
+        return 'inner_left'
+      }
+      if (back.facing === rightFacing) {
+        return 'inner_right'
+      }
+    }
+
+    return 'straight'
+  }
+
+  _refreshConnectedStairs(centerX, centerY, centerZ) {
+    const offsets = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: -1, z: 0 },
+      { x: 0, z: 1 },
+      { x: 0, z: -1 },
+    ]
+
+    offsets.forEach((offset) => {
+      const x = centerX + offset.x
+      const y = centerY
+      const z = centerZ + offset.z
+      const info = this._getStairInfoAt(x, y, z)
+      if (!info) {
+        return
+      }
+
+      const nextShape = this._resolveStairShapeForPosition({ x, y, z }, info.half, info.facing, info.textureName)
+      if (nextShape === info.shape) {
+        return
+      }
+
+      const nextBlock = ensureDynamicBlockType(info.textureName, {
+        blockName: info.blockType?.name || 'dynamic_stairs',
+        geometryType: `stair_${info.half}_${info.facing}_${nextShape}`,
+      })
+      if (nextBlock?.id && nextBlock.id !== info.id) {
+        this.chunkManager.addBlockWorld(x, y, z, nextBlock.id)
+      }
+    })
   }
 
   _resolvePlacementHalf(target, normal) {

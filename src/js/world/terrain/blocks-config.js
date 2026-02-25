@@ -752,6 +752,119 @@ const stairGeometries = {
   })
 })
 
+const trapdoorGeometryCache = new Map()
+const barsGeometryCache = new Map()
+const wallGeometryCache = new Map()
+
+function createTrapdoorGeometry({ half = 'bottom', facing = 'north', open = false } = {}) {
+  const thickness = 0.1875
+
+  if (!open) {
+    const geometry = new THREE.BoxGeometry(1, thickness, 1)
+    const y = half === 'top'
+      ? (0.5 - thickness / 2)
+      : (-0.5 + thickness / 2)
+    geometry.translate(0, y, 0)
+    return geometry
+  }
+
+  if (facing === 'east' || facing === 'west') {
+    const geometry = new THREE.BoxGeometry(thickness, 1, 1)
+    const x = facing === 'east'
+      ? (0.5 - thickness / 2)
+      : (-0.5 + thickness / 2)
+    geometry.translate(x, 0, 0)
+    return geometry
+  }
+
+  const geometry = new THREE.BoxGeometry(1, 1, thickness)
+  const z = facing === 'south'
+    ? (0.5 - thickness / 2)
+    : (-0.5 + thickness / 2)
+  geometry.translate(0, 0, z)
+  return geometry
+}
+
+function createIronBarsGeometry({ north = false, east = false, south = false, west = false } = {}) {
+  const pieces = []
+  const postThickness = 0.125
+  const armThickness = 0.125
+
+  pieces.push(new THREE.BoxGeometry(postThickness, 1, postThickness))
+
+  if (north) {
+    const g = new THREE.BoxGeometry(armThickness, 1, 0.5)
+    g.translate(0, 0, -0.25)
+    pieces.push(g)
+  }
+  if (south) {
+    const g = new THREE.BoxGeometry(armThickness, 1, 0.5)
+    g.translate(0, 0, 0.25)
+    pieces.push(g)
+  }
+  if (east) {
+    const g = new THREE.BoxGeometry(0.5, 1, armThickness)
+    g.translate(0.25, 0, 0)
+    pieces.push(g)
+  }
+  if (west) {
+    const g = new THREE.BoxGeometry(0.5, 1, armThickness)
+    g.translate(-0.25, 0, 0)
+    pieces.push(g)
+  }
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
+function createWallGeometry({ up = true, north = 0, east = 0, south = 0, west = 0 } = {}) {
+  const pieces = []
+  const postWidth = 0.5
+
+  const sideValues = [north, east, south, west]
+  const hasSide = sideValues.some(value => value > 0)
+  if (up || !hasSide) {
+    const postHeight = up ? 1 : 0.75
+    const post = new THREE.BoxGeometry(postWidth, postHeight, postWidth)
+    if (!up) {
+      post.translate(0, -0.125, 0)
+    }
+    pieces.push(post)
+  }
+
+  const addArmZ = (dir, level) => {
+    if (level <= 0) {
+      return
+    }
+    const height = level === 2 ? 1 : 0.8125
+    const y = level === 2 ? 0 : -0.09375
+    const arm = new THREE.BoxGeometry(0.25, height, 0.5)
+    arm.translate(0, y, dir === 'north' ? -0.25 : 0.25)
+    pieces.push(arm)
+  }
+
+  const addArmX = (dir, level) => {
+    if (level <= 0) {
+      return
+    }
+    const height = level === 2 ? 1 : 0.8125
+    const y = level === 2 ? 0 : -0.09375
+    const arm = new THREE.BoxGeometry(0.5, height, 0.25)
+    arm.translate(dir === 'west' ? -0.25 : 0.25, y, 0)
+    pieces.push(arm)
+  }
+
+  addArmZ('north', north)
+  addArmX('east', east)
+  addArmZ('south', south)
+  addArmX('west', west)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
 export function getGeometryForBlockType(blockType) {
   const geometryType = blockType?.geometryType || 'cube'
   if (geometryType === 'slab_bottom') {
@@ -763,6 +876,46 @@ export function getGeometryForBlockType(blockType) {
   if (stairGeometries[geometryType]) {
     return stairGeometries[geometryType]
   }
+
+  const trapdoorMatch = geometryType.match(/^trapdoor_(top|bottom)_(open|closed)_(north|south|east|west)$/u)
+  if (trapdoorMatch) {
+    if (!trapdoorGeometryCache.has(geometryType)) {
+      trapdoorGeometryCache.set(geometryType, createTrapdoorGeometry({
+        half: trapdoorMatch[1],
+        open: trapdoorMatch[2] === 'open',
+        facing: trapdoorMatch[3],
+      }))
+    }
+    return trapdoorGeometryCache.get(geometryType)
+  }
+
+  const barsMatch = geometryType.match(/^bars_([01])([01])([01])([01])$/u)
+  if (barsMatch) {
+    if (!barsGeometryCache.has(geometryType)) {
+      barsGeometryCache.set(geometryType, createIronBarsGeometry({
+        north: barsMatch[1] === '1',
+        east: barsMatch[2] === '1',
+        south: barsMatch[3] === '1',
+        west: barsMatch[4] === '1',
+      }))
+    }
+    return barsGeometryCache.get(geometryType)
+  }
+
+  const wallMatch = geometryType.match(/^wall_([01])_([0-2])([0-2])([0-2])([0-2])$/u)
+  if (wallMatch) {
+    if (!wallGeometryCache.has(geometryType)) {
+      wallGeometryCache.set(geometryType, createWallGeometry({
+        up: wallMatch[1] === '1',
+        north: Number(wallMatch[2]),
+        east: Number(wallMatch[3]),
+        south: Number(wallMatch[4]),
+        west: Number(wallMatch[5]),
+      }))
+    }
+    return wallGeometryCache.get(geometryType)
+  }
+
   return sharedGeometry
 }
 
