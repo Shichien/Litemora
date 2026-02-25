@@ -32,10 +32,12 @@ export default class BlockInteractionManager {
     // Bindings
     this._onToggleMode = this._onToggleMode.bind(this)
     this._onMouseDown = this._onMouseDown.bind(this)
+    this._onMiningComplete = this._onMiningComplete.bind(this)
 
     // Listeners
     emitter.on('input:toggle_block_edit_mode', this._onToggleMode)
     emitter.on('input:mouse_down', this._onMouseDown)
+    emitter.on('game:mining-complete', this._onMiningComplete)
 
     // Initialize state (Default to Remove/Mining mode)
     this._updateMode()
@@ -88,6 +90,16 @@ export default class BlockInteractionManager {
       return
 
     this._placeBlock(this.raycaster.current)
+  }
+
+  _onMiningComplete(payload = {}) {
+    const worldBlock = payload?.target?.worldBlock
+    if (!worldBlock) {
+      return
+    }
+
+    this._refreshConnectedStairs(worldBlock.x, worldBlock.y, worldBlock.z)
+    this._refreshConnectedThinBlocks(worldBlock.x, worldBlock.y, worldBlock.z)
   }
 
   _placeBlock(target) {
@@ -526,6 +538,7 @@ export default class BlockInteractionManager {
   destroy() {
     emitter.off('input:toggle_block_edit_mode', this._onToggleMode)
     emitter.off('input:mouse_down', this._onMouseDown)
+    emitter.off('game:mining-complete', this._onMiningComplete)
     emitter.off('hud:selected-block-update', this._onHotbarUpdate)
   }
 }
