@@ -17,6 +17,11 @@ export class PlayerMovementController {
 
     this.isGrounded = false
     this.isFlying = false
+    this.flightConfig = {
+      speedMultiplier: 2.4,
+      ignoreMiningSlowdown: true,
+      groundWalkAnimationWhenMoving: true,
+    }
 
     // 自研碰撞参数
     this.gravity = -9.81
@@ -83,6 +88,31 @@ export class PlayerMovementController {
     this.worldVelocity.set(0, 0, 0)
   }
 
+  shouldIgnoreMiningSlowdown() {
+    return this.isFlying && this.flightConfig.ignoreMiningSlowdown
+  }
+
+  shouldSimulateGroundWalk(inputState) {
+    return this.isFlying
+      && this.flightConfig.groundWalkAnimationWhenMoving
+      && this.isMoving(inputState)
+  }
+
+  setFlightConfig(config = {}) {
+    if (config.ignoreMiningSlowdown !== undefined) {
+      this.flightConfig.ignoreMiningSlowdown = !!config.ignoreMiningSlowdown
+    }
+    if (config.groundWalkAnimationWhenMoving !== undefined) {
+      this.flightConfig.groundWalkAnimationWhenMoving = !!config.groundWalkAnimationWhenMoving
+    }
+    if (config.speedMultiplier !== undefined) {
+      const speedMultiplier = Number(config.speedMultiplier)
+      if (Number.isFinite(speedMultiplier)) {
+        this.flightConfig.speedMultiplier = Math.max(0.5, Math.min(8, speedMultiplier))
+      }
+    }
+  }
+
   /**
    * 角色跳跃：依赖当前分支调用不同实现
    */
@@ -106,7 +136,7 @@ export class PlayerMovementController {
     const descend = inputState.shift || inputState.v ? 1 : 0
     const verticalInput = ascend - descend
 
-    let speed = this.config.speed.run * 1.8
+    let speed = this.config.speed.run * this.flightConfig.speedMultiplier
     if (isCombatActive) {
       speed *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
     }

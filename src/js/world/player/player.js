@@ -332,6 +332,14 @@ export default class Player {
   }
 
   /**
+   * 设置飞行行为参数
+   * @param {{ignoreMiningSlowdown?:boolean, groundWalkAnimationWhenMoving?:boolean, speedMultiplier?:number}} options
+   */
+  setFlightOptions(options = {}) {
+    this.movement.setFlightConfig(options)
+  }
+
+  /**
    * 注入额外地面采样器（例如后端上传模型）
    * @param {(x:number, z:number, originY?:number)=>number|null} sampler
    */
@@ -345,8 +353,12 @@ export default class Player {
     // Resolve Input (Conflict & Normalize)
     const { resolvedInput, weights } = resolveDirectionInput(this.inputState)
 
+    const bypassMiningLock = this.movement.shouldIgnoreMiningSlowdown?.() ?? false
+    const blockedByMining = this.isMining && !bypassMiningLock
+    const simulateGroundWalk = this.movement.shouldSimulateGroundWalk?.(resolvedInput) ?? false
+
     // 挖掘时强制清空方向输入与水平速度，确保立即停下
-    const effectiveInput = this.isMining
+    const effectiveInput = blockedByMining
       ? {
           forward: false,
           backward: false,
@@ -358,7 +370,7 @@ export default class Player {
         }
       : resolvedInput
 
-    if (this.isMining) {
+    if (blockedByMining) {
       this.movement.worldVelocity.x = 0
       this.movement.worldVelocity.z = 0
     }
@@ -379,11 +391,11 @@ export default class Player {
     // Prepare state for animation
     const playerState = {
       inputState: effectiveInput,
-      directionWeights: this.isMining ? { forward: 0, backward: 0, left: 0, right: 0 } : weights, // Pass normalized weights
-      isMoving: this.isMining ? false : this.movement.isMoving(effectiveInput),
-      isGrounded: this.movement.isGrounded,
+      directionWeights: blockedByMining ? { forward: 0, backward: 0, left: 0, right: 0 } : weights, // Pass normalized weights
+      isMoving: blockedByMining ? false : this.movement.isMoving(effectiveInput),
+      isGrounded: simulateGroundWalk ? true : this.movement.isGrounded,
       speedProfile: this.movement.getSpeedProfile(effectiveInput),
-      isMining: this.isMining,
+      isMining: blockedByMining,
     }
 
     // Update Animation

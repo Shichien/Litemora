@@ -16,7 +16,6 @@ import {
   saveAdminWorldConfig,
 } from '@three/world/backend-world-config.js'
 import schematicService from '@three/world/terrain/schematic-service.js'
-import JsonTreeNode from '@ui-components/admin/JsonTreeNode.vue'
 import SchematicPreviewCanvas from '@ui-components/admin/SchematicPreviewCanvas.vue'
 
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
@@ -35,7 +34,6 @@ const statusText = ref('')
 const statusType = ref('neutral')
 const isApplying = ref(false)
 const isSaving = ref(false)
-const previewMode = ref('code')
 
 // 原理图导入状态
 const schematicFile = ref(null)
@@ -65,14 +63,6 @@ const skyModeOptions = ['Image', 'HDR']
 
 const normalizedDraft = computed(() => {
   return normalizeBackendWorldConfig(configDraft.value)
-})
-
-const previewJson = computed(() => {
-  return JSON.stringify(normalizedDraft.value, null, 2)
-})
-
-const previewLines = computed(() => {
-  return previewJson.value.split('\n')
 })
 
 const normalizedSnapshot = computed(() => {
@@ -127,37 +117,6 @@ function markSaved(config) {
   lastSavedSnapshot.value = JSON.stringify(config)
 }
 
-function escapeHtml(value) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-}
-
-function highlightJsonLine(line) {
-  const escaped = escapeHtml(line)
-  const pattern = /("(?:\\u[a-fA-F\d]{4}|\\[^u]|[^\\"])*"\s*:?)|(\btrue\b|\bfalse\b)|(\bnull\b)|(-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)/g
-
-  return escaped.replace(pattern, (match, stringToken, booleanToken, nullToken, numberToken) => {
-    if (stringToken) {
-      if (stringToken.endsWith(':')) {
-        return `<span class=\"token-key\">${stringToken.slice(0, -1)}</span><span class=\"token-punc\">:</span>`
-      }
-      return `<span class=\"token-string\">${stringToken}</span>`
-    }
-    if (booleanToken) {
-      return `<span class=\"token-boolean\">${booleanToken}</span>`
-    }
-    if (nullToken) {
-      return `<span class=\"token-null\">${nullToken}</span>`
-    }
-    if (numberToken) {
-      return `<span class=\"token-number\">${numberToken}</span>`
-    }
-    return match
-  })
-}
-
 function backToGame() {
   window.location.hash = ''
 }
@@ -205,30 +164,14 @@ async function applyConfig() {
   const saved = saveAdminWorldConfig(configDraft.value)
   markSaved(saved)
   emitter.emit('backend:config-updated', saved)
-  setStatus('已保存并应用（不再强制传送玩家）', 'success')
+  setStatus('已保存并应用', 'success')
   isApplying.value = false
 }
 
 async function clearLocalConfig() {
   clearAdminWorldConfig()
   await loadCurrentConfig()
-  setStatus('已清空本地覆盖配置，回退到接口/默认值', 'warning')
-}
-
-async function copyJson() {
-  await navigator.clipboard.writeText(previewJson.value)
-  setStatus('JSON 已复制到剪贴板', 'neutral')
-}
-
-function downloadConfig() {
-  const blob = new Blob([previewJson.value], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'world-config.json'
-  link.click()
-  URL.revokeObjectURL(url)
-  setStatus('已导出 world-config.json', 'neutral')
+  setStatus('已清空本地配置，回退到默认值', 'warning')
 }
 
 async function handleSchematicFileSelect(event) {
@@ -504,6 +447,9 @@ onBeforeUnmount(() => {
         <button class="btn primary" :disabled="isApplying" @click="applyConfig">
           {{ isApplying ? '应用中...' : '保存并应用' }}
         </button>
+        <button class="btn danger" @click="clearLocalConfig">
+          清空覆盖
+        </button>
       </div>
 
       <div class="settings-panel">
@@ -513,6 +459,10 @@ onBeforeUnmount(() => {
             <label>Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
             <label>Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
             <label>Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
+          </div>
+          <div class="setting-row toggles">
+            <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
+            <label><input v-model="configDraft.player.flight.groundWalkAnimationWhenMoving" type="checkbox">飞行移动模拟地面行走动画</label>
           </div>
         </section>
 
@@ -577,32 +527,6 @@ onBeforeUnmount(() => {
         </section>
 
         <section class="setting-section">
-          <h3>场景模型</h3>
-          <div class="setting-row">
-            <label class="full">模型 URL <input v-model="configDraft.scene.modelUrl" placeholder="/models/xxx.glb" type="text"></label>
-          </div>
-          <div class="setting-row grid-three">
-            <label>位置 X <input v-model.number="configDraft.scene.position.x" step="0.1" type="number"></label>
-            <label>位置 Y <input v-model.number="configDraft.scene.position.y" step="0.1" type="number"></label>
-            <label>位置 Z <input v-model.number="configDraft.scene.position.z" step="0.1" type="number"></label>
-          </div>
-          <div class="setting-row grid-three">
-            <label>旋转 X <input v-model.number="configDraft.scene.rotation.x" step="0.01" type="number"></label>
-            <label>旋转 Y <input v-model.number="configDraft.scene.rotation.y" step="0.01" type="number"></label>
-            <label>旋转 Z <input v-model.number="configDraft.scene.rotation.z" step="0.01" type="number"></label>
-          </div>
-          <div class="setting-row grid-three">
-            <label>缩放 X <input v-model.number="configDraft.scene.scale.x" step="0.1" type="number"></label>
-            <label>缩放 Y <input v-model.number="configDraft.scene.scale.y" step="0.1" type="number"></label>
-            <label>缩放 Z <input v-model.number="configDraft.scene.scale.z" step="0.1" type="number"></label>
-          </div>
-          <div class="setting-row toggles">
-            <label><input v-model="configDraft.scene.castShadow" type="checkbox">投射阴影</label>
-            <label><input v-model="configDraft.scene.receiveShadow" type="checkbox">接收阴影</label>
-          </div>
-        </section>
-
-        <section class="setting-section">
           <h3>暂停菜单</h3>
           <div class="setting-row toggles">
             <label><input v-model="configDraft.ui.pauseMenu.showMainMenu" type="checkbox">显示主菜单按钮</label>
@@ -614,7 +538,6 @@ onBeforeUnmount(() => {
         <section class="setting-section">
           <h3>导入原理图</h3>
           <div class="setting-row">
-            <span class="row-label">选择 .litematic 文件</span>
             <input
               type="file"
               accept=".litematic"
@@ -688,10 +611,10 @@ onBeforeUnmount(() => {
         </section>
 
         <section class="setting-section">
-          <h3>创建世界（与开始界面一致）</h3>
+          <h3>创建世界</h3>
           <div class="setting-row">
             <label class="full">
-              Seed（留空随机）
+              Seed
               <input
                 type="text"
                 inputmode="numeric"
@@ -738,62 +661,6 @@ onBeforeUnmount(() => {
             <button class="btn primary" :disabled="isApplyingWorldGen" @click="applyAdminWorldGen">
               {{ isApplyingWorldGen ? '应用中...' : '创建/重置世界' }}
             </button>
-          </div>
-        </section>
-
-        <section class="setting-section">
-          <h3>JSON Preview</h3>
-          <div class="preview-actions">
-            <div class="option-group small">
-              <button class="option-btn" :class="{ active: previewMode === 'code' }" @click="previewMode = 'code'">
-                Code
-              </button>
-              <button class="option-btn" :class="{ active: previewMode === 'tree' }" @click="previewMode = 'tree'">
-                Tree
-              </button>
-              <button class="option-btn" :class="{ active: previewMode === 'both' }" @click="previewMode = 'both'">
-                Both
-              </button>
-            </div>
-            <div class="preview-actions-right">
-              <button class="btn" @click="copyJson">
-                复制 JSON
-              </button>
-              <button class="btn" @click="downloadConfig">
-                导出 JSON
-              </button>
-              <button class="btn danger" @click="clearLocalConfig">
-                清空覆盖
-              </button>
-            </div>
-          </div>
-
-          <div v-if="previewMode === 'code' || previewMode === 'both'" class="vscode-editor">
-            <div class="editor-titlebar">
-              <span class="dot red" />
-              <span class="dot yellow" />
-              <span class="dot green" />
-              <span class="file-name">world-config.json</span>
-            </div>
-            <div class="editor-body">
-              <div class="editor-gutter">
-                <span v-for="(line, index) in previewLines" :key="`line-number-${index}`">{{ index + 1 }}</span>
-              </div>
-              <pre class="editor-code"><code><span v-for="(line, index) in previewLines" :key="`line-code-${index}`" v-html="highlightJsonLine(line)" />
-+</code></pre>
-            </div>
-          </div>
-
-          <div v-if="previewMode === 'tree' || previewMode === 'both'" class="vscode-editor tree-viewer">
-            <div class="editor-titlebar">
-              <span class="dot red" />
-              <span class="dot yellow" />
-              <span class="dot green" />
-              <span class="file-name">world-config.tree</span>
-            </div>
-            <div class="tree-body">
-              <JsonTreeNode node-key="root" :value="normalizedDraft" :depth="0" />
-            </div>
           </div>
         </section>
       </div>
@@ -1011,6 +878,28 @@ onBeforeUnmount(() => {
   overflow: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) rgba(15, 23, 42, 0.65);
+}
+
+.settings-panel::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.settings-panel::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 999px;
+}
+
+.settings-panel::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+  border: 2px solid rgba(15, 23, 42, 0.65);
+}
+
+.settings-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.65);
 }
 
 .setting-section {
@@ -1030,6 +919,8 @@ onBeforeUnmount(() => {
   gap: 10px;
   margin-bottom: 10px;
   align-items: center;
+  width: 100%;
+  max-width: 100%;
 }
 
 .setting-row:last-child {
@@ -1039,6 +930,11 @@ onBeforeUnmount(() => {
 .grid-three {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+.grid-three > label {
+  min-width: 0;
 }
 
 .full {
@@ -1061,6 +957,25 @@ select {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
+  box-sizing: border-box;
+}
+
+input[type='number'],
+input[type='text'] {
+  width: min(100%, 260px);
+}
+
+label.full input[type='number'],
+label.full input[type='text'] {
+  width: 100%;
+}
+
+input[type='range'] {
+  width: min(100%, 320px);
+}
+
+input[type='checkbox'] {
+  width: auto;
 }
 
 input::placeholder {
@@ -1095,9 +1010,10 @@ input::placeholder {
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.08);
   color: #d1d5db;
-  padding: 7px 14px;
-  border-radius: 2px;
-  font-size: 26px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.2;
   cursor: pointer;
 }
 
@@ -1117,130 +1033,13 @@ input::placeholder {
   align-items: center;
   gap: 8px;
   margin-right: 16px;
-}
-
-.preview-actions {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 10px;
+  white-space: nowrap;
 }
 
 .preview-actions-right {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.vscode-editor {
-  border: 1px solid #1f2937;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #1e1e1e;
-}
-
-.editor-titlebar {
-  height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  background: #2d2d30;
-  border-bottom: 1px solid #3e3e42;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-}
-
-.dot.red {
-  background: #ff5f56;
-}
-
-.dot.yellow {
-  background: #ffbd2e;
-}
-
-.dot.green {
-  background: #27c93f;
-}
-
-.file-name {
-  margin-left: 8px;
-  font-size: 12px;
-  color: #c5c5c5;
-}
-
-.editor-body {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  max-height: 320px;
-  overflow: auto;
-}
-
-.editor-gutter {
-  display: flex;
-  flex-direction: column;
-  background: #252526;
-  border-right: 1px solid #3e3e42;
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 10px 10px 10px 12px;
-  user-select: none;
-  text-align: right;
-}
-
-.editor-code {
-  margin: 0;
-  padding: 10px 12px;
-  color: #d4d4d4;
-  font-size: 12px;
-  line-height: 1.5;
-  background: #1e1e1e;
-}
-
-.editor-code code {
-  font-family: Consolas, 'Courier New', monospace;
-  white-space: pre;
-}
-
-.editor-code :deep(.token-key) {
-  color: #9cdcfe;
-}
-
-.editor-code :deep(.token-string) {
-  color: #ce9178;
-}
-
-.editor-code :deep(.token-number) {
-  color: #b5cea8;
-}
-
-.editor-code :deep(.token-boolean) {
-  color: #569cd6;
-}
-
-.editor-code :deep(.token-null) {
-  color: #569cd6;
-}
-
-.editor-code :deep(.token-punc) {
-  color: #d4d4d4;
-}
-
-.tree-viewer {
-  margin-top: 10px;
-}
-
-.tree-body {
-  max-height: 320px;
-  overflow: auto;
-  padding: 12px;
-  background: #1e1e1e;
 }
 
 @media (max-width: 980px) {
@@ -1254,9 +1053,6 @@ input::placeholder {
     grid-template-columns: 1fr;
   }
 
-  .preview-actions {
-    flex-direction: column;
-  }
 }
 
 .schematic-preview {

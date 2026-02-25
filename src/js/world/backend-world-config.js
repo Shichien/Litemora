@@ -8,6 +8,10 @@ const ADMIN_WORLD_CONFIG_STORAGE_KEY = 'mc-admin-world-config'
 const DEFAULT_BACKEND_WORLD_CONFIG = {
   player: {
     spawnPoint: { x: 32, y: 20, z: 32 },
+    flight: {
+      ignoreMiningSlowdown: true,
+      groundWalkAnimationWhenMoving: true,
+    },
   },
   settings: {
     cameraPreset: 'default',
@@ -23,14 +27,6 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
       ambientIntensity: 0.75,
       fogDensity: 0.01,
     },
-  },
-  scene: {
-    modelUrl: '',
-    position: { x: 0, y: 0, z: 0 },
-    rotation: { x: 0, y: 0, z: 0 },
-    scale: { x: 1, y: 1, z: 1 },
-    castShadow: true,
-    receiveShadow: true,
   },
   ui: {
     pauseMenu: {
@@ -57,7 +53,6 @@ function clamp(value, min, max) {
 function mergeBackendConfig(raw = {}) {
   const player = raw.player || {}
   const settings = raw.settings || {}
-  const scene = raw.scene || {}
   const ui = raw.ui || {}
 
   return {
@@ -68,6 +63,12 @@ function mergeBackendConfig(raw = {}) {
         x: toNumber(player.spawnPoint?.x, DEFAULT_BACKEND_WORLD_CONFIG.player.spawnPoint.x),
         y: toNumber(player.spawnPoint?.y, DEFAULT_BACKEND_WORLD_CONFIG.player.spawnPoint.y),
         z: toNumber(player.spawnPoint?.z, DEFAULT_BACKEND_WORLD_CONFIG.player.spawnPoint.z),
+      },
+      flight: {
+        ignoreMiningSlowdown: player.flight?.ignoreMiningSlowdown
+          ?? DEFAULT_BACKEND_WORLD_CONFIG.player.flight.ignoreMiningSlowdown,
+        groundWalkAnimationWhenMoving: player.flight?.groundWalkAnimationWhenMoving
+          ?? DEFAULT_BACKEND_WORLD_CONFIG.player.flight.groundWalkAnimationWhenMoving,
       },
     },
     settings: {
@@ -97,27 +98,6 @@ function mergeBackendConfig(raw = {}) {
         ambientIntensity: toNumber(settings.environment?.ambientIntensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.ambientIntensity),
         fogDensity: toNumber(settings.environment?.fogDensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.fogDensity),
       },
-    },
-    scene: {
-      ...DEFAULT_BACKEND_WORLD_CONFIG.scene,
-      modelUrl: scene.modelUrl ?? DEFAULT_BACKEND_WORLD_CONFIG.scene.modelUrl,
-      position: {
-        x: toNumber(scene.position?.x, DEFAULT_BACKEND_WORLD_CONFIG.scene.position.x),
-        y: toNumber(scene.position?.y, DEFAULT_BACKEND_WORLD_CONFIG.scene.position.y),
-        z: toNumber(scene.position?.z, DEFAULT_BACKEND_WORLD_CONFIG.scene.position.z),
-      },
-      rotation: {
-        x: toNumber(scene.rotation?.x, DEFAULT_BACKEND_WORLD_CONFIG.scene.rotation.x),
-        y: toNumber(scene.rotation?.y, DEFAULT_BACKEND_WORLD_CONFIG.scene.rotation.y),
-        z: toNumber(scene.rotation?.z, DEFAULT_BACKEND_WORLD_CONFIG.scene.rotation.z),
-      },
-      scale: {
-        x: toNumber(scene.scale?.x, DEFAULT_BACKEND_WORLD_CONFIG.scene.scale.x),
-        y: toNumber(scene.scale?.y, DEFAULT_BACKEND_WORLD_CONFIG.scene.scale.y),
-        z: toNumber(scene.scale?.z, DEFAULT_BACKEND_WORLD_CONFIG.scene.scale.z),
-      },
-      castShadow: scene.castShadow ?? DEFAULT_BACKEND_WORLD_CONFIG.scene.castShadow,
-      receiveShadow: scene.receiveShadow ?? DEFAULT_BACKEND_WORLD_CONFIG.scene.receiveShadow,
     },
     ui: {
       ...DEFAULT_BACKEND_WORLD_CONFIG.ui,
