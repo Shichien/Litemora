@@ -170,6 +170,7 @@ class SchematicService {
         totalBlocks: Math.abs(size.x || 0) * Math.abs(size.y || 0) * Math.abs(size.z || 0),
         _decodedIndices: null,
         _paletteResolved: null,
+        _solidBlockCount: null,
       }
     })
 
@@ -259,6 +260,27 @@ class SchematicService {
     }
     region._paletteResolved = resolved
     return resolved
+  }
+
+  _countSolidBlocks(region) {
+    if (typeof region._solidBlockCount === 'number') {
+      return region._solidBlockCount
+    }
+
+    const blockIndices = this._getDecodedIndices(region)
+    const resolvedPalette = this._buildResolvedPalette(region)
+
+    let solidCount = 0
+    for (let index = 0; index < blockIndices.length; index++) {
+      const paletteIndex = blockIndices[index] ?? 0
+      const resolved = resolvedPalette[paletteIndex]
+      if (resolved?.id && resolved.id !== BLOCK_IDS.EMPTY) {
+        solidCount++
+      }
+    }
+
+    region._solidBlockCount = solidCount
+    return solidCount
   }
 
   _resolveProjectBlock(blockName) {
@@ -434,7 +456,7 @@ class SchematicService {
       author,
       size,
       regionCount,
-      blockCount: this._estimateBlockCount(regions),
+      blockCount: this._estimateSolidBlockCount(regions),
     }
   }
 
@@ -445,6 +467,12 @@ class SchematicService {
     return Object.values(regions).reduce((sum, region) => {
       const { x, y, z } = region.size
       return sum + (x * y * z)
+    }, 0)
+  }
+
+  _estimateSolidBlockCount(regions) {
+    return Object.values(regions).reduce((sum, region) => {
+      return sum + this._countSolidBlocks(region)
     }, 0)
   }
 
@@ -563,7 +591,7 @@ class SchematicService {
 
     return {
       status: 'applied',
-      totalBlocks: this._estimateBlockCount(schematic.regions),
+      totalBlocks: this._estimateSolidBlockCount(schematic.regions),
       offset: { x: offsetX, y: offsetY, z: offsetZ },
       ...stats,
     }
