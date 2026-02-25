@@ -41,3 +41,7 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Samples
+/bedrock-samples/
+/litematic/
