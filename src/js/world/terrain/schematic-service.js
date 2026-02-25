@@ -12,6 +12,17 @@ const MC_TO_PROJECT_MAPPING = {
   'minecraft:grass_block': BLOCK_IDS.GRASS,
   'minecraft:dirt': BLOCK_IDS.DIRT,
   'minecraft:stone': BLOCK_IDS.STONE,
+  'minecraft:smooth_stone': BLOCK_IDS.STONE,
+  'minecraft:andesite': BLOCK_IDS.GRAVEL,
+  'minecraft:polished_andesite': BLOCK_IDS.STONE,
+  'minecraft:diorite': BLOCK_IDS.SNOW,
+  'minecraft:polished_diorite': BLOCK_IDS.PACKED_ICE,
+  'minecraft:clay': BLOCK_IDS.TERRACOTTA,
+  'minecraft:polished_blackstone': BLOCK_IDS.TERRACOTTA,
+  'minecraft:polished_blackstone_bricks': BLOCK_IDS.TERRACOTTA,
+  'minecraft:cracked_polished_blackstone_bricks': BLOCK_IDS.GRAVEL,
+  'minecraft:ochre_froglight': BLOCK_IDS.SAND,
+  'minecraft:pearlescent_froglight': BLOCK_IDS.SNOW,
   'minecraft:coal_ore': BLOCK_IDS.COAL_ORE,
   'minecraft:iron_ore': BLOCK_IDS.IRON_ORE,
   'minecraft:oak_log': BLOCK_IDS.TREE_TRUNK,
@@ -30,6 +41,25 @@ const MC_TO_PROJECT_MAPPING = {
   'minecraft:cactus': BLOCK_IDS.CACTUS,
 }
 
+const KEYWORD_MAPPING = [
+  { keywords: ['coal_ore'], id: BLOCK_IDS.COAL_ORE },
+  { keywords: ['iron_ore'], id: BLOCK_IDS.IRON_ORE },
+  { keywords: ['red_sand'], id: BLOCK_IDS.RED_SAND },
+  { keywords: ['sand'], id: BLOCK_IDS.SAND },
+  { keywords: ['snow'], id: BLOCK_IDS.SNOW },
+  { keywords: ['packed_ice'], id: BLOCK_IDS.PACKED_ICE },
+  { keywords: ['ice'], id: BLOCK_IDS.ICE },
+  { keywords: ['gravel'], id: BLOCK_IDS.GRAVEL },
+  { keywords: ['terracotta', 'clay', 'mud_bricks'], id: BLOCK_IDS.TERRACOTTA },
+  { keywords: ['leaves'], id: BLOCK_IDS.TREE_LEAVES },
+  { keywords: ['birch_log'], id: BLOCK_IDS.BIRCH_TRUNK },
+  { keywords: ['cherry_log'], id: BLOCK_IDS.CHERRY_TRUNK },
+  { keywords: ['log', 'wood', 'stem', 'hyphae'], id: BLOCK_IDS.TREE_TRUNK },
+  { keywords: ['grass_block'], id: BLOCK_IDS.GRASS },
+  { keywords: ['dirt', 'podzol', 'coarse_dirt', 'mycelium'], id: BLOCK_IDS.DIRT },
+  { keywords: ['blackstone', 'deepslate', 'andesite', 'diorite', 'granite', 'cobblestone'], id: BLOCK_IDS.GRAVEL },
+]
+
 /**
  * Litematica 原理图服务
  * 解析 .litematic 文件并注入方块到地形
@@ -38,6 +68,7 @@ class SchematicService {
   constructor() {
     this.currentSchematic = null
     this.pako = null
+    this._blockResolveCache = new Map()
   }
 
   /**
@@ -137,6 +168,8 @@ class SchematicService {
         palette: this._parsePalette(palette),
         blockData: blockStates,
         totalBlocks: Math.abs(size.x || 0) * Math.abs(size.y || 0) * Math.abs(size.z || 0),
+        _decodedIndices: null,
+        _paletteResolved: null,
       }
     })
 
@@ -204,11 +237,152 @@ class SchematicService {
     return indices
   }
 
-  _resolveProjectBlockId(blockName) {
-    if (!blockName || blockName === 'minecraft:air') {
-      return BLOCK_IDS.EMPTY
+  _getDecodedIndices(region) {
+    if (region._decodedIndices) {
+      return region._decodedIndices
     }
-    return MC_TO_PROJECT_MAPPING[blockName] ?? BLOCK_IDS.STONE
+
+    const paletteSize = Object.keys(region.palette).length
+    region._decodedIndices = this._decodeBlockIndices(region.blockData, paletteSize, region.totalBlocks)
+    return region._decodedIndices
+  }
+
+  _buildResolvedPalette(region) {
+    if (region._paletteResolved) {
+      return region._paletteResolved
+    }
+
+    const resolved = {}
+    for (const [index, entry] of Object.entries(region.palette)) {
+      const blockName = entry?.name || 'minecraft:air'
+      resolved[index] = this._resolveProjectBlock(blockName)
+    }
+    region._paletteResolved = resolved
+    return resolved
+  }
+
+  _resolveProjectBlock(blockName) {
+    if (this._blockResolveCache.has(blockName)) {
+      return this._blockResolveCache.get(blockName)
+    }
+
+    if (!blockName || blockName === 'minecraft:air') {
+      const result = { id: BLOCK_IDS.EMPTY, source: 'air' }
+      this._blockResolveCache.set(blockName, result)
+      return result
+    }
+
+    const exact = MC_TO_PROJECT_MAPPING[blockName]
+    if (exact) {
+      const result = { id: exact, source: 'exact' }
+      this._blockResolveCache.set(blockName, result)
+      return result
+    }
+
+    const normalizedName = blockName.replace('minecraft:', '')
+    for (const rule of KEYWORD_MAPPING) {
+      if (rule.keywords.some(keyword => normalizedName.includes(keyword))) {
+        const result = { id: rule.id, source: 'keyword' }
+        this._blockResolveCache.set(blockName, result)
+        return result
+      }
+    }
+
+    const fallback = { id: BLOCK_IDS.STONE, source: 'default-stone' }
+    this._blockResolveCache.set(blockName, fallback)
+    return fallback
+  }
+
+  /**
+   * 构建原理图预览体素（采样）
+   * @param {{maxBlocks?:number}} options
+   * @returns {{blocks:Array<{x:number,y:number,z:number,id:number,name:string}>,bounds:{min:{x:number,y:number,z:number},max:{x:number,y:number,z:number}},totalSolidBlocks:number,sampled:boolean}} 预览模型数据
+   */
+  buildPreviewModel(options = {}) {
+    if (!this.currentSchematic) {
+      throw new Error('No schematic loaded')
+    }
+
+    const maxBlocks = Math.max(500, Number(options.maxBlocks) || 12000)
+    const sampledBlocks = []
+    let seenSolidBlocks = 0
+
+    const bounds = {
+      min: { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY },
+      max: { x: Number.NEGATIVE_INFINITY, y: Number.NEGATIVE_INFINITY, z: Number.NEGATIVE_INFINITY },
+    }
+
+    for (const region of Object.values(this.currentSchematic.regions)) {
+      const sizeX = Math.abs(region.size.x)
+      const sizeY = Math.abs(region.size.y)
+      const sizeZ = Math.abs(region.size.z)
+      const totalBlocks = sizeX * sizeY * sizeZ
+      if (totalBlocks <= 0) {
+        continue
+      }
+
+      const blockIndices = this._getDecodedIndices(region)
+      const resolvedPalette = this._buildResolvedPalette(region)
+
+      let linearIndex = 0
+      for (let y = 0; y < sizeY; y++) {
+        for (let z = 0; z < sizeZ; z++) {
+          for (let x = 0; x < sizeX; x++) {
+            const paletteIndex = blockIndices[linearIndex++] ?? 0
+            const paletteEntry = region.palette[paletteIndex]
+            const blockName = paletteEntry?.name || 'minecraft:air'
+            const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName)
+            const projectBlockId = projectBlock.id
+            if (projectBlockId === BLOCK_IDS.EMPTY) {
+              continue
+            }
+
+            const worldX = x + region.position.x
+            const worldY = y + region.position.y
+            const worldZ = z + region.position.z
+
+            bounds.min.x = Math.min(bounds.min.x, worldX)
+            bounds.min.y = Math.min(bounds.min.y, worldY)
+            bounds.min.z = Math.min(bounds.min.z, worldZ)
+            bounds.max.x = Math.max(bounds.max.x, worldX)
+            bounds.max.y = Math.max(bounds.max.y, worldY)
+            bounds.max.z = Math.max(bounds.max.z, worldZ)
+
+            seenSolidBlocks++
+
+            const candidate = {
+              x: worldX,
+              y: worldY,
+              z: worldZ,
+              id: projectBlockId,
+              name: blockName,
+            }
+
+            if (sampledBlocks.length < maxBlocks) {
+              sampledBlocks.push(candidate)
+              continue
+            }
+
+            const replaceIndex = Math.floor(Math.random() * seenSolidBlocks)
+            if (replaceIndex < maxBlocks) {
+              sampledBlocks[replaceIndex] = candidate
+            }
+          }
+        }
+      }
+    }
+
+    if (!Number.isFinite(bounds.min.x)) {
+      bounds.min = { x: 0, y: 0, z: 0 }
+      bounds.max = { x: 0, y: 0, z: 0 }
+    }
+
+    return {
+      blocks: sampledBlocks,
+      bounds,
+      totalSolidBlocks: seenSolidBlocks,
+      sampled: seenSolidBlocks > maxBlocks,
+    }
   }
 
   _ensureChunkReady(chunkManager, chunkX, chunkZ) {
@@ -297,6 +471,9 @@ class SchematicService {
       placed: 0,
       replaced: 0,
       skipped: 0,
+      mappedByExact: 0,
+      mappedByKeyword: 0,
+      mappedByDefaultStone: 0,
       unknownMappedToStone: 0,
       touchedChunks: 0,
     }
@@ -312,8 +489,8 @@ class SchematicService {
         continue
       }
 
-      const paletteSize = Object.keys(region.palette).length
-      const blockIndices = this._decodeBlockIndices(region.blockData, paletteSize, totalBlocks)
+      const blockIndices = this._getDecodedIndices(region)
+      const resolvedPalette = this._buildResolvedPalette(region)
 
       let linearIndex = 0
       for (let y = 0; y < sizeY; y++) {
@@ -322,11 +499,20 @@ class SchematicService {
             const paletteIndex = blockIndices[linearIndex++] ?? 0
             const paletteEntry = region.palette[paletteIndex]
             const blockName = paletteEntry?.name || 'minecraft:air'
-            const projectBlockId = this._resolveProjectBlockId(blockName)
+            const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName)
+            const projectBlockId = projectBlock.id
             if (projectBlockId === BLOCK_IDS.EMPTY) {
               continue
             }
-            if (!(blockName in MC_TO_PROJECT_MAPPING)) {
+
+            if (projectBlock.source === 'exact') {
+              stats.mappedByExact++
+            }
+            else if (projectBlock.source === 'keyword') {
+              stats.mappedByKeyword++
+            }
+            else if (projectBlock.source === 'default-stone') {
+              stats.mappedByDefaultStone++
               stats.unknownMappedToStone++
             }
 
