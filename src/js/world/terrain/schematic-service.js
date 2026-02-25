@@ -454,23 +454,23 @@ class SchematicService {
       const wallTextureName = this._resolveTextureName(wallBaseName)
         || this._resolveTextureName(`${wallBaseName}_wall`)
         || this._resolveTextureName(normalizedName)
-      const fallbackWallTextureName = this._resolveAtlasTextureName('stone') || `${ATLAS_TEXTURE_PREFIX}block/${normalizedName}`
-      const resolvedWallTextureName = wallTextureName || fallbackWallTextureName
 
-      const geometryType = this._wallGeometryTypeFromProperties(properties)
-      const wallBlock = ensureDynamicBlockType(resolvedWallTextureName, {
-        blockName: normalizedName,
-        geometryType,
-      })
+      if (wallTextureName) {
+        const geometryType = this._wallGeometryTypeFromProperties(properties)
+        const wallBlock = ensureDynamicBlockType(wallTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
 
-      if (wallBlock?.id) {
-        const result = {
-          id: wallBlock.id,
-          source: wallTextureName ? 'atlas-dynamic' : 'default-atlas-fallback',
-          textureName: resolvedWallTextureName,
+        if (wallBlock?.id) {
+          const result = {
+            id: wallBlock.id,
+            source: 'atlas-dynamic',
+            textureName: wallTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
         }
-        this._blockResolveCache.set(cacheKey, result)
-        return result
       }
     }
 
