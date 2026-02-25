@@ -265,21 +265,6 @@ class SchematicService {
     return solidCount
   }
 
-  _regionAxisOrigin(position = 0, size = 0) {
-    if (size < 0) {
-      return position + size + 1
-    }
-    return position
-  }
-
-  _getRegionWorldBase(region) {
-    return {
-      x: this._regionAxisOrigin(region?.position?.x || 0, region?.size?.x || 0),
-      y: this._regionAxisOrigin(region?.position?.y || 0, region?.size?.y || 0),
-      z: this._regionAxisOrigin(region?.position?.z || 0, region?.size?.z || 0),
-    }
-  }
-
   _getSolidYStats(region) {
     if (region._solidYStats) {
       return region._solidYStats
@@ -300,7 +285,6 @@ class SchematicService {
 
     const blockIndices = this._getDecodedIndices(region)
     const resolvedPalette = this._buildResolvedPalette(region)
-    const worldBase = this._getRegionWorldBase(region)
 
     let linearIndex = 0
     let minY = Number.POSITIVE_INFINITY
@@ -316,7 +300,7 @@ class SchematicService {
             continue
           }
 
-          const worldY = y + worldBase.y
+          const worldY = y + region.position.y
           minY = Math.min(minY, worldY)
           maxY = Math.max(maxY, worldY)
           if (worldY < 0) {
@@ -707,7 +691,6 @@ class SchematicService {
 
       const blockIndices = this._getDecodedIndices(region)
       const resolvedPalette = this._buildResolvedPalette(region)
-      const worldBase = this._getRegionWorldBase(region)
 
       let linearIndex = 0
       for (let y = 0; y < sizeY; y++) {
@@ -722,9 +705,9 @@ class SchematicService {
               continue
             }
 
-            const worldX = x + worldBase.x
-            const worldY = y + worldBase.y
-            const worldZ = z + worldBase.z
+            const worldX = x + region.position.x
+            const worldY = y + region.position.y
+            const worldZ = z + region.position.z
 
             bounds.min.x = Math.min(bounds.min.x, worldX)
             bounds.min.y = Math.min(bounds.min.y, worldY)
@@ -1053,7 +1036,6 @@ class SchematicService {
 
         const blockIndices = this._getDecodedIndices(region)
         const resolvedPalette = this._buildResolvedPalette(region)
-        const worldBase = this._getRegionWorldBase(region)
 
         let linearIndex = 0
         for (let y = 0; y < sizeY; y++) {
@@ -1082,9 +1064,9 @@ class SchematicService {
                 stats.unknownMappedToAtlasFallback++
               }
 
-              const worldX = x + worldBase.x + offsetX
-              const worldY = y + worldBase.y + offsetY
-              const worldZ = z + worldBase.z + offsetZ
+              const worldX = x + region.position.x + offsetX
+              const worldY = y + region.position.y + offsetY
+              const worldZ = z + region.position.z + offsetZ
 
               if (worldY < 0 || worldY >= chunkManager.chunkHeight) {
                 stats.skipped++
