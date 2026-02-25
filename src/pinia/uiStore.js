@@ -1,7 +1,7 @@
 import emitter from '@three/utils/event/event-bus.js'
 /**
- * UI Store - Menu System State Machine
- * Manages screen states, menu views, and world state
+ * UI Store - Overlay State Machine
+ * Manages loading/pause/settings overlays and related views
  */
 import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
@@ -18,7 +18,7 @@ export const useUiStore = defineStore('ui', () => {
   const screen = ref('loading')
 
   /** Overlay sub-view for pause flow: 'root' | 'skinSelector' */
-  const mainMenuView = ref('root')
+  const overlayView = ref('root')
 
   /** Where to return after settings: 'pauseMenu' | null */
   const returnTo = ref(null)
@@ -91,14 +91,14 @@ export const useUiStore = defineStore('ui', () => {
    * Enter Skin Selector view
    */
   function toSkinSelector() {
-    mainMenuView.value = 'skinSelector'
+    overlayView.value = 'skinSelector'
   }
 
   /**
    * Exit Skin Selector back to previous view
    */
   function exitSkinSelector() {
-    mainMenuView.value = 'root'
+    overlayView.value = 'root'
   }
 
   /**
@@ -148,7 +148,7 @@ export const useUiStore = defineStore('ui', () => {
   return {
     // State
     screen,
-    mainMenuView,
+    overlayView,
     returnTo,
     isPaused,
     pauseMenuConfig,

@@ -26,13 +26,6 @@ function handleProgress({ loaded, total }) {
 
 <template>
   <div class="loading-screen">
-    <!-- Logo -->
-    <img
-      src="/textures/hub/logo.png"
-      alt="Minecraft"
-      class="logo"
-    >
-
     <!-- Loading bar container -->
     <div class="loading-bar-container">
       <div class="loading-bar-bg">
@@ -54,13 +47,7 @@ function handleProgress({ loaded, total }) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 48px;
-}
-
-.logo {
-  max-width: min(720px, 92vw);
-  image-rendering: pixelated;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+  gap: 16px;
 }
 
 .loading-bar-container {

@@ -65,8 +65,8 @@ function handleWindowBlur() {
       <LoadingScreen v-if="ui.screen === 'loading'" />
 
       <!-- Pause Menu -->
-      <template v-else-if="ui.screen === 'pauseMenu' || ui.screen === 'mainMenu'">
-        <SkinSelector v-if="ui.mainMenuView === 'skinSelector'" />
+      <template v-else-if="ui.screen === 'pauseMenu'">
+        <SkinSelector v-if="ui.overlayView === 'skinSelector'" />
         <PauseMenu v-else />
       </template>
 

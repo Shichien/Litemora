@@ -53,7 +53,7 @@ const isDebugMode = window.location.hash === '#debug'
     <!-- Three.js Canvas -->
     <canvas ref="threeCanvas" class="three-canvas absolute inset-0 z-0" />
 
-    <!-- Menu System (Loading/MainMenu/Pause/Settings) -->
+    <!-- Overlay System (Loading/Pause/Settings) -->
     <UiRoot />
 
     <!-- Minecraft Style HUD (只在 playing 时显示) -->

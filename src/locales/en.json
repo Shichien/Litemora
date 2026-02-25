@@ -10,7 +10,6 @@
     "skins": "Skins",
     "paused": "Game Paused",
     "resume": "Resume",
-    "mainMenu": "Main Menu",
     "credits": "Credits",
     "back": "Back",
     "randomSeed": "Random Seed",
@@ -50,8 +49,7 @@
     "controls": "Controls",
     "prev": "Back",
     "next": "Next",
-    "done": "Done",
-    "mainMenu": "Main Menu"
+    "done": "Done"
   },
   "skin": {
     "steve": "Steve",
