@@ -22,8 +22,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- HUD only visible when playing -->
-  <div v-if="ui.screen === 'playing'" class="hud-root">
+  <!-- HUD always mounted, only hidden when not playing -->
+  <div v-show="ui.screen === 'playing'" class="hud-root">
     <!-- Top Info Bar: Compass -->
     <TopInfoBar />
 
