@@ -1,7 +1,4 @@
 <script setup>
-/**
- * TopInfoBar - Container for compass
- */
 import { useHudStore } from '@pinia/hudStore.js'
 import { computed } from 'vue'
 import CompassWheel from './CompassWheel.vue'

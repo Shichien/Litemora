@@ -1,7 +1,3 @@
-/**
- * ChunkManager：管理多个 TerrainChunk，并提供"世界坐标 -> 方块查询"接口
- * Step1：仅实现固定 3×3 初始化与 getBlockWorld（用于玩家碰撞/贴地）
- */
 import {
   CHUNK_BASIC_CONFIG,
   RENDER_PARAMS,
@@ -21,7 +17,6 @@ export default class ChunkManager {
     this.experience = new Experience()
     this.debug = this.experience.debug
 
-    // 基础配置：使用配置常量作为默认值，options 可覆盖
     this.chunkWidth = options.chunkWidth ?? CHUNK_BASIC_CONFIG.chunkWidth
     this.chunkHeight = options.chunkHeight ?? CHUNK_BASIC_CONFIG.chunkHeight
     this.viewDistance = options.viewDistance ?? CHUNK_BASIC_CONFIG.viewDistance
@@ -37,7 +32,6 @@ export default class ChunkManager {
       forcedBiome: options.forcedBiome ?? 'plains',
     }
 
-    // STEP 2: 共享的群系生成器（所有 chunk 共用，确保跨 chunk 群系连贯）
     this.biomeGenerator = new BiomeGenerator(this.seed)
 
     this._statsParams = {
@@ -55,7 +49,6 @@ export default class ChunkManager {
     this._lastPlayerChunkZ = null
     this.schematicOnlyMode = false
 
-    // 持久化管理器
     this.persistence = new TerrainPersistence({
       worldName: options.worldName || CHUNK_BASIC_CONFIG.worldName,
       useIndexedDB: options.useIndexedDB ?? CHUNK_BASIC_CONFIG.useIndexedDB,
@@ -63,7 +56,6 @@ export default class ChunkManager {
 
     this.schematicOnlyMode = !!this.persistence.getWorldState?.().schematicOnlyMode
 
-    // 自动保存：节流，避免频繁写入
     this._saveTimeout = null
     this._autoSaveDelay = CHUNK_BASIC_CONFIG.autoSaveDelay
 
@@ -76,17 +68,12 @@ export default class ChunkManager {
     return `${chunkX},${chunkZ}`
   }
 
-  /**
-   * Step1：初始化 3×3（viewDistance=1）chunk 网格
-   */
   initInitialGrid() {
     if (this.schematicOnlyMode) {
       this._restoreSchematicOnlyChunks()
       return
     }
 
-    // Step2：初始化时先确保玩家附近一圈 chunk 存在并排队生成
-    // 这里以 (0,0) 为中心（玩家初始通常在 chunk(0,0)）
     this.updateStreaming({ x: this.chunkWidth * 0.5, z: this.chunkWidth * 0.5 }, true)
   }
 
@@ -100,16 +87,7 @@ export default class ChunkManager {
     this._regenerateAllChunks()
   }
 
-  // ========================================
-  // Public API for lightweight world regeneration
-  // ========================================
-
-  /**
-   * Apply WorldGen params (field-by-field to preserve object references)
-   * @param {object} params - { terrain, trees, water, biome }
-   */
   applyWorldGenParams({ terrain, trees, water, biome } = {}) {
-    // Apply terrain params
     if (terrain) {
       if (terrain.scale !== undefined)
         this.terrainParams.scale = terrain.scale
@@ -127,7 +105,6 @@ export default class ChunkManager {
       }
     }
 
-    // Apply tree params
     if (trees) {
       if (trees.minHeight !== undefined)
         this.treeParams.minHeight = trees.minHeight
@@ -141,13 +118,11 @@ export default class ChunkManager {
         this.treeParams.frequency = trees.frequency
     }
 
-    // Apply water params
     if (water) {
       if (water.waterOffset !== undefined)
         this.waterParams.waterOffset = water.waterOffset
     }
 
-    // Apply biome params
     if (biome) {
       if (biome.biomeSource !== undefined)
         this.biomeParams.biomeSource = biome.biomeSource
@@ -156,10 +131,6 @@ export default class ChunkManager {
     }
   }
 
-  /**
-   * 设置是否启用原理图纯净世界模式
-   * 启用后，新生成的区块会被清空为纯空气（仅保留持久化修改）
-   */
   setSchematicOnlyMode(enabled = true) {
     const nextMode = !!enabled
     this.schematicOnlyMode = nextMode
@@ -227,10 +198,6 @@ export default class ChunkManager {
     return chunk.generateData()
   }
 
-  /**
-   * Lightweight world regeneration entry point
-   * @param {object} options - { seed, terrain, trees, water, biome, centerPos, forceSyncCenterChunk }
-   */
   regenerateAll({
     seed,
     terrain,
@@ -240,31 +207,24 @@ export default class ChunkManager {
     centerPos = { x: this.chunkWidth * 0.5, z: this.chunkWidth * 0.5 },
     forceSyncCenterChunk = true,
   } = {}) {
-    // (1) Cancel old queue tasks
     this.idleQueue.clear?.()
-    // Alternatively, cancel by prefix for all chunks
     this.chunks.forEach((_, key) => {
       this.idleQueue.cancelByPrefix(`${key}:`)
     })
 
-    // (2) Update seed
     if (seed !== undefined) {
       this.seed = seed
       this.biomeGenerator.seed = seed
     }
 
-    // (3) Apply worldgen params
     this.applyWorldGenParams({ terrain, trees, water, biome })
 
-    // (4) Force rebuild all existing chunks
     this._regenerateAllChunks()
 
-    // (5) Force refresh streaming grid
     this._lastPlayerChunkX = null
     this._lastPlayerChunkZ = null
     this.updateStreaming(centerPos, true)
 
-    // (6) Sync-generate center chunk if requested
     if (forceSyncCenterChunk) {
       const pcx = Math.floor(centerPos.x / this.chunkWidth)
       const pcz = Math.floor(centerPos.z / this.chunkWidth)
@@ -281,7 +241,6 @@ export default class ChunkManager {
       }
     }
 
-    // (7) Return info
     return { seed: this.seed }
   }
 
@@ -627,7 +586,6 @@ export default class ChunkManager {
     this.idleQueue.pump()
   }
 
-  // 新增：延迟保存（避免频繁写入）
   _scheduleSave() {
     if (this._saveTimeout) {
       clearTimeout(this._saveTimeout)
@@ -637,7 +595,6 @@ export default class ChunkManager {
     }, this._autoSaveDelay)
   }
 
-  // 新增：应用 chunk 的修改记录
   _applyChunkModifications(chunk) {
     if (!chunk._pendingModifications || chunk._pendingModifications.size === 0) {
       return
