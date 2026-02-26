@@ -520,35 +520,7 @@ function applyWorldGenPresetInAdmin(presetId) {
 }
 
 async function applyAdminWorldGen() {
-  if (worldGenSeedDraft.value.trim() !== '' && !SEED_REGEX.test(worldGenSeedDraft.value.trim())) {
-    worldGenSeedError.value = 'Seed must be numeric only'
-    setStatus('Seed 只能输入数字', 'warning')
-    return
-  }
-
-  isApplyingWorldGen.value = true
-  try {
-    const seed = getOrCreateWorldGenSeed()
-    const { terrain, trees } = buildWorldGenParams(adminWorldGenDraft.presetId, {
-      magnitude: adminWorldGenDraft.magnitude,
-      treeMinHeight: adminWorldGenDraft.treeMinHeight,
-      treeMaxHeight: adminWorldGenDraft.treeMaxHeight,
-    })
-
-    settingsStore.setChunkViewDistance(adminWorldGenDraft.viewDistance)
-    emitter.emit('game:reset_world', { seed, terrain, trees })
-
-    setStatus(
-      `已应用世界生成：Seed ${seed}，类型 ${WORLDGEN_PRESETS[adminWorldGenDraft.presetId]?.name || 'Default'}`,
-      'success',
-    )
-  }
-  catch (error) {
-    setStatus(`应用世界生成失败: ${error?.message || 'Unknown error'}`, 'warning')
-  }
-  finally {
-    isApplyingWorldGen.value = false
-  }
+  setStatus('已禁用世界噪声生成：当前仅保留原理图世界模式', 'warning')
 }
 
 onMounted(async () => {

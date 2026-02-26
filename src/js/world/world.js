@@ -232,6 +232,9 @@ export default class World {
       nextManager.schematicOnlyMode = !!nextManager.persistence.getWorldState?.().schematicOnlyMode
     }
 
+    nextManager.persistence?.setWorldState?.({ schematicOnlyMode: true })
+    nextManager.schematicOnlyMode = true
+
     nextManager.initInitialGrid()
     nextManager.updateStreaming({ x: centerPos.x, z: centerPos.z }, true)
 
@@ -440,6 +443,9 @@ export default class World {
       this.chunkManager.schematicOnlyMode = !!this.chunkManager.persistence.getWorldState?.().schematicOnlyMode
     }
 
+    this.chunkManager.persistence?.setWorldState?.({ schematicOnlyMode: true })
+    this.chunkManager.schematicOnlyMode = true
+
     this.experience.terrainDataManager = this.chunkManager
     this.chunkManager.initInitialGrid()
   }
@@ -534,28 +540,11 @@ export default class World {
    * @param {object} [options.trees] - Tree generation params
    */
   reset({ seed, terrain, trees } = {}) {
-    if (!this.chunkManager) {
-      console.warn('[World] Cannot reset: chunkManager not initialized')
-      return
-    }
-
-    this.chunkManager.persistence?.clearAllPersistedData?.()
-    this.chunkManager.setSchematicOnlyMode?.(false)
-
-    // Use the new lightweight regeneration API
-    this.chunkManager.regenerateAll({
+    console.info('[World] Procedural generation is disabled; ignoring reset_world request.', {
       seed,
       terrain,
       trees,
-      centerPos: { x: this.chunkManager.chunkWidth * 0.5, z: this.chunkManager.chunkWidth * 0.5 },
-      forceSyncCenterChunk: true,
     })
-
-    // Reset player position to safe spawn point (Strategy A)
-    if (this.player) {
-      // 触发一次重生，它内部会通过最新的 chunkManager 数据计算正确的高度
-      this.player.respawn()
-    }
   }
 
   destroy() {
