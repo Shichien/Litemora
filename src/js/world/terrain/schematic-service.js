@@ -408,7 +408,8 @@ class SchematicService {
     const isCarpetBlock = /_carpet$/u.test(normalizedName)
     const isVineBlock = normalizedName === 'vine'
     const isTorchBlock = /(^|_)torch$/u.test(normalizedName)
-    const isFlowerPotBlock = normalizedName === 'flower_pot' || normalizedName.startsWith('potted_')
+    const isPlainFlowerPotBlock = normalizedName === 'flower_pot'
+    const isPottedPlantBlock = normalizedName.startsWith('potted_')
     const isPlantLikeBlock = this._isCrossPlantBlockName(normalizedName)
 
     if (isSlabBlockName(normalizedName)) {
@@ -693,9 +694,8 @@ class SchematicService {
       }
     }
 
-    if (isFlowerPotBlock) {
-      const flowerPotTextureName = this._resolveTextureName(normalizedName)
-        || this._resolveTextureName('flower_pot')
+    if (isPlainFlowerPotBlock) {
+      const flowerPotTextureName = this._resolveTextureName('flower_pot')
       if (flowerPotTextureName) {
         const geometryType = flowerPotGeometryTypeFromProperties(properties)
         const flowerPotBlock = ensureDynamicBlockType(flowerPotTextureName, {
@@ -708,6 +708,27 @@ class SchematicService {
             id: flowerPotBlock.id,
             source: 'atlas-dynamic',
             textureName: flowerPotTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isPottedPlantBlock) {
+      const pottedPlantTextureName = this._resolvePottedPlantTextureName(normalizedName)
+      if (pottedPlantTextureName) {
+        const geometryType = plantCrossGeometryTypeFromProperties(properties)
+        const pottedPlantBlock = ensureDynamicBlockType(pottedPlantTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (pottedPlantBlock?.id) {
+          const result = {
+            id: pottedPlantBlock.id,
+            source: 'atlas-dynamic',
+            textureName: pottedPlantTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
           return result
@@ -938,6 +959,14 @@ class SchematicService {
     }
 
     return this._resolveAtlasTextureNameExact([normalizedName])
+  }
+
+  _resolvePottedPlantTextureName(normalizedName) {
+    const plantName = normalizedName.replace(/^potted_/u, '')
+    return this._resolveTextureName(normalizedName)
+      || this._resolveTextureName(plantName)
+      || this._resolveTextureName(`${plantName}_plant`)
+      || this._resolveTextureName(`${plantName}_bush`)
   }
 
   _resolveDoorTextureName(normalizedName, properties = {}) {
