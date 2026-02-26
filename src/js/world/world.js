@@ -93,7 +93,7 @@ export default class World {
     const { movePlayer = false } = options
     const config = runtimeConfig || await loadBackendWorldConfig()
     this._applyBackendUi(config.ui)
-    this._applyBackendSettings(config.settings)
+    await this._applyBackendSettings(config.settings)
     this._applyBackendSpawn(config.player, { movePlayer })
   }
 
@@ -102,7 +102,7 @@ export default class World {
     ui.applyBackendUiConfig(uiConfig)
   }
 
-  _applyBackendSettings(settingsConfig = {}) {
+  async _applyBackendSettings(settingsConfig = {}) {
     const settings = useSettingsStore()
 
     if (settingsConfig.cameraPreset) {
@@ -114,7 +114,7 @@ export default class World {
 
     const chunk = settingsConfig.chunk || {}
     if (chunk.height !== undefined && this.chunkManager && chunk.height !== this.chunkManager.chunkHeight) {
-      console.warn('[World] chunk height changed. Please refresh page to rebuild world with new height.')
+      await this._rebuildTerrainWithChunkHeight(chunk.height)
     }
     if (chunk.viewDistance !== undefined)
       settings.setChunkViewDistance(chunk.viewDistance)
@@ -130,6 +130,64 @@ export default class World {
       settings.setEnvAmbientIntensity(environment.ambientIntensity)
     if (environment.fogDensity !== undefined)
       settings.setEnvFogDensity(environment.fogDensity)
+  }
+
+  _cloneSimple(value) {
+    return JSON.parse(JSON.stringify(value))
+  }
+
+  async _rebuildTerrainWithChunkHeight(nextChunkHeight) {
+    if (!this.chunkManager) {
+      return
+    }
+
+    const nextHeight = Number(nextChunkHeight)
+    if (!Number.isFinite(nextHeight) || nextHeight <= 0) {
+      return
+    }
+
+    const previousManager = this.chunkManager
+    if (previousManager.chunkHeight === nextHeight) {
+      return
+    }
+
+    const snapshot = previousManager.persistence?.exportSnapshot?.() || null
+    const centerPos = this.player?.getPosition?.() || { x: previousManager.chunkWidth * 0.5, z: previousManager.chunkWidth * 0.5 }
+
+    const nextManager = new ChunkManager({
+      chunkWidth: previousManager.chunkWidth,
+      chunkHeight: nextHeight,
+      viewDistance: previousManager.viewDistance,
+      unloadPadding: previousManager.unloadPadding,
+      seed: previousManager.seed,
+      terrain: this._cloneSimple(previousManager.terrainParams),
+      trees: this._cloneSimple(previousManager.treeParams),
+      water: this._cloneSimple(previousManager.waterParams),
+      biomeSource: previousManager.biomeParams?.biomeSource,
+      forcedBiome: previousManager.biomeParams?.forcedBiome,
+    })
+
+    if (snapshot && nextManager.persistence?.applySnapshot) {
+      nextManager.persistence.applySnapshot(snapshot, { persist: true })
+      nextManager.schematicOnlyMode = !!nextManager.persistence.getWorldState?.().schematicOnlyMode
+    }
+
+    nextManager.initInitialGrid()
+    nextManager.updateStreaming({ x: centerPos.x, z: centerPos.z }, true)
+
+    previousManager.destroy()
+
+    this.chunkManager = nextManager
+    this.experience.terrainDataManager = nextManager
+
+    if (this.blockRaycaster) {
+      this.blockRaycaster.chunkManager = nextManager
+    }
+    if (this.blockInteractionManager) {
+      this.blockInteractionManager.chunkManager = nextManager
+    }
+
+    console.info(`[World] Chunk height updated: ${previousManager.chunkHeight} -> ${nextHeight}`)
   }
 
   _applyBackendSpawn(playerConfig = {}, options = {}) {
