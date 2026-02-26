@@ -34,6 +34,7 @@ export default class Resources {
     this.options = {
       dracoDecoderPath: 'https://www.gstatic.com/draco/v1/decoders/',
       ktx2TranscoderPath: 'https://unpkg.com/three/examples/jsm/libs/basis/',
+      sourceLoadTimeoutMs: 12000,
       ...options,
     }
 
@@ -98,71 +99,97 @@ export default class Resources {
       return this.loadingPromises.get(source.name)
     }
 
-    const loadPromise = new Promise((resolve, reject) => {
-      const onLoaded = (file) => {
+    const loadPromise = new Promise((resolve) => {
+      let settled = false
+      let timeoutId = null
+
+      const finishWithSuccess = (file) => {
+        if (settled) {
+          return
+        }
+        settled = true
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
         this.sourceLoaded(source, file, { countInProgress })
         resolve(file)
       }
 
-      const onError = (error) => {
+      const finishWithFailure = (error) => {
+        if (settled) {
+          return
+        }
+        settled = true
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
         console.error(`[Resources] Failed to load source: ${source.name} (${source.path})`, error)
         this.sourceFailed(source, error, { countInProgress })
         resolve(null)
       }
 
+      const timeoutMs = Number(this.options.sourceLoadTimeoutMs)
+      if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        timeoutId = setTimeout(() => {
+          finishWithFailure(new Error(`resource_load_timeout:${timeoutMs}ms`))
+        }, timeoutMs)
+      }
+
       switch (source.type) {
         case 'gltfModel': {
-          this.loaders.gltfLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.gltfLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'texture': {
-          this.loaders.textureLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.textureLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'cubeTexture': {
-          this.loaders.cubeTextureLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.cubeTextureLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'font': {
-          this.loaders.fontLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.fontLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'fbxModel': {
-          this.loaders.fbxLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.fbxLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'audio': {
-          this.loaders.audioLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.audioLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'objModel': {
-          this.loaders.objLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.objLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'hdrTexture': {
-          this.loaders.hdrTextureLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.hdrTextureLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'svg': {
-          this.loaders.svgLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.svgLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'exrTexture': {
-          this.loaders.exrLoader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.exrLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'video': {
           this.loadVideoTexture(source.path).then((file) => {
-            onLoaded(file)
-          }).catch(onError)
+            finishWithSuccess(file)
+          }).catch(finishWithFailure)
           break
         }
         case 'ktx2Texture': {
-          this.loaders.ktx2Loader.load(source.path, onLoaded, undefined, onError)
+          this.loaders.ktx2Loader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         default: {
-          reject(new Error(`Unsupported source type: ${source.type}`))
+          finishWithFailure(new Error(`Unsupported source type: ${source.type}`))
         }
       }
     }).finally(() => {

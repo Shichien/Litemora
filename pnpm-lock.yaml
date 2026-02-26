@@ -35,6 +35,9 @@ importers:
       prismarine-nbt:
         specifier: ^2.8.0
         version: 2.8.0
+      protodef:
+        specifier: ^1.19.0
+        version: 1.19.0
       three:
         specifier: ^0.172.0
         version: 0.172.0

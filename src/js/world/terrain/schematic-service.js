@@ -1,7 +1,7 @@
 /* eslint-disable node/prefer-global/buffer */
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer as BufferPolyfill } from 'buffer'
-import { parse, simplify } from 'prismarine-nbt'
+import { parseNbt, simplifyNbt } from './nbt-browser.js'
 import { javaAtlasBlockTextureRects } from '../../generated/java-atlas-textures.js'
 import { javaBlockTextureStemHintsByBlock } from '../../generated/java-block-texture-hints.js'
 import {
@@ -100,8 +100,8 @@ class SchematicService {
     // Litematica 文件是 gzip 压缩的 NBT 格式
     const pako = await this._loadPako()
     const decompressed = pako.inflate(arrayBuffer)
-    const { parsed } = await parse(BufferPolyfill.from(decompressed))
-    const simplified = simplify(parsed)
+    const { parsed } = await parseNbt(BufferPolyfill.from(decompressed))
+    const simplified = simplifyNbt(parsed)
 
     const metadata = simplified.Metadata || {}
     const regions = simplified.Regions || {}
