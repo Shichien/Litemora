@@ -43,6 +43,10 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
       showSettings: false,
       showSkins: true,
     },
+    controls: {
+      allowFlightToggle: true,
+      allowPerspectiveToggle: true,
+    },
   },
 }
 
@@ -114,6 +118,13 @@ function mergeBackendConfig(raw = {}) {
         ...DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu,
         showSettings: ui.pauseMenu?.showSettings ?? DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu.showSettings,
         showSkins: ui.pauseMenu?.showSkins ?? DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu.showSkins,
+      },
+      controls: {
+        ...DEFAULT_BACKEND_WORLD_CONFIG.ui.controls,
+        allowFlightToggle: ui.controls?.allowFlightToggle
+          ?? DEFAULT_BACKEND_WORLD_CONFIG.ui.controls.allowFlightToggle,
+        allowPerspectiveToggle: ui.controls?.allowPerspectiveToggle
+          ?? DEFAULT_BACKEND_WORLD_CONFIG.ui.controls.allowPerspectiveToggle,
       },
     },
   }

@@ -228,8 +228,16 @@ export default class Player {
   }
 
   setupInputListeners() {
+    this.allowFlightToggle = true
+
     emitter.on('input:update', (keys) => {
       this.inputState = keys
+    })
+
+    emitter.on('ui:control-permissions-changed', (payload = {}) => {
+      if (payload.allowFlightToggle !== undefined) {
+        this.allowFlightToggle = !!payload.allowFlightToggle
+      }
     })
 
     emitter.on('input:jump', () => {
@@ -247,6 +255,9 @@ export default class Player {
     })
 
     emitter.on('input:toggle_flight', () => {
+      if (!this.allowFlightToggle) {
+        return
+      }
       this.movement.toggleFlight()
       emitter.emit('hud:flight-mode-changed', {
         enabled: this.movement.isFlying,

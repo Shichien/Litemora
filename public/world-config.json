@@ -29,6 +29,10 @@
     "pauseMenu": {
       "showSettings": false,
       "showSkins": true
+    },
+    "controls": {
+      "allowFlightToggle": true,
+      "allowPerspectiveToggle": true
     }
   }
 }

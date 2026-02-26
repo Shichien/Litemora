@@ -1,6 +1,9 @@
 <script setup>
 import emitter from '@three/utils/event/event-bus.js'
+import { useUiStore } from '@pinia/uiStore.js'
 import { onMounted, onUnmounted, reactive } from 'vue'
+
+const ui = useUiStore()
 
 const keys = reactive({
   w: false,
@@ -118,13 +121,13 @@ onUnmounted(() => {
         <div class="key-cap" :class="{ pressed: keys.r }">
           R
         </div>
-        <div class="key-cap" :class="{ pressed: keys.f }">
+        <div class="key-cap" :class="{ pressed: keys.f, disabled: !ui.controlPermissions.allowFlightToggle }">
           F
         </div>
       </div>
 
       <div class="key-row key-row-right">
-        <div class="key-cap" :class="{ pressed: keys.z }">
+        <div class="key-cap" :class="{ pressed: keys.y, disabled: !ui.controlPermissions.allowPerspectiveToggle }">
           Z
         </div>
         <div class="key-cap" :class="{ pressed: keys.x }">
@@ -211,5 +214,10 @@ onUnmounted(() => {
   text-shadow: none;
   transform: translateY(calc(1px * var(--hud-scale)));
   border-color: #fff;
+}
+
+.key-cap.disabled {
+  opacity: 0.35;
+  filter: grayscale(1);
 }
 </style>

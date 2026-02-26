@@ -33,6 +33,10 @@ export const DEFAULT_WORLD_CONFIG = {
       showSettings: false,
       showSkins: true,
     },
+    controls: {
+      allowFlightToggle: true,
+      allowPerspectiveToggle: true,
+    },
   },
 }
 

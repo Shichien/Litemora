@@ -6,6 +6,11 @@ import emitter from '../event/event-bus.js'
  */
 export default class InputManager {
   constructor() {
+    this.controlPermissions = {
+      allowFlightToggle: true,
+      allowPerspectiveToggle: true,
+    }
+
     // 键盘状态
     this.keys = {
       forward: false,
@@ -38,6 +43,7 @@ export default class InputManager {
     this._onMouseUp = this.onMouseUp.bind(this)
     this._onContextMenu = this.onContextMenu.bind(this)
     this._onWheel = this.onWheel.bind(this)
+    this._onControlPermissionsChanged = this.onControlPermissionsChanged.bind(this)
 
     this.init()
   }
@@ -54,6 +60,26 @@ export default class InputManager {
 
     // 阻止右键菜单（避免影响 PointerLock / 场景交互）
     window.addEventListener('contextmenu', this._onContextMenu)
+
+    emitter.on('ui:control-permissions-changed', this._onControlPermissionsChanged)
+  }
+
+  onControlPermissionsChanged(payload = {}) {
+    if (payload.allowFlightToggle !== undefined) {
+      this.controlPermissions.allowFlightToggle = !!payload.allowFlightToggle
+      if (!this.controlPermissions.allowFlightToggle) {
+        this.keys.f = false
+      }
+    }
+
+    if (payload.allowPerspectiveToggle !== undefined) {
+      this.controlPermissions.allowPerspectiveToggle = !!payload.allowPerspectiveToggle
+      if (!this.controlPermissions.allowPerspectiveToggle) {
+        this.keys.y = false
+      }
+    }
+
+    emitter.emit('input:update', this.keys)
   }
 
   // ==================== 键盘事件 ====================
@@ -157,12 +183,20 @@ export default class InputManager {
         this.keys.r = isPressed
         break
       case 'f':
+        if (!this.controlPermissions.allowFlightToggle) {
+          this.keys.f = false
+          break
+        }
         if (isPressed && !this.keys.f) {
           emitter.emit('input:toggle_flight')
         }
         this.keys.f = isPressed
         break
       case 'y':
+        if (!this.controlPermissions.allowPerspectiveToggle) {
+          this.keys.y = false
+          break
+        }
         if (isPressed && !this.keys.y) {
           emitter.emit('input:toggle_perspective')
         }
@@ -241,5 +275,6 @@ export default class InputManager {
     window.removeEventListener('mouseup', this._onMouseUp)
     window.removeEventListener('wheel', this._onWheel)
     window.removeEventListener('contextmenu', this._onContextMenu)
+    emitter.off('ui:control-permissions-changed', this._onControlPermissionsChanged)
   }
 }

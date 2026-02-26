@@ -32,6 +32,11 @@ export const useUiStore = defineStore('ui', () => {
     showSkins: true,
   })
 
+  const controlPermissions = reactive({
+    allowFlightToggle: true,
+    allowPerspectiveToggle: true,
+  })
+
   // ----------------------------------------
   // Computed
   // ----------------------------------------
@@ -110,7 +115,7 @@ export const useUiStore = defineStore('ui', () => {
 
   /**
    * Apply backend-controlled pause menu visibility options
-   * @param {{pauseMenu?: {showSettings?: boolean, showSkins?: boolean}}} uiConfig
+   * @param {{pauseMenu?: {showSettings?: boolean, showSkins?: boolean}, controls?: {allowFlightToggle?: boolean, allowPerspectiveToggle?: boolean}}} uiConfig
    */
   function applyBackendUiConfig(uiConfig = {}) {
     const pauseMenu = uiConfig.pauseMenu || {}
@@ -118,6 +123,17 @@ export const useUiStore = defineStore('ui', () => {
       pauseMenuConfig.showSettings = pauseMenu.showSettings
     if (pauseMenu.showSkins !== undefined)
       pauseMenuConfig.showSkins = pauseMenu.showSkins
+
+    const controls = uiConfig.controls || {}
+    if (controls.allowFlightToggle !== undefined)
+      controlPermissions.allowFlightToggle = !!controls.allowFlightToggle
+    if (controls.allowPerspectiveToggle !== undefined)
+      controlPermissions.allowPerspectiveToggle = !!controls.allowPerspectiveToggle
+
+    emitter.emit('ui:control-permissions-changed', {
+      allowFlightToggle: controlPermissions.allowFlightToggle,
+      allowPerspectiveToggle: controlPermissions.allowPerspectiveToggle,
+    })
   }
 
   // ----------------------------------------
@@ -152,6 +168,7 @@ export const useUiStore = defineStore('ui', () => {
     returnTo,
     isPaused,
     pauseMenuConfig,
+    controlPermissions,
 
     // Computed
     isMenuVisible,

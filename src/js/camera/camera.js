@@ -30,6 +30,7 @@ export default class Camera {
     }
     this.currentMode = null
     this.previousMode = null
+    this.allowPerspectiveToggle = true
 
     this.position = new THREE.Vector3(0, 0, 0)
     this.target = new THREE.Vector3(0, 0, 0)
@@ -66,11 +67,19 @@ export default class Camera {
       this.toggleSide()
     })
     emitter.on('input:toggle_perspective', () => {
+      if (!this.allowPerspectiveToggle) {
+        return
+      }
       if (this.currentMode === this.cameraModes.FIRST_PERSON) {
         this.switchMode(this.cameraModes.THIRD_PERSON)
       }
       else {
         this.switchMode(this.cameraModes.FIRST_PERSON)
+      }
+    })
+    emitter.on('ui:control-permissions-changed', (payload = {}) => {
+      if (payload.allowPerspectiveToggle !== undefined) {
+        this.allowPerspectiveToggle = !!payload.allowPerspectiveToggle
       }
     })
     emitter.on('terrain:data-ready', () => {

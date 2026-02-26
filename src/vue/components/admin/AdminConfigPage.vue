@@ -698,6 +698,10 @@ onBeforeUnmount(() => {
             <label><input v-model="configDraft.ui.pauseMenu.showSettings" type="checkbox">显示设置按钮</label>
             <label><input v-model="configDraft.ui.pauseMenu.showSkins" type="checkbox">显示皮肤按钮</label>
           </div>
+          <div class="setting-row toggles">
+            <label><input v-model="configDraft.ui.controls.allowFlightToggle" type="checkbox">允许切换飞行（F）</label>
+            <label><input v-model="configDraft.ui.controls.allowPerspectiveToggle" type="checkbox">允许切换第一/第三人称（Y）</label>
+          </div>
         </section>
 
         <section class="setting-section">
