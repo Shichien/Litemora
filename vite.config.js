@@ -2,7 +2,6 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { partytownVite } from '@builder.io/partytown/utils'
-import legacy from '@vitejs/plugin-legacy'
 import vue from '@vitejs/plugin-vue'
 import glsl from 'vite-plugin-glsl'
 
@@ -136,8 +135,34 @@ export default {
     port: PORT,
   },
   build: {
+    target: 'es2022',
     rollupOptions: {
       external: ['/_vercel/insights/script.js'],
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+
+          if (id.includes('/three/') || id.includes('three-custom-shader-material')) {
+            return 'three-vendor'
+          }
+
+          if (id.includes('/vue/') || id.includes('/vue-i18n/') || id.includes('/pinia/')) {
+            return 'vue-vendor'
+          }
+
+          if (id.includes('/gsap/')) {
+            return 'gsap-vendor'
+          }
+
+          if (id.includes('/pako/') || id.includes('/protodef/') || id.includes('/prismarine-nbt/')) {
+            return 'schematic-vendor'
+          }
+
+          return 'vendor'
+        },
+      },
     },
   },
   css: {
@@ -167,22 +192,6 @@ export default {
         registerMockApi(server.middlewares)
       },
     },
-    legacy({
-      targets: [
-        'chrome >= 67',
-        'edge >= 79',
-        'firefox >= 68',
-        'safari >= 14',
-        'ios >= 14',
-      ],
-      modernTargets: [
-        'chrome >= 67',
-        'edge >= 79',
-        'firefox >= 68',
-        'safari >= 14',
-        'ios >= 14',
-      ],
-    }),
     glsl(),
     vue(),
     partytownVite({

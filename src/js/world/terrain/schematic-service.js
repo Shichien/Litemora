@@ -1,7 +1,6 @@
 /* eslint-disable node/prefer-global/buffer */
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer as BufferPolyfill } from 'buffer'
-import { parseNbt, simplifyNbt } from './nbt-browser.js'
 import { javaAtlasBlockTextureRects } from '../../generated/java-atlas-textures.js'
 import { javaBlockTextureStemHintsByBlock } from '../../generated/java-block-texture-hints.js'
 import {
@@ -39,6 +38,7 @@ class SchematicService {
   constructor() {
     this.currentSchematic = null
     this.pako = null
+    this.nbtParser = null
     this._blockResolveCache = new Map()
   }
 
@@ -62,6 +62,19 @@ class SchematicService {
     const pakoModule = await import('pako')
     this.pako = pakoModule.default || pakoModule
     return this.pako
+  }
+
+  async _loadNbtParser() {
+    if (this.nbtParser) {
+      return this.nbtParser
+    }
+
+    const nbtParserModule = await import('./nbt-browser.js')
+    this.nbtParser = {
+      parseNbt: nbtParserModule.parseNbt,
+      simplifyNbt: nbtParserModule.simplifyNbt,
+    }
+    return this.nbtParser
   }
 
   /**
@@ -99,9 +112,10 @@ class SchematicService {
   async _parseBuffer(arrayBuffer) {
     // Litematica 文件是 gzip 压缩的 NBT 格式
     const pako = await this._loadPako()
+    const nbtParser = await this._loadNbtParser()
     const decompressed = pako.inflate(arrayBuffer)
-    const { parsed } = await parseNbt(BufferPolyfill.from(decompressed))
-    const simplified = simplifyNbt(parsed)
+    const { parsed } = await nbtParser.parseNbt(BufferPolyfill.from(decompressed))
+    const simplified = nbtParser.simplifyNbt(parsed)
 
     const metadata = simplified.Metadata || {}
     const regions = simplified.Regions || {}
