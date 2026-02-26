@@ -20,6 +20,7 @@ import {
   DEFAULT_BACKEND_WORLD_CONFIG,
   loadBackendWorldConfig,
   normalizeBackendWorldConfig,
+  saveBackendWorldConfigRemote,
   saveAdminWorldConfig,
 } from '@three/world/backend-world-config.js'
 import {
@@ -269,10 +270,19 @@ function resetToDefaultTemplate() {
 
 async function applyConfig() {
   isApplying.value = true
-  const saved = saveAdminWorldConfig(configDraft.value, currentConfigScopeId.value)
+  let saved = null
+
+  try {
+    saved = await saveBackendWorldConfigRemote(configDraft.value, currentConfigScopeId.value)
+    setStatus('已保存并应用（服务端已持久化）', 'success')
+  }
+  catch {
+    saved = saveAdminWorldConfig(configDraft.value, currentConfigScopeId.value)
+    setStatus('服务端保存失败，已回退到本地保存并应用', 'warning')
+  }
+
   markSaved(saved)
   emitter.emit('backend:config-updated', saved)
-  setStatus('已保存并应用', 'success')
   isApplying.value = false
 }
 

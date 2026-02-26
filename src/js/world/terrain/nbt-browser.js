@@ -1,6 +1,6 @@
 /* eslint-disable node/prefer-global/buffer */
 import { Buffer as BufferPolyfill } from 'buffer'
-import { ProtoDef } from 'protodef'
+import ProtoDef from 'protodef/src/protodef.js'
 import compoundTypesCjs from 'prismarine-nbt/compound.js'
 import nbtSchema from 'prismarine-nbt/nbt.json'
 import optionalTypesCjs from 'prismarine-nbt/optional.js'

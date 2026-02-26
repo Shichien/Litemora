@@ -90,25 +90,55 @@ function registerMockApi(middlewares) {
 
   middlewares.use('/api/world-config', async (req, res) => {
     const spaceName = getSpaceNameFromRequest(req)
-    try {
-      const jsonPath = resolveSpaceJsonPath('world-config.json', spaceName)
-      const content = await fs.readFile(jsonPath, 'utf-8')
-      res.setHeader('Content-Type', 'application/json; charset=utf-8')
-      res.end(content)
-    }
-    catch {
+    const jsonPath = resolveSpaceJsonPath('world-config.json', spaceName)
+
+    if (req.method === 'GET') {
       try {
-        const fallbackPath = resolveSpaceJsonPath('world-config.json')
-        const fallbackContent = await fs.readFile(fallbackPath, 'utf-8')
+        const content = await fs.readFile(jsonPath, 'utf-8')
         res.setHeader('Content-Type', 'application/json; charset=utf-8')
-        res.end(fallbackContent)
+        res.end(content)
       }
       catch {
-        res.statusCode = 500
-        res.setHeader('Content-Type', 'application/json; charset=utf-8')
-        res.end(JSON.stringify({ error: 'failed_to_read_world_config' }))
+        try {
+          const fallbackPath = resolveSpaceJsonPath('world-config.json')
+          const fallbackContent = await fs.readFile(fallbackPath, 'utf-8')
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(fallbackContent)
+        }
+        catch {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'failed_to_read_world_config' }))
+        }
       }
+      return
     }
+
+    if (req.method === 'POST') {
+      try {
+        const rawBody = await readRequestBody(req)
+        const payload = rawBody ? JSON.parse(rawBody) : {}
+        if (!payload || typeof payload !== 'object') {
+          throw new Error('invalid_world_config_payload')
+        }
+
+        await fs.mkdir(path.dirname(jsonPath), { recursive: true })
+        await fs.writeFile(jsonPath, JSON.stringify(payload, null, 2), 'utf-8')
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ ok: true }))
+      }
+      catch {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'invalid_world_config_payload' }))
+      }
+      return
+    }
+
+    res.statusCode = 405
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.end(JSON.stringify({ error: 'method_not_allowed' }))
   })
 
   middlewares.use('/api/world-state', async (req, res) => {

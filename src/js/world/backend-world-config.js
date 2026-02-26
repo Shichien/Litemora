@@ -170,12 +170,31 @@ export function clearAdminWorldConfig(accountId = '') {
   localStorage.removeItem(scopedKey)
 }
 
-export async function loadBackendWorldConfig(accountId = '') {
-  const adminConfig = getAdminWorldConfig(accountId)
-  if (adminConfig) {
-    return adminConfig
+export async function saveBackendWorldConfigRemote(raw = {}, accountId = '') {
+  const normalized = mergeBackendConfig(raw)
+  const activeSpace = getActiveSpaceName()
+  const requestUrl = activeSpace
+    ? `/api/world-config?space=${encodeURIComponent(activeSpace)}`
+    : '/api/world-config'
+
+  const response = await fetch(requestUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(normalized),
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(payload?.error || 'save_world_config_remote_failed')
   }
 
+  saveAdminWorldConfig(normalized, accountId)
+  return normalized
+}
+
+export async function loadBackendWorldConfig(accountId = '') {
   const activeSpace = getActiveSpaceName()
 
   for (const url of BACKEND_CONFIG_URLS) {
@@ -186,11 +205,18 @@ export async function loadBackendWorldConfig(accountId = '') {
         continue
       }
       const json = await res.json()
-      return mergeBackendConfig(json)
+      const merged = mergeBackendConfig(json)
+      saveAdminWorldConfig(merged, accountId)
+      return merged
     }
     catch {
       // continue fallback
     }
+  }
+
+  const adminConfig = getAdminWorldConfig(accountId)
+  if (adminConfig) {
+    return adminConfig
   }
 
   return mergeBackendConfig()
