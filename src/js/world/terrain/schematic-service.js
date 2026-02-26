@@ -468,7 +468,6 @@ class SchematicService {
 
     if (isGlassPaneBlock) {
       const paneTextureName = this._resolveTextureName(normalizedName)
-        || this._resolveTextureName(normalizedName.replace(/_pane$/u, ''))
 
       if (paneTextureName) {
         const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
@@ -491,11 +490,7 @@ class SchematicService {
     }
 
     if (isFenceBlock) {
-      const fenceBaseName = normalizedName.replace(/_fence$/u, '')
       const fenceTextureName = this._resolveTextureName(normalizedName)
-        || this._resolveTextureName(fenceBaseName)
-        || this._resolveTextureName(`${fenceBaseName}_planks`)
-        || this._resolveTextureName(`planks_${fenceBaseName}`)
 
       if (fenceTextureName) {
         const geometryType = fenceGeometryTypeFromProperties(properties)
@@ -733,7 +728,7 @@ class SchematicService {
   _buildTextureBaseNameCandidates(normalizedName) {
     const candidates = [normalizedName]
 
-    const shapeStripped = normalizedName.replace(/_(stairs|slab|wall|fence|fence_gate|door|trapdoor|pane)$/u, '')
+    const shapeStripped = normalizedName.replace(/_(stairs|slab|wall|fence|fence_gate|door|trapdoor)$/u, '')
     if (shapeStripped && shapeStripped !== normalizedName) {
       candidates.push(shapeStripped)
     }
