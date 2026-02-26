@@ -790,17 +790,11 @@ class SchematicService {
 
     if (isPottedPlantBlock) {
       const pottedPlantTextureName = this._resolvePottedPlantTextureName(normalizedName)
-      const potTextureName = this._resolveTextureName('flower_pot')
-      if (pottedPlantTextureName && potTextureName) {
+      if (pottedPlantTextureName) {
         const geometryType = pottedPlantGeometryTypeFromProperties(properties)
         const pottedPlantBlock = ensureDynamicBlockType(pottedPlantTextureName, {
           blockName: normalizedName,
           geometryType,
-          textureKeys: {
-            all: pottedPlantTextureName,
-            pot: potTextureName,
-            plant: pottedPlantTextureName,
-          },
         })
 
         if (pottedPlantBlock?.id) {

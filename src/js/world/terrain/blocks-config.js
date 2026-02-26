@@ -489,9 +489,9 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     id: canUsePreferredId ? preferredId : (DYNAMIC_BLOCK_ID_START + dynamicIndex),
     name: options.blockName || textureName,
     visible: true,
-    textureKeys: options.textureKeys && typeof options.textureKeys === 'object'
-      ? { ...options.textureKeys }
-      : { all: textureName },
+    textureKeys: {
+      all: textureName,
+    },
     geometryType,
   }
 
@@ -735,27 +735,6 @@ export function createMaterials(blockType, textureItems) {
   if (blockType.side !== undefined)
     materialOptions.side = blockType.side
 
-  if (blockType.textureKeys?.pot && blockType.textureKeys?.plant) {
-    const potTexture = ensureTexture(blockType.textureKeys.pot)
-    const plantTexture = ensureTexture(blockType.textureKeys.plant)
-    if (!potTexture || !plantTexture)
-      return null
-
-    const potMaterial = makeCustomMaterial(potTexture, {
-      ...materialOptions,
-      side: THREE.FrontSide,
-    })
-    const plantMaterial = makeCustomMaterial(plantTexture, {
-      ...materialOptions,
-      side: THREE.DoubleSide,
-      transparent: true,
-      alphaTest: materialOptions.alphaTest ?? 0.5,
-      depthWrite: false,
-    })
-
-    return [potMaterial, plantMaterial]
-  }
-
   // 六面贴图方块：草/树干（右、左、上、下、前、后）
   if (blockType.textureKeys?.side && blockType.textureKeys?.top && blockType.textureKeys?.bottom) {
     const side = ensureTexture(blockType.textureKeys.side)
@@ -814,54 +793,6 @@ function mergeToSingleGeometry(geometries = []) {
   merged.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3))
   merged.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3))
   merged.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2))
-  merged.computeBoundingBox()
-  merged.computeBoundingSphere()
-  return merged
-}
-
-function mergeToGroupedGeometry(parts = []) {
-  const positions = []
-  const normals = []
-  const uvs = []
-  const groups = []
-  let vertexStart = 0
-
-  parts.forEach((part) => {
-    const geometry = part?.geometry
-    if (!geometry) {
-      return
-    }
-
-    const materialIndex = Number.isFinite(part?.materialIndex) ? part.materialIndex : 0
-    const nonIndexed = geometry.toNonIndexed()
-    const position = nonIndexed.getAttribute('position')
-    const normal = nonIndexed.getAttribute('normal')
-    const uv = nonIndexed.getAttribute('uv')
-    const vertexCount = position?.count || 0
-
-    if (position) {
-      positions.push(...position.array)
-    }
-    if (normal) {
-      normals.push(...normal.array)
-    }
-    if (uv) {
-      uvs.push(...uv.array)
-    }
-
-    if (vertexCount > 0) {
-      groups.push({ start: vertexStart, count: vertexCount, materialIndex })
-      vertexStart += vertexCount
-    }
-
-    nonIndexed.dispose()
-  })
-
-  const merged = new THREE.BufferGeometry()
-  merged.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3))
-  merged.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3))
-  merged.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2))
-  groups.forEach(group => merged.addGroup(group.start, group.count, group.materialIndex))
   merged.computeBoundingBox()
   merged.computeBoundingSphere()
   return merged
@@ -1372,26 +1303,24 @@ const plantCrossGeometry = (() => {
 })()
 
 const pottedPlantGeometry = (() => {
+  const parts = []
+
   const pot = new THREE.BoxGeometry(0.625, 0.375, 0.625)
   pot.translate(0, -0.3125, 0)
+  parts.push(pot)
 
   const plantA = new THREE.PlaneGeometry(0.75, 0.75)
   plantA.rotateY(Math.PI / 4)
   plantA.translate(0, 0.25, 0)
+  parts.push(plantA)
 
   const plantB = new THREE.PlaneGeometry(0.75, 0.75)
   plantB.rotateY(-Math.PI / 4)
   plantB.translate(0, 0.25, 0)
+  parts.push(plantB)
 
-  const merged = mergeToGroupedGeometry([
-    { geometry: pot, materialIndex: 0 },
-    { geometry: plantA, materialIndex: 1 },
-    { geometry: plantB, materialIndex: 1 },
-  ])
-
-  pot.dispose()
-  plantA.dispose()
-  plantB.dispose()
+  const merged = mergeToSingleGeometry(parts)
+  parts.forEach(part => part.dispose())
   return merged
 })()
 
