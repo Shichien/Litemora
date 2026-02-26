@@ -18,6 +18,7 @@ import {
   fireGeometryTypeFromProperties,
   fenceGeometryTypeFromProperties,
   flowerPotGeometryTypeFromProperties,
+  pottedPlantGeometryTypeFromProperties,
   buildVariantKey,
   normalizeFacing,
   normalizeStairShape,
@@ -790,7 +791,7 @@ class SchematicService {
     if (isPottedPlantBlock) {
       const pottedPlantTextureName = this._resolvePottedPlantTextureName(normalizedName)
       if (pottedPlantTextureName) {
-        const geometryType = plantCrossGeometryTypeFromProperties(properties)
+        const geometryType = pottedPlantGeometryTypeFromProperties(properties)
         const pottedPlantBlock = ensureDynamicBlockType(pottedPlantTextureName, {
           blockName: normalizedName,
           geometryType,

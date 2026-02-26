@@ -143,6 +143,10 @@ export function flowerPotGeometryTypeFromProperties() {
   return 'flower_pot'
 }
 
+export function pottedPlantGeometryTypeFromProperties() {
+  return 'potted_plant'
+}
+
 export function plantCrossGeometryTypeFromProperties() {
   return 'plant_cross'
 }

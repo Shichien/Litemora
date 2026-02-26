@@ -517,6 +517,14 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     blockType.transparent = true
     blockType.alphaTest = blockType.alphaTest ?? 0.5
     blockType.depthWrite = false
+    blockType.side = THREE.DoubleSide
+  }
+
+  if (geometryType === 'potted_plant') {
+    blockType.transparent = true
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.depthWrite = false
+    blockType.side = THREE.DoubleSide
   }
 
   if (geometryType === 'fire_cross' || geometryType.startsWith('rail_')) {
@@ -724,6 +732,8 @@ export function createMaterials(blockType, textureItems) {
     materialOptions.opacity = blockType.opacity
   if (blockType.depthWrite !== undefined)
     materialOptions.depthWrite = blockType.depthWrite
+  if (blockType.side !== undefined)
+    materialOptions.side = blockType.side
 
   // 六面贴图方块：草/树干（右、左、上、下、前、后）
   if (blockType.textureKeys?.side && blockType.textureKeys?.top && blockType.textureKeys?.bottom) {
@@ -1292,6 +1302,28 @@ const plantCrossGeometry = (() => {
   return merged
 })()
 
+const pottedPlantGeometry = (() => {
+  const parts = []
+
+  const pot = new THREE.BoxGeometry(0.625, 0.375, 0.625)
+  pot.translate(0, -0.3125, 0)
+  parts.push(pot)
+
+  const plantA = new THREE.PlaneGeometry(0.75, 0.75)
+  plantA.rotateY(Math.PI / 4)
+  plantA.translate(0, 0.25, 0)
+  parts.push(plantA)
+
+  const plantB = new THREE.PlaneGeometry(0.75, 0.75)
+  plantB.rotateY(-Math.PI / 4)
+  plantB.translate(0, 0.25, 0)
+  parts.push(plantB)
+
+  const merged = mergeToSingleGeometry(parts)
+  parts.forEach(part => part.dispose())
+  return merged
+})()
+
 const fireGeometry = createFireGeometry()
 const railGeometryCache = new Map()
 
@@ -1302,6 +1334,9 @@ export function getGeometryForBlockType(blockType) {
   }
   if (geometryType === 'flower_pot') {
     return flowerPotGeometry
+  }
+  if (geometryType === 'potted_plant') {
+    return pottedPlantGeometry
   }
   if (geometryType === 'plant_cross') {
     return plantCrossGeometry
