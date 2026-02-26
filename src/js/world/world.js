@@ -259,14 +259,14 @@ export default class World {
       const response = await fetch(requestUrl, { cache: 'no-store' })
       if (!response.ok) {
         return activeSpace
-          ? { worldState: { schematicOnlyMode: true }, modifications: {} }
+          ? { worldState: { schematicOnlyMode: false }, modifications: {} }
           : null
       }
 
       const data = await response.json()
       if (!data || typeof data !== 'object') {
         return activeSpace
-          ? { worldState: { schematicOnlyMode: true }, modifications: {} }
+          ? { worldState: { schematicOnlyMode: false }, modifications: {} }
           : null
       }
 
@@ -283,7 +283,7 @@ export default class World {
     }
     catch {
       return activeSpace
-        ? { worldState: { schematicOnlyMode: true }, modifications: {} }
+        ? { worldState: { schematicOnlyMode: false }, modifications: {} }
         : null
     }
   }

@@ -49,7 +49,7 @@ export async function onRequestGet(context) {
     const fallback = {
       ...DEFAULT_WORLD_STATE,
       worldState: {
-        schematicOnlyMode: !!spaceName,
+        schematicOnlyMode: false,
       },
     }
 

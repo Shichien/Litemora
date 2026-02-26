@@ -154,7 +154,7 @@ function registerMockApi(middlewares) {
       catch {
         res.statusCode = 200
         res.setHeader('Content-Type', 'application/json; charset=utf-8')
-        res.end(JSON.stringify({ worldState: { schematicOnlyMode: !!spaceName }, modifications: {} }))
+        res.end(JSON.stringify({ worldState: { schematicOnlyMode: false }, modifications: {} }))
       }
       return
     }
