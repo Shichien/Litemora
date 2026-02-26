@@ -18,12 +18,12 @@
 }
 
 * {
-  font-family: 'Minecraftia', 'MinecraftV2', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   font-weight: 400;
 }
 
 .mc-text {
-  font-family: 'MinecraftV2', sans-serif !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif !important;
   font-size: 14px;
   font-weight: 400;
 }
@@ -34,17 +34,17 @@
 
 /* English Mode: Minecraftia priority */
 .menu-overlay.lang-en * {
-  font-family: 'Minecraftia', 'MinecraftV2', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
 }
 
 /* Chinese Mode: MinecraftV2 priority */
 .menu-overlay.lang-zh * {
-  font-family: 'MinecraftV2', 'Minecraftia', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 /* Override: Keep numbers/values in Minecraftia even in Chinese mode */
 .menu-overlay.lang-zh .value-display {
-  font-family: 'Minecraftia', 'MinecraftV2', sans-serif; 
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; 
 }
 // ========================================
 // Minecraft UI System - Global Styles

@@ -27,20 +27,20 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
     cameraPreset: 'default',
     visualPreset: 'default',
     chunk: {
-      height: 32,
+      height: 256,
       viewDistance: 2,
       unloadPadding: 1,
     },
     environment: {
       skyMode: 'DayCycle',
-      sunIntensity: 1.75,
+      sunIntensity: 3,
       ambientIntensity: 0.75,
       fogDensity: 0.01,
     },
   },
   ui: {
     pauseMenu: {
-      showSettings: true,
+      showSettings: false,
       showSkins: true,
     },
   },

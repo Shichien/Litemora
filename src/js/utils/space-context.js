@@ -40,7 +40,23 @@ export function getSpaceNameFromHost(hostname = window.location.hostname) {
   return ''
 }
 
+export function getSpaceNameFromPathname(pathname = window.location.pathname) {
+  const rawPath = String(pathname || '/').trim()
+  const segments = rawPath.split('/').filter(Boolean)
+  if (!segments.length) {
+    return ''
+  }
+
+  const firstSegment = decodeURIComponent(segments[0] || '').toLowerCase()
+  return isValidSpaceName(firstSegment) ? firstSegment : ''
+}
+
 export function getActiveSpaceName() {
+  const fromPath = getSpaceNameFromPathname()
+  if (fromPath) {
+    return fromPath
+  }
+
   const fromHost = getSpaceNameFromHost()
   if (fromHost) {
     return fromHost
@@ -56,29 +72,14 @@ export function buildSpaceUrl(spaceName) {
     throw new Error('invalid_space_name')
   }
 
-  const host = normalizeHost()
-  const isLocalDev = isLocalDevHost(host)
-
-  if (isLocalDev) {
-    const url = new URL(window.location.origin)
-    url.searchParams.set('space', normalized)
-    return url.toString()
-  }
-
-  const protocol = window.location.protocol || 'https:'
-  return `${protocol}//${normalized}.${ROOT_DOMAIN}`
+  const url = new URL(window.location.origin)
+  url.pathname = `/${normalized}`
+  url.search = ''
+  return url.toString()
 }
 
 export function shouldUseRootPortalView() {
-  if (isRootPortalHost()) {
-    return true
-  }
-
-  if (isLocalDevHost()) {
-    return !getActiveSpaceName()
-  }
-
-  return false
+  return !getActiveSpaceName()
 }
 
 export function buildSpaceScopedKey(baseKey, scope = '') {

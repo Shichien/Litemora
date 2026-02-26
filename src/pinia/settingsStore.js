@@ -21,7 +21,7 @@ const STORAGE_KEY = 'mc-game-settings'
 
 const DEFAULT_SETTINGS = {
   // General
-  language: 'en', // 'en' | 'zh'
+  language: 'zh', // 'en' | 'zh'
 
   // Graphics
   shadowQuality: 'high', // 'low' | 'medium' | 'high'
@@ -42,7 +42,7 @@ const DEFAULT_SETTINGS = {
 
   // Environment
   envSkyMode: 'DayCycle',
-  envSunIntensity: 1.75,
+  envSunIntensity: 3,
   envAmbientIntensity: 0.75,
   envFogDensity: 0.01,
 

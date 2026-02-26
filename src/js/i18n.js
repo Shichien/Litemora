@@ -2,7 +2,7 @@ import { createI18n } from 'vue-i18n'
 import en from '../locales/en.json'
 import zh from '../locales/zh.json'
 
-// Get saved language or default to browser/English
+// Get saved language or default to Chinese
 function getDefaultLocale() {
   const saved = localStorage.getItem('mc-game-settings')
   if (saved) {
@@ -17,13 +17,7 @@ function getDefaultLocale() {
     }
   }
 
-  // Check browser language
-  const browserLang = navigator.language.toLowerCase()
-  if (browserLang.startsWith('zh')) {
-    return 'zh'
-  }
-
-  return 'en'
+  return 'zh'
 }
 
 const i18n = createI18n({

@@ -84,11 +84,11 @@ export const WORLDGEN_PRESET_IDS = ['default', 'flat', 'mountains', 'forest']
 // Default WorldGen Draft (used for UI state)
 // ========================================
 export const DEFAULT_WORLDGEN_DRAFT = {
-  presetId: 'default',
+  presetId: 'flat',
   // User-adjustable overrides (exposed to UI)
-  magnitude: 6, // Terrain Height
+  magnitude: 2, // Terrain Height
   treeMinHeight: 3,
-  treeMaxHeight: 6,
+  treeMaxHeight: 5,
 }
 
 /**

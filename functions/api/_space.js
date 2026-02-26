@@ -6,15 +6,15 @@ export const DEFAULT_WORLD_CONFIG = {
   },
   settings: {
     cameraPreset: 'default',
-    visualPreset: 'off',
+    visualPreset: 'default',
     chunk: {
-      height: 32,
+      height: 256,
       viewDistance: 2,
       unloadPadding: 1,
     },
     environment: {
-      skyMode: 'Image',
-      sunIntensity: 2,
+      skyMode: 'DayCycle',
+      sunIntensity: 3,
       ambientIntensity: 0.85,
       fogDensity: 0.008,
     },
@@ -30,7 +30,7 @@ export const DEFAULT_WORLD_CONFIG = {
   ui: {
     pauseMenu: {
       showMainMenu: false,
-      showSettings: true,
+      showSettings: false,
       showSkins: true,
     },
   },

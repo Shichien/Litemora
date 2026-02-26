@@ -45,7 +45,7 @@ function handleClose() {
         创建你的专属空间
       </h1>
       <p class="portal-subtitle">
-        为你的影像档案选择一个独一无二的名字，这将成为你的专属网址。
+        为你的影像档案选择一个独一无二的名字，这将成为你的专属路径网址。
       </p>
 
       <label class="portal-label" for="space-name">你的空间名称</label>
@@ -60,7 +60,7 @@ function handleClose() {
           class="portal-input"
           @keydown.enter.prevent="handleSubmit"
         >
-        <span class="portal-suffix">.litemora.art</span>
+        <span class="portal-suffix">litemora.art/</span>
       </div>
 
       <div class="portal-tip-box">
