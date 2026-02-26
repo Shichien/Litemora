@@ -44,6 +44,22 @@
   gap: calc(2px * var(--hud-scale));
 }
 
+.coordinate-display {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(16px * var(--hud-scale));
+  color: var(--coord-text-color);
+  font-family: 'MinecraftV2', sans-serif;
+  font-size: calc(8px * var(--hud-scale));
+  line-height: 1;
+  text-shadow:
+    calc(1px * var(--hud-scale)) calc(1px * var(--hud-scale)) 0 var(--coord-text-shadow);
+}
+
+.coordinate-display > span + span {
+  margin-left: calc(16px * var(--hud-scale));
+}
+
 /* === Compass Wheel === */
 .compass-container {
   width: calc(180px * var(--hud-scale));
