@@ -995,7 +995,7 @@ class SchematicService {
     const schematic = this.currentSchematic
     const replaceWorld = options.replaceWorld !== false
     const persistModifications = options.persistModifications ?? replaceWorld
-    const keepSchematicOnlyMode = options.keepSchematicOnlyMode ?? false
+    const keepSchematicOnlyMode = options.keepSchematicOnlyMode ?? replaceWorld
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
     const previousSchematicOnlyMode = !!chunkManager.schematicOnlyMode
 
