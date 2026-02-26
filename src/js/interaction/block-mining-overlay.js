@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
+import { getBlockTypeById, getGeometryForBlockType } from '../world/terrain/blocks-config.js'
 
 /**
  * BlockMiningOverlay
@@ -25,8 +26,9 @@ export default class BlockMiningOverlay {
       }
     }
 
-    // Create overlay geometry (slightly larger than 1x1x1 cube)
-    this._geometry = new THREE.BoxGeometry(1.002, 1.002, 1.002)
+    // Default overlay geometry (fallback cube)
+    this._defaultGeometry = new THREE.BoxGeometry(1.002, 1.002, 1.002)
+    this._geometryCache = new Map()
 
     // Create overlay material (transparent, shows crack texture)
     this._material = new THREE.MeshBasicMaterial({
@@ -40,7 +42,7 @@ export default class BlockMiningOverlay {
     })
 
     // Create overlay mesh (hidden by default)
-    this._mesh = new THREE.Mesh(this._geometry, this._material)
+    this._mesh = new THREE.Mesh(this._defaultGeometry, this._material)
     this._mesh.visible = false
     this._mesh.renderOrder = 999 // Render on top
     this.scene.add(this._mesh)
@@ -65,6 +67,8 @@ export default class BlockMiningOverlay {
       return
     }
 
+    this._applyOverlayGeometry(target)
+
     // Position overlay at target block
     this._mesh.position.set(
       target.worldBlock.x,
@@ -80,6 +84,36 @@ export default class BlockMiningOverlay {
     }
 
     this._mesh.visible = true
+  }
+
+  _applyOverlayGeometry(target) {
+    const blockId = Number(target?.blockId)
+    if (!Number.isFinite(blockId)) {
+      if (this._mesh.geometry !== this._defaultGeometry) {
+        this._mesh.geometry = this._defaultGeometry
+      }
+      return
+    }
+
+    const blockType = getBlockTypeById(blockId)
+    if (!blockType) {
+      if (this._mesh.geometry !== this._defaultGeometry) {
+        this._mesh.geometry = this._defaultGeometry
+      }
+      return
+    }
+
+    const cacheKey = `${blockType.id}:${blockType.geometryType || 'cube'}`
+    if (!this._geometryCache.has(cacheKey)) {
+      const geometry = getGeometryForBlockType(blockType).clone()
+      geometry.scale(1.002, 1.002, 1.002)
+      this._geometryCache.set(cacheKey, geometry)
+    }
+
+    const geometry = this._geometryCache.get(cacheKey) || this._defaultGeometry
+    if (this._mesh.geometry !== geometry) {
+      this._mesh.geometry = geometry
+    }
   }
 
   /**
@@ -99,7 +133,11 @@ export default class BlockMiningOverlay {
     emitter.off('game:mining-complete', this._handleMiningCancel)
 
     this.scene.remove(this._mesh)
-    this._geometry.dispose()
+    this._defaultGeometry.dispose()
+    this._geometryCache.forEach((geometry) => {
+      geometry?.dispose?.()
+    })
+    this._geometryCache.clear()
     this._material.dispose()
   }
 }
