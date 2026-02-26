@@ -169,14 +169,19 @@ pnpm dev
 
 然后打开终端输出的本地地址（Vite 会以 `--host` 启动）。
 
-### 管理后台 OAuth 登录（GitHub / Google，可部署）
+### 管理后台 OAuth 登录（GitHub / Google，Cloudflare 可部署）
 
-管理后台使用标准 `Authorization Code + PKCE` 流程，生产环境可直接使用仓库内接口：
+管理后台使用标准 `Authorization Code + PKCE` 流程。部署到 Cloudflare Pages 时，使用仓库内 Pages Functions 接口：
 
 - `POST /api/auth/github/exchange`
 - `POST /api/auth/google/exchange`
 
-接口位置：
+Cloudflare Functions 位置：
+
+- `functions/api/auth/github/exchange.js`
+- `functions/api/auth/google/exchange.js`
+
+Node 风格接口（可用于其他平台）位置：
 
 - `api/auth/github/exchange.js`
 - `api/auth/google/exchange.js`
@@ -192,7 +197,7 @@ VITE_OAUTH_GOOGLE_CLIENT_ID=your_google_client_id
 
 #### 2) 服务端环境变量（必须保密）
 
-写到部署平台（例如 Vercel Project Settings → Environment Variables）：
+写到 Cloudflare Pages → 项目 → `Settings` → `Environment variables`（Production / Preview 都要配）：
 
 ```bash
 OAUTH_GITHUB_CLIENT_ID=your_github_client_id
@@ -203,12 +208,12 @@ OAUTH_GOOGLE_CLIENT_SECRET=your_google_client_secret
 
 > 注意：`*_CLIENT_SECRET` 只能放服务端环境变量，不能放 `VITE_` 前缀。
 
-#### 3) OAuth 平台回调地址
+#### 3) OAuth 平台回调地址（Cloudflare）
 
 - 本地开发：
   - `http://localhost:5173/auth-callback.html?provider=github`
   - `http://localhost:5173/auth-callback.html?provider=google`
-- 生产部署（示例）：
+- 生产部署（示例，Cloudflare Pages 自定义域名）：
   - `https://your-domain.com/auth-callback.html?provider=github`
   - `https://your-domain.com/auth-callback.html?provider=google`
 
@@ -240,7 +245,15 @@ GitHub OAuth App 填 `Authorization callback URL`，Google OAuth Client 填 `Aut
 }
 ```
 
-#### 5) 本地 mock 说明
+#### 5) Cloudflare Pages 构建设置
+
+- Framework preset: `None`
+- Build command: `pnpm build`
+- Build output directory: `dist`
+- Root directory: 仓库根目录
+- Functions directory: `functions`
+
+#### 6) 本地 mock 说明
 
 `vite.config.js` 仍保留本地开发 mock，方便无密钥联调；生产环境应使用上面的真实 `api/auth/*/exchange` 接口。
 
