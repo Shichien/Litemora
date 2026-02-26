@@ -498,8 +498,7 @@ class SchematicService {
         || this._resolveTextureName(`planks_${fenceBaseName}`)
 
       if (fenceTextureName) {
-        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
-        const geometryType = fenceGeometryTypeFromProperties(mappedProperties)
+        const geometryType = fenceGeometryTypeFromProperties(properties)
         const fenceBlock = ensureDynamicBlockType(fenceTextureName, {
           blockName: normalizedName,
           geometryType,
