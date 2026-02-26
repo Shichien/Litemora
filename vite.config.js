@@ -45,6 +45,39 @@ function resolveSpaceJsonPath(fileName, spaceName = '') {
   return path.resolve(__dirname, 'public', 'spaces', spaceName, fileName)
 }
 
+function summarizeWorldState(payload = {}, key = 'world-state') {
+  const format = payload?.format || 'classic'
+  const isChunkV2 = format === 'chunk-v2'
+  const chunks = isChunkV2 ? (payload?.chunks || {}) : (payload?.modifications || {})
+  const chunkKeys = Object.keys(chunks)
+
+  let modificationCount = 0
+  if (isChunkV2) {
+    for (const chunk of Object.values(chunks)) {
+      modificationCount += Number(chunk?.c || 0)
+    }
+  }
+  else {
+    for (const blocks of Object.values(chunks)) {
+      if (blocks && typeof blocks === 'object') {
+        modificationCount += Object.keys(blocks).length
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    key,
+    format,
+    chunkWidth: Number(payload?.chunkWidth) || null,
+    chunkCount: chunkKeys.length,
+    modificationCount,
+    schematicOnlyMode: !!payload?.worldState?.schematicOnlyMode,
+    payloadBytes: JSON.stringify(payload || {}).length,
+    sampleChunkKeys: chunkKeys.slice(0, 8),
+  }
+}
+
 function registerMockApi(middlewares) {
   middlewares.use(/^\/api\/auth\/github\/exchange$/, async (req, res) => {
     if (req.method !== 'POST') {
@@ -204,6 +237,32 @@ function registerMockApi(middlewares) {
     res.statusCode = 405
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify({ error: 'method_not_allowed' }))
+  })
+
+  middlewares.use('/api/debug/world-state', async (req, res) => {
+    if (req.method !== 'GET') {
+      res.statusCode = 405
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'method_not_allowed' }))
+      return
+    }
+
+    const spaceName = getSpaceNameFromRequest(req)
+    const statePath = resolveSpaceJsonPath('world-state.json', spaceName)
+
+    try {
+      const content = await fs.readFile(statePath, 'utf-8')
+      const payload = JSON.parse(content)
+      const key = spaceName ? `space:${spaceName}:world-state` : 'space:default:world-state'
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ ...summarizeWorldState(payload, key), space: spaceName || 'default', found: true }))
+    }
+    catch {
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ ok: false, space: spaceName || 'default', found: false }))
+    }
   })
 }
 

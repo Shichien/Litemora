@@ -60,6 +60,27 @@ function sanitizeSnapshot(snapshot = null) {
   }
 }
 
+function summarizeSnapshotForDebug(snapshot = null) {
+  const safe = snapshot && typeof snapshot === 'object' ? snapshot : {}
+  const modifications = safe.modifications && typeof safe.modifications === 'object'
+    ? safe.modifications
+    : {}
+
+  let modificationCount = 0
+  for (const blocks of Object.values(modifications)) {
+    if (blocks && typeof blocks === 'object') {
+      modificationCount += Object.keys(blocks).length
+    }
+  }
+
+  return {
+    format: safe.format || 'classic',
+    chunkCount: Object.keys(modifications).length,
+    modificationCount,
+    schematicOnlyMode: !!safe?.worldState?.schematicOnlyMode,
+  }
+}
+
 /**
  * World 场景编排器：只负责在 core:ready 后按依赖顺序创建组件、编排 update/destroy。
  * 具体职责见 .agent/skills/vtj-scene-management/SKILL.md
@@ -258,6 +279,12 @@ export default class World {
           const data = await response.json()
           if (data && typeof data === 'object') {
             const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
+            console.info('[World Debug] Loaded remote world-state (space-first)', {
+              source: 'remote-space-first',
+              space: activeSpace || 'default',
+              storageKey,
+              ...summarizeSnapshotForDebug(decoded),
+            })
             try {
               localStorage.setItem(storageKey, JSON.stringify(data))
             }
@@ -278,7 +305,14 @@ export default class World {
       if (raw) {
         const parsed = JSON.parse(raw)
         if (parsed && typeof parsed === 'object') {
-          return sanitizeSnapshot(decodeWorldStateSnapshot(parsed))
+          const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(parsed))
+          console.info('[World Debug] Loaded local world-state', {
+            source: 'local-storage',
+            space: activeSpace || 'default',
+            storageKey,
+            ...summarizeSnapshotForDebug(decoded),
+          })
+          return decoded
         }
       }
     }
@@ -305,6 +339,12 @@ export default class World {
       }
 
       const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
+      console.info('[World Debug] Loaded remote world-state (fallback path)', {
+        source: 'remote-fallback',
+        space: activeSpace || 'default',
+        storageKey,
+        ...summarizeSnapshotForDebug(decoded),
+      })
 
       try {
         localStorage.setItem(storageKey, JSON.stringify(data))
@@ -357,6 +397,12 @@ export default class World {
       if (!response.ok) {
         throw new Error(`remote_world_state_save_failed_${response.status}`)
       }
+
+      console.info('[World Debug] Saved world-state', {
+        space: activeSpace || 'default',
+        requestUrl,
+        ...summarizeSnapshotForDebug(payload),
+      })
 
       return true
     }
