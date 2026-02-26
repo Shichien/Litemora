@@ -507,6 +507,12 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     blockType.depthWrite = false
   }
 
+  if (hintSource.includes('vine') || hintSource.includes('torch')) {
+    blockType.transparent = true
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.depthWrite = false
+  }
+
   if (hintSource.includes('leaves')) {
     blockType.mixColor = 0x5E9C45
     blockType.alphaTest = blockType.alphaTest ?? 0.5
@@ -821,17 +827,17 @@ function createStairGeometry({ half = 'bottom', facing = 'north', shape = 'strai
 
   if (normalizedShape === 'inner_left') {
     addNorthHalf()
-    addWestHalf()
+    addEastHalf()
   }
   else if (normalizedShape === 'inner_right') {
     addNorthHalf()
-    addEastHalf()
+    addWestHalf()
   }
   else if (normalizedShape === 'outer_left') {
-    addNorthWestQuarter()
+    addNorthEastQuarter()
   }
   else if (normalizedShape === 'outer_right') {
-    addNorthEastQuarter()
+    addNorthWestQuarter()
   }
   else {
     addNorthHalf()
@@ -877,6 +883,15 @@ const trapdoorGeometryCache = new Map()
 const barsGeometryCache = new Map()
 const wallGeometryCache = new Map()
 const lanternGeometryCache = new Map()
+const doorGeometryCache = new Map()
+const torchGeometryCache = new Map()
+const vineGeometryCache = new Map()
+
+const carpetGeometry = (() => {
+  const geometry = new THREE.BoxGeometry(1, 0.0625, 1)
+  geometry.translate(0, -0.46875, 0)
+  return geometry
+})()
 
 function createTrapdoorGeometry({ half = 'bottom', facing = 'north', open = false } = {}) {
   const thickness = 0.1875
@@ -901,8 +916,8 @@ function createTrapdoorGeometry({ half = 'bottom', facing = 'north', open = fals
 
   const geometry = new THREE.BoxGeometry(1, 1, thickness)
   const z = facing === 'south'
-    ? (0.5 - thickness / 2)
-    : (-0.5 + thickness / 2)
+    ? (-0.5 + thickness / 2)
+    : (0.5 - thickness / 2)
   geometry.translate(0, 0, z)
   return geometry
 }
@@ -1057,8 +1072,137 @@ function createLanternGeometry({ hanging = false } = {}) {
   return merged
 }
 
+function createDoorGeometry({ facing = 'north', open = false, hinge = 'left' } = {}) {
+  const thickness = 0.1875
+  const facingNormalized = ['north', 'south', 'east', 'west'].includes(facing) ? facing : 'north'
+  const hingeNormalized = hinge === 'right' ? 'right' : 'left'
+
+  let orientation = facingNormalized
+  if (open) {
+    const rotateLeft = {
+      north: 'west',
+      west: 'south',
+      south: 'east',
+      east: 'north',
+    }
+    const rotateRight = {
+      north: 'east',
+      east: 'south',
+      south: 'west',
+      west: 'north',
+    }
+    orientation = hingeNormalized === 'right'
+      ? rotateRight[facingNormalized]
+      : rotateLeft[facingNormalized]
+  }
+
+  if (orientation === 'east' || orientation === 'west') {
+    const geometry = new THREE.BoxGeometry(thickness, 1, 1)
+    const x = orientation === 'east'
+      ? (0.5 - thickness / 2)
+      : (-0.5 + thickness / 2)
+    geometry.translate(x, 0, 0)
+    return geometry
+  }
+
+  const geometry = new THREE.BoxGeometry(1, 1, thickness)
+  const z = orientation === 'south'
+    ? (0.5 - thickness / 2)
+    : (-0.5 + thickness / 2)
+  geometry.translate(0, 0, z)
+  return geometry
+}
+
+function createTorchGeometry({ wall = false, facing = 'north' } = {}) {
+  const pieces = []
+
+  const stem = new THREE.BoxGeometry(0.125, 0.625, 0.125)
+  const tip = new THREE.BoxGeometry(0.25, 0.25, 0.25)
+
+  if (!wall) {
+    stem.translate(0, -0.1875, 0)
+    tip.translate(0, 0.25, 0)
+    pieces.push(stem, tip)
+  }
+  else {
+    const validFacing = ['north', 'south', 'east', 'west'].includes(facing) ? facing : 'north'
+    const facingOffset = 0.34375
+
+    if (validFacing === 'north') {
+      stem.translate(0, -0.0625, -facingOffset)
+      tip.translate(0, 0.28125, -0.1875)
+    }
+    else if (validFacing === 'south') {
+      stem.translate(0, -0.0625, facingOffset)
+      tip.translate(0, 0.28125, 0.1875)
+    }
+    else if (validFacing === 'east') {
+      stem.translate(facingOffset, -0.0625, 0)
+      tip.translate(0.1875, 0.28125, 0)
+    }
+    else {
+      stem.translate(-facingOffset, -0.0625, 0)
+      tip.translate(-0.1875, 0.28125, 0)
+    }
+
+    pieces.push(stem, tip)
+  }
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
+function createVineGeometry({ up = false, north = false, east = false, south = false, west = false } = {}) {
+  const planes = []
+  const offset = 0.499
+
+  if (north) {
+    const g = new THREE.PlaneGeometry(1, 1)
+    g.translate(0, 0, -offset)
+    planes.push(g)
+  }
+  if (south) {
+    const g = new THREE.PlaneGeometry(1, 1)
+    g.rotateY(Math.PI)
+    g.translate(0, 0, offset)
+    planes.push(g)
+  }
+  if (east) {
+    const g = new THREE.PlaneGeometry(1, 1)
+    g.rotateY(Math.PI / 2)
+    g.translate(offset, 0, 0)
+    planes.push(g)
+  }
+  if (west) {
+    const g = new THREE.PlaneGeometry(1, 1)
+    g.rotateY(-Math.PI / 2)
+    g.translate(-offset, 0, 0)
+    planes.push(g)
+  }
+  if (up) {
+    const g = new THREE.PlaneGeometry(1, 1)
+    g.rotateX(-Math.PI / 2)
+    g.translate(0, offset, 0)
+    planes.push(g)
+  }
+
+  if (planes.length === 0) {
+    const fallback = new THREE.PlaneGeometry(1, 1)
+    fallback.translate(0, 0, -offset)
+    planes.push(fallback)
+  }
+
+  const merged = mergeToSingleGeometry(planes)
+  planes.forEach(plane => plane.dispose())
+  return merged
+}
+
 export function getGeometryForBlockType(blockType) {
   const geometryType = blockType?.geometryType || 'cube'
+  if (geometryType === 'carpet') {
+    return carpetGeometry
+  }
   if (geometryType === 'slab_bottom') {
     return slabBottomGeometry
   }
@@ -1129,6 +1273,43 @@ export function getGeometryForBlockType(blockType) {
       }))
     }
     return lanternGeometryCache.get(geometryType)
+  }
+
+  const doorMatch = geometryType.match(/^door_(upper|lower)_(open|closed)_(north|south|east|west)_(left|right)$/u)
+  if (doorMatch) {
+    if (!doorGeometryCache.has(geometryType)) {
+      doorGeometryCache.set(geometryType, createDoorGeometry({
+        facing: doorMatch[3],
+        open: doorMatch[2] === 'open',
+        hinge: doorMatch[4],
+      }))
+    }
+    return doorGeometryCache.get(geometryType)
+  }
+
+  const torchMatch = geometryType.match(/^torch_(floor|wall_(north|south|east|west))$/u)
+  if (torchMatch) {
+    if (!torchGeometryCache.has(geometryType)) {
+      torchGeometryCache.set(geometryType, createTorchGeometry({
+        wall: torchMatch[1] !== 'floor',
+        facing: torchMatch[2] || 'north',
+      }))
+    }
+    return torchGeometryCache.get(geometryType)
+  }
+
+  const vineMatch = geometryType.match(/^vine_([01])([01])([01])([01])([01])$/u)
+  if (vineMatch) {
+    if (!vineGeometryCache.has(geometryType)) {
+      vineGeometryCache.set(geometryType, createVineGeometry({
+        up: vineMatch[1] === '1',
+        north: vineMatch[2] === '1',
+        east: vineMatch[3] === '1',
+        south: vineMatch[4] === '1',
+        west: vineMatch[5] === '1',
+      }))
+    }
+    return vineGeometryCache.get(geometryType)
   }
 
   return sharedGeometry

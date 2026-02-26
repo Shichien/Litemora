@@ -13,15 +13,18 @@ import {
 } from './block-behaviors.js'
 import {
   barsGeometryTypeFromProperties,
+  carpetGeometryTypeFromProperties,
   doorGeometryTypeFromProperties,
   fenceGeometryTypeFromProperties,
   buildVariantKey,
   normalizeFacing,
   normalizeStairShape,
   slabGeometryTypeFromProperties,
+  torchGeometryTypeFromProperties,
   trapdoorGeometryTypeFromProperties,
   variantBoolean,
   variantString,
+  vineGeometryTypeFromProperties,
   wallGeometryTypeFromProperties,
 } from './block-state-adapter.js'
 import { BLOCK_IDS, ensureDynamicBlockType, getBlockTypeById } from './blocks-config.js'
@@ -367,6 +370,9 @@ class SchematicService {
     const isDoorBlock = /_door$/u.test(normalizedName) && !/_trapdoor$/u.test(normalizedName)
     const isFenceBlock = /_fence$/u.test(normalizedName) && !/_fence_gate$/u.test(normalizedName)
     const isGlassPaneBlock = normalizedName === 'glass_pane' || /_glass_pane$/u.test(normalizedName)
+    const isCarpetBlock = /_carpet$/u.test(normalizedName)
+    const isVineBlock = normalizedName === 'vine'
+    const isTorchBlock = /(^|_)torch$/u.test(normalizedName)
 
     if (isSlabBlockName(normalizedName)) {
       const slabBaseName = normalizedName.replace(/_slab$/u, '')
@@ -402,7 +408,7 @@ class SchematicService {
         || this._resolveTextureName(normalizedName)
 
       if (stairTextureName) {
-        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties, { mapStairShape: true })
+        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties)
         const geometryType = this._stairGeometryTypeFromProperties(mappedProperties)
         const stairBlock = ensureDynamicBlockType(stairTextureName, {
           blockName: normalizedName,
@@ -574,6 +580,75 @@ class SchematicService {
             id: lanternBlock.id,
             source: 'atlas-dynamic',
             textureName: lanternTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isCarpetBlock) {
+      const carpetTextureName = this._resolveTextureName(normalizedName)
+      if (carpetTextureName) {
+        const geometryType = carpetGeometryTypeFromProperties(properties)
+        const carpetBlock = ensureDynamicBlockType(carpetTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (carpetBlock?.id) {
+          const result = {
+            id: carpetBlock.id,
+            source: 'atlas-dynamic',
+            textureName: carpetTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isVineBlock) {
+      const vineTextureName = this._resolveTextureName(normalizedName)
+      if (vineTextureName) {
+        const geometryType = vineGeometryTypeFromProperties(properties)
+        const vineBlock = ensureDynamicBlockType(vineTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (vineBlock?.id) {
+          const result = {
+            id: vineBlock.id,
+            source: 'atlas-dynamic',
+            textureName: vineTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isTorchBlock) {
+      const torchTextureName = this._resolveTextureName(normalizedName)
+      if (torchTextureName) {
+        const isWallTorch = /_wall_torch$/u.test(normalizedName)
+        const mappedProperties = isWallTorch
+          ? this._mapDirectionalPropertiesForWorld(properties)
+          : properties
+        const geometryType = torchGeometryTypeFromProperties(mappedProperties, {
+          wall: isWallTorch,
+        })
+        const torchBlock = ensureDynamicBlockType(torchTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (torchBlock?.id) {
+          const result = {
+            id: torchBlock.id,
+            source: 'atlas-dynamic',
+            textureName: torchTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
           return result

@@ -87,6 +87,36 @@ export function fenceGeometryTypeFromProperties(properties = {}) {
   return `fence_${north ? 1 : 0}${east ? 1 : 0}${south ? 1 : 0}${west ? 1 : 0}`
 }
 
+export function doorGeometryTypeFromProperties(properties = {}) {
+  const facing = normalizeFacing(properties?.facing)
+  const half = variantString(properties?.half) === 'upper' ? 'upper' : 'lower'
+  const open = variantBoolean(properties?.open)
+  const hinge = variantString(properties?.hinge) === 'right' ? 'right' : 'left'
+  return `door_${half}_${open ? 'open' : 'closed'}_${facing}_${hinge}`
+}
+
+export function carpetGeometryTypeFromProperties() {
+  return 'carpet'
+}
+
+export function vineGeometryTypeFromProperties(properties = {}) {
+  const up = variantBoolean(properties?.up)
+  const north = variantBoolean(properties?.north)
+  const east = variantBoolean(properties?.east)
+  const south = variantBoolean(properties?.south)
+  const west = variantBoolean(properties?.west)
+  return `vine_${up ? 1 : 0}${north ? 1 : 0}${east ? 1 : 0}${south ? 1 : 0}${west ? 1 : 0}`
+}
+
+export function torchGeometryTypeFromProperties(properties = {}, { wall = false } = {}) {
+  if (!wall) {
+    return 'torch_floor'
+  }
+
+  const facing = normalizeFacing(properties?.facing)
+  return `torch_wall_${facing}`
+}
+
 export function buildVariantKey(properties = {}) {
   const type = variantString(properties?.type || properties?.slab_type)
   const half = variantString(properties?.half)
