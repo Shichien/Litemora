@@ -2,6 +2,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
+import { getBlockTypeById, getGeometryForBlockType } from '../world/terrain/blocks-config.js'
 
 /**
  * BlockSelectionHelper
@@ -28,8 +29,8 @@ export default class BlockSelectionHelper {
       add: new THREE.Color('#33ff33'), // 绿色
     }
 
-    // 使用几何体：略大于 1 以防止 z-fighting
     this.geometry = new THREE.BoxGeometry(1.01, 1.01, 1.01)
+    this._geometryCache = new Map()
 
     this.material = new THREE.MeshBasicMaterial({
       color: this._colors.remove, // 默认红色
@@ -96,8 +97,10 @@ export default class BlockSelectionHelper {
       return
     }
 
+    this._applyGeometryForTarget(info)
+
     const s = info.renderScale ?? 1
-    this.object.scale.setScalar(s)
+    this.object.scale.set(s, s, s)
 
     // add 模式：基于 face.normal 预览相邻格子
     if (this.mode === 'add' && info.face?.normal) {
@@ -118,6 +121,36 @@ export default class BlockSelectionHelper {
     }
 
     this.object.visible = true
+  }
+
+  _applyGeometryForTarget(info) {
+    if (this.mode !== 'remove') {
+      if (this.object.geometry !== this.geometry) {
+        this.object.geometry = this.geometry
+      }
+      return
+    }
+
+    const blockType = getBlockTypeById(info?.blockId)
+    if (!blockType) {
+      if (this.object.geometry !== this.geometry) {
+        this.object.geometry = this.geometry
+      }
+      return
+    }
+
+    const cacheKey = `${blockType.id}:${blockType.geometryType || 'cube'}`
+    if (!this._geometryCache.has(cacheKey)) {
+      const baseGeometry = getGeometryForBlockType(blockType)
+      const highlightGeometry = baseGeometry.clone()
+      highlightGeometry.scale(1.01, 1.01, 1.01)
+      this._geometryCache.set(cacheKey, highlightGeometry)
+    }
+
+    const geometry = this._geometryCache.get(cacheKey) || this.geometry
+    if (this.object.geometry !== geometry) {
+      this.object.geometry = geometry
+    }
   }
 
   /**
@@ -164,7 +197,11 @@ export default class BlockSelectionHelper {
 
   dispose() {
     this.scene.remove(this.object)
-    this.object.geometry?.dispose?.()
+    this.geometry?.dispose?.()
+    this._geometryCache.forEach((geometry) => {
+      geometry?.dispose?.()
+    })
+    this._geometryCache.clear()
     this.material?.dispose?.()
   }
 }

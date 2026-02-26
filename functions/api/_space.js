@@ -98,6 +98,9 @@ export function normalizeWorldStatePayload(payload, spaceName = '') {
     : {}
 
   const compactChunkWidth = Number(payload?.chunkWidth)
+  const dynamicPalette = payload?.dynamicPalette && typeof payload.dynamicPalette === 'object'
+    ? payload.dynamicPalette
+    : null
   const hasCompactChunks = Object.keys(compactChunks).length > 0
 
   if (payload?.format === 'chunk-v2' && hasCompactChunks) {
@@ -108,6 +111,7 @@ export function normalizeWorldStatePayload(payload, spaceName = '') {
       worldState: {
         schematicOnlyMode: payload?.worldState?.schematicOnlyMode ?? !!spaceName,
       },
+      ...(dynamicPalette ? { dynamicPalette } : {}),
       chunks: compactChunks,
     }
   }

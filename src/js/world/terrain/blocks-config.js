@@ -436,6 +436,37 @@ export function getBlockTypeById(id) {
   return blockByIdCache[id]
 }
 
+export function getBlockSignatureById(id) {
+  const blockType = getBlockTypeById(id)
+  if (!blockType) {
+    return null
+  }
+
+  const textureKeys = blockType.textureKeys && typeof blockType.textureKeys === 'object'
+    ? { ...blockType.textureKeys }
+    : {}
+
+  const textureName = textureKeys.all
+    || textureKeys.top
+    || textureKeys.side
+    || textureKeys.bottom
+    || textureKeys.north
+    || textureKeys.south
+    || textureKeys.east
+    || textureKeys.west
+    || textureKeys.front
+    || textureKeys.back
+    || ''
+
+  return {
+    id: Number(blockType.id),
+    blockName: blockType.name || textureName || `block_${Number(blockType.id)}`,
+    geometryType: blockType.geometryType || 'cube',
+    textureName,
+    textureKeys,
+  }
+}
+
 export function ensureDynamicBlockType(textureName, options = {}) {
   if (!textureName) {
     return null
@@ -448,9 +479,14 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     return dynamicBlockBySignature.get(signature)
   }
 
+  const preferredId = Number(options.preferredId)
+  const canUsePreferredId = Number.isFinite(preferredId)
+    && preferredId > 0
+    && !getBlockTypeById(preferredId)
+
   const dynamicIndex = dynamicBlockBySignature.size
   const blockType = {
-    id: DYNAMIC_BLOCK_ID_START + dynamicIndex,
+    id: canUsePreferredId ? preferredId : (DYNAMIC_BLOCK_ID_START + dynamicIndex),
     name: options.blockName || textureName,
     visible: true,
     textureKeys: {
