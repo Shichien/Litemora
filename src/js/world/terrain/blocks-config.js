@@ -860,6 +860,7 @@ function createStairGeometry({ half = 'bottom', facing = 'north', shape = 'strai
 const stairGeometries = {
 }
 
+const fenceGeometryCache = new Map()
 ;['bottom', 'top'].forEach((half) => {
   ;['north', 'south', 'east', 'west'].forEach((facing) => {
     ;['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].forEach((shape) => {
@@ -932,6 +933,56 @@ function createIronBarsGeometry({ north = false, east = false, south = false, we
     const g = new THREE.BoxGeometry(0.5, 1, armThickness)
     g.translate(-0.25, 0, 0)
     pieces.push(g)
+  }
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
+function createFenceGeometry({ north = false, east = false, south = false, west = false } = {}) {
+  const pieces = []
+  const postWidth = 0.25
+  const railWidth = 0.125
+  const railLength = 0.5
+  const upperRailY = 0.2
+  const lowerRailY = -0.15
+
+  pieces.push(new THREE.BoxGeometry(postWidth, 1, postWidth))
+
+  const addNorthSouthRails = (dir) => {
+    const z = dir === 'north' ? -0.25 : 0.25
+    const topRail = new THREE.BoxGeometry(railWidth, railWidth, railLength)
+    topRail.translate(0, upperRailY, z)
+    pieces.push(topRail)
+
+    const bottomRail = new THREE.BoxGeometry(railWidth, railWidth, railLength)
+    bottomRail.translate(0, lowerRailY, z)
+    pieces.push(bottomRail)
+  }
+
+  const addEastWestRails = (dir) => {
+    const x = dir === 'west' ? -0.25 : 0.25
+    const topRail = new THREE.BoxGeometry(railLength, railWidth, railWidth)
+    topRail.translate(x, upperRailY, 0)
+    pieces.push(topRail)
+
+    const bottomRail = new THREE.BoxGeometry(railLength, railWidth, railWidth)
+    bottomRail.translate(x, lowerRailY, 0)
+    pieces.push(bottomRail)
+  }
+
+  if (north) {
+    addNorthSouthRails('north')
+  }
+  if (south) {
+    addNorthSouthRails('south')
+  }
+  if (east) {
+    addEastWestRails('east')
+  }
+  if (west) {
+    addEastWestRails('west')
   }
 
   const merged = mergeToSingleGeometry(pieces)
@@ -1041,6 +1092,19 @@ export function getGeometryForBlockType(blockType) {
       }))
     }
     return barsGeometryCache.get(geometryType)
+  }
+
+  const fenceMatch = geometryType.match(/^fence_([01])([01])([01])([01])$/u)
+  if (fenceMatch) {
+    if (!fenceGeometryCache.has(geometryType)) {
+      fenceGeometryCache.set(geometryType, createFenceGeometry({
+        north: fenceMatch[1] === '1',
+        east: fenceMatch[2] === '1',
+        south: fenceMatch[3] === '1',
+        west: fenceMatch[4] === '1',
+      }))
+    }
+    return fenceGeometryCache.get(geometryType)
   }
 
   const wallMatch = geometryType.match(/^wall_([01])_([0-2])([0-2])([0-2])([0-2])$/u)

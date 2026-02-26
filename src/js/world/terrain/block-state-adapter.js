@@ -79,6 +79,14 @@ export function wallGeometryTypeFromProperties(properties = {}) {
   return `wall_${up ? 1 : 0}_${north}${east}${south}${west}`
 }
 
+export function fenceGeometryTypeFromProperties(properties = {}) {
+  const north = variantBoolean(properties?.north)
+  const east = variantBoolean(properties?.east)
+  const south = variantBoolean(properties?.south)
+  const west = variantBoolean(properties?.west)
+  return `fence_${north ? 1 : 0}${east ? 1 : 0}${south ? 1 : 0}${west ? 1 : 0}`
+}
+
 export function buildVariantKey(properties = {}) {
   const type = variantString(properties?.type || properties?.slab_type)
   const half = variantString(properties?.half)

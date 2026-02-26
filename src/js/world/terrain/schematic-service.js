@@ -13,6 +13,7 @@ import {
 } from './block-behaviors.js'
 import {
   barsGeometryTypeFromProperties,
+  fenceGeometryTypeFromProperties,
   buildVariantKey,
   normalizeFacing,
   normalizeStairShape,
@@ -362,6 +363,8 @@ class SchematicService {
     }
 
     const normalizedName = blockName.replace('minecraft:', '')
+    const isFenceBlock = /_fence$/u.test(normalizedName) && !/_fence_gate$/u.test(normalizedName)
+    const isGlassPaneBlock = normalizedName === 'glass_pane' || /_glass_pane$/u.test(normalizedName)
 
     if (isSlabBlockName(normalizedName)) {
       const slabBaseName = normalizedName.replace(/_slab$/u, '')
@@ -456,6 +459,57 @@ class SchematicService {
             id: barsBlock.id,
             source: 'atlas-dynamic',
             textureName: barsTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isGlassPaneBlock) {
+      const paneTextureName = this._resolveTextureName(normalizedName)
+        || this._resolveTextureName(normalizedName.replace(/_pane$/u, ''))
+
+      if (paneTextureName) {
+        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
+        const geometryType = barsGeometryTypeFromProperties(mappedProperties)
+        const paneBlock = ensureDynamicBlockType(paneTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (paneBlock?.id) {
+          const result = {
+            id: paneBlock.id,
+            source: 'atlas-dynamic',
+            textureName: paneTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isFenceBlock) {
+      const fenceBaseName = normalizedName.replace(/_fence$/u, '')
+      const fenceTextureName = this._resolveTextureName(normalizedName)
+        || this._resolveTextureName(fenceBaseName)
+        || this._resolveTextureName(`${fenceBaseName}_planks`)
+        || this._resolveTextureName(`planks_${fenceBaseName}`)
+
+      if (fenceTextureName) {
+        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
+        const geometryType = fenceGeometryTypeFromProperties(mappedProperties)
+        const fenceBlock = ensureDynamicBlockType(fenceTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (fenceBlock?.id) {
+          const result = {
+            id: fenceBlock.id,
+            source: 'atlas-dynamic',
+            textureName: fenceTextureName,
           }
           this._blockResolveCache.set(cacheKey, result)
           return result
@@ -680,7 +734,7 @@ class SchematicService {
   _buildTextureBaseNameCandidates(normalizedName) {
     const candidates = [normalizedName]
 
-    const shapeStripped = normalizedName.replace(/_(stairs|slab|wall|fence|fence_gate|door|trapdoor)$/u, '')
+    const shapeStripped = normalizedName.replace(/_(stairs|slab|wall|fence|fence_gate|door|trapdoor|pane)$/u, '')
     if (shapeStripped && shapeStripped !== normalizedName) {
       candidates.push(shapeStripped)
     }
