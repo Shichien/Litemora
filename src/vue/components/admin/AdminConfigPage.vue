@@ -574,28 +574,6 @@ onBeforeUnmount(() => {
 
       <div class="settings-panel">
         <section class="setting-section">
-          <h3>玩家设置</h3>
-          <div class="setting-row grid-three">
-            <label>Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
-            <label>Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
-            <label>Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
-          </div>
-          <div class="setting-row">
-            <label class="full">
-              视距
-              <div class="range-wrap range-wrap-compact">
-                <input v-model.number="configDraft.settings.chunk.viewDistance" min="1" max="8" step="1" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.chunk.viewDistance, 8) }}</span>
-              </div>
-            </label>
-          </div>
-          <div class="setting-row toggles">
-            <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
-            <label><input v-model="configDraft.player.flight.groundWalkAnimationWhenMoving" type="checkbox">飞行移动模拟地面行走动画</label>
-          </div>
-        </section>
-
-        <section class="setting-section">
           <h3>界面设置</h3>
           <div class="setting-row">
             <span class="row-label">语言</span>
@@ -614,6 +592,28 @@ onBeforeUnmount(() => {
           <div class="setting-row toggles">
             <label><input v-model="configDraft.ui.pauseMenu.showSettings" type="checkbox">显示设置按钮</label>
             <label><input v-model="configDraft.ui.pauseMenu.showSkins" type="checkbox">显示皮肤按钮</label>
+          </div>
+        </section>
+
+        <section class="setting-section">
+          <h3>玩家设置</h3>
+          <div class="setting-row grid-three">
+            <label>Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
+            <label>Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
+            <label>Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
+          </div>
+          <div class="setting-row">
+            <label class="full">
+              视距
+              <div class="range-wrap range-wrap-compact">
+                <input v-model.number="configDraft.settings.chunk.viewDistance" min="1" max="8" step="1" type="range">
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.chunk.viewDistance, 8) }}</span>
+              </div>
+            </label>
+          </div>
+          <div class="setting-row toggles">
+            <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
+            <label><input v-model="configDraft.player.flight.groundWalkAnimationWhenMoving" type="checkbox">飞行移动模拟地面行走动画</label>
           </div>
           <div class="setting-row toggles">
             <label><input v-model="configDraft.ui.controls.allowFlightToggle" type="checkbox">允许切换飞行（F）</label>
@@ -669,7 +669,7 @@ onBeforeUnmount(() => {
               </div>
             </label>
           </div>
-          <div class="setting-row">
+          <div class="setting-row setting-row-spacer-top">
             <span class="row-label">相机风格</span>
             <div class="option-group">
               <button
@@ -1159,6 +1159,10 @@ onBeforeUnmount(() => {
 
 .setting-row:last-child {
   margin-bottom: 0;
+}
+
+.setting-row-spacer-top {
+  margin-top: 14px;
 }
 
 .grid-three {
