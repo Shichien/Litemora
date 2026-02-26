@@ -1,3 +1,5 @@
+import { buildSpaceScopedKey, getActiveSpaceName } from '../utils/space-context.js'
+
 const BACKEND_CONFIG_URLS = [
   '/api/world-config',
   '/world-config.json',
@@ -8,7 +10,7 @@ const ADMIN_WORLD_CONFIG_STORAGE_KEY = 'mc-admin-world-config'
 function buildAdminWorldConfigStorageKey(accountId = '') {
   const normalizedId = String(accountId || '').trim()
   if (!normalizedId) {
-    return ADMIN_WORLD_CONFIG_STORAGE_KEY
+    return buildSpaceScopedKey(ADMIN_WORLD_CONFIG_STORAGE_KEY, getActiveSpaceName())
   }
   return `${ADMIN_WORLD_CONFIG_STORAGE_KEY}:${encodeURIComponent(normalizedId)}`
 }
@@ -174,9 +176,12 @@ export async function loadBackendWorldConfig(accountId = '') {
     return adminConfig
   }
 
+  const activeSpace = getActiveSpaceName()
+
   for (const url of BACKEND_CONFIG_URLS) {
     try {
-      const res = await fetch(url, { cache: 'no-store' })
+      const requestUrl = activeSpace ? `${url}?space=${encodeURIComponent(activeSpace)}` : url
+      const res = await fetch(requestUrl, { cache: 'no-store' })
       if (!res.ok) {
         continue
       }

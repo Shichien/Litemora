@@ -14,6 +14,7 @@ import {
   WORLDGEN_PRESETS,
 } from '@three/config/worldgen-presets.js'
 import emitter from '@three/utils/event/event-bus.js'
+import { getActiveSpaceName } from '@three/utils/space-context.js'
 
 import {
   DEFAULT_BACKEND_WORLD_CONFIG,
@@ -50,6 +51,8 @@ const isApplying = ref(false)
 
 const currentAccount = computed(() => authSession.value?.account || null)
 const currentAccountId = computed(() => currentAccount.value?.id || '')
+const currentSpaceName = getActiveSpaceName()
+const currentConfigScopeId = computed(() => currentSpaceName || currentAccountId.value || '')
 const currentAccountDisplay = computed(() => {
   const account = currentAccount.value
   if (!account) {
@@ -151,13 +154,13 @@ function backToGame() {
 }
 
 async function restorePersistedSchematic() {
-  const accountId = currentAccountId.value
-  if (!accountId) {
+  const scopeId = currentConfigScopeId.value
+  if (!scopeId) {
     clearSchematicFile({ withStatus: false })
     return
   }
 
-  const persisted = await loadAdminSchematicFile(accountId)
+  const persisted = await loadAdminSchematicFile(scopeId)
   if (!persisted?.file) {
     clearSchematicFile({ withStatus: false })
     return
@@ -183,7 +186,7 @@ async function restorePersistedSchematic() {
 }
 
 async function hydrateCurrentAccountData() {
-  if (!currentAccountId.value) {
+  if (!isAuthenticated.value) {
     return
   }
 
@@ -244,7 +247,7 @@ function logout() {
 }
 
 async function loadCurrentConfig() {
-  const loaded = await loadBackendWorldConfig(currentAccountId.value)
+  const loaded = await loadBackendWorldConfig(currentConfigScopeId.value)
   markSaved(loaded)
   setStatus('已读取当前生效配置', 'success')
 }
@@ -266,7 +269,7 @@ function resetToDefaultTemplate() {
 
 async function applyConfig() {
   isApplying.value = true
-  const saved = saveAdminWorldConfig(configDraft.value, currentAccountId.value)
+  const saved = saveAdminWorldConfig(configDraft.value, currentConfigScopeId.value)
   markSaved(saved)
   emitter.emit('backend:config-updated', saved)
   setStatus('已保存并应用', 'success')
@@ -304,7 +307,7 @@ async function handleSchematicFileSelect(event) {
     isBuildingSchematicPreview.value = true
     schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 30000 })
     await saveAdminSchematicFile({
-      accountId: currentAccountId.value,
+      accountId: currentConfigScopeId.value,
       file,
     })
     const yInfo = schematicPreview.value?.yStats
@@ -336,8 +339,8 @@ function clearSchematicFile({ withStatus = true } = {}) {
   schematicOffsetX.value = 0
   schematicOffsetY.value = 0
   schematicOffsetZ.value = 0
-  if (currentAccountId.value) {
-    clearAdminSchematicFile(currentAccountId.value)
+  if (currentConfigScopeId.value) {
+    clearAdminSchematicFile(currentConfigScopeId.value)
   }
   if (withStatus) {
     setStatus('已清除原理图', 'neutral')
@@ -576,12 +579,6 @@ onBeforeUnmount(() => {
               <span class="oauth-icon" :class="`is-${provider.id}`" aria-hidden="true">
                 <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 0.5C5.372 0.5 0 5.915 0 12.596C0 17.945 3.438 22.483 8.205 24.084C8.805 24.196 9.025 23.822 9.025 23.5C9.025 23.212 9.015 22.44 9.01 21.415C5.672 22.158 4.968 19.783 4.968 19.783C4.422 18.36 3.633 17.982 3.633 17.982C2.546 17.217 3.715 17.233 3.715 17.233C4.916 17.319 5.549 18.488 5.549 18.488C6.616 20.351 8.349 19.813 9.05 19.497C9.157 18.705 9.467 18.163 9.81 17.857C7.145 17.545 4.344 16.49 4.344 11.779C4.344 10.437 4.814 9.339 5.58 8.475C5.455 8.161 5.046 6.898 5.697 5.188C5.697 5.188 6.705 4.859 8.998 6.436C9.959 6.162 10.989 6.025 12.019 6.021C13.049 6.025 14.08 6.162 15.043 6.436C17.334 4.859 18.34 5.188 18.34 5.188C18.994 6.898 18.584 8.161 18.461 8.475C19.229 9.339 19.696 10.437 19.696 11.779C19.696 16.503 16.891 17.541 14.218 17.847C14.648 18.223 15.03 18.966 15.03 20.106C15.03 21.738 15.015 23.056 15.015 23.5C15.015 23.825 15.232 24.202 15.84 24.083C20.604 22.48 24 17.944 24 12.596C24 5.915 18.627 0.5 12 0.5Z" />
-                </svg>
-                <svg v-else-if="provider.id === 'google'" viewBox="0 0 24 24">
-                  <path fill="#EA4335" d="M12 10.1v4.26h5.95c-.26 1.36-1.04 2.51-2.22 3.28l3.59 2.79c2.09-1.93 3.29-4.77 3.29-8.14 0-.77-.07-1.5-.2-2.21H12z" />
-                  <path fill="#34A853" d="M12 22c2.97 0 5.46-.98 7.28-2.67l-3.59-2.79c-.99.67-2.26 1.07-3.69 1.07-2.84 0-5.25-1.92-6.11-4.49l-3.71 2.87C3.99 19.62 7.69 22 12 22z" />
-                  <path fill="#4A90E2" d="M5.89 13.12c-.22-.67-.35-1.39-.35-2.12s.13-1.45.35-2.12L2.18 6.01C1.42 7.52 1 9.22 1 11s.42 3.48 1.18 4.99l3.71-2.87z" />
-                  <path fill="#FBBC05" d="M12 4.39c1.62 0 3.08.56 4.22 1.67l3.17-3.17C17.45 1.09 14.96 0 12 0 7.69 0 3.99 2.38 2.18 6.01l3.71 2.87c.86-2.57 3.27-4.49 6.11-4.49z" />
                 </svg>
               </span>
               <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
@@ -1082,10 +1079,6 @@ onBeforeUnmount(() => {
 
 .oauth-icon.is-github {
   color: #111827;
-}
-
-.oauth-icon.is-google {
-  color: #fff;
 }
 
 .auth-container input {

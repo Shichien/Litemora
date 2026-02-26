@@ -23,8 +23,30 @@ function readRequestBody(req) {
   })
 }
 
+function sanitizeSpaceName(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return /^[a-z0-9-]{3,63}$/.test(normalized) ? normalized : ''
+}
+
+function getSpaceNameFromRequest(req) {
+  try {
+    const requestUrl = new URL(req.url || '/', 'http://localhost')
+    return sanitizeSpaceName(requestUrl.searchParams.get('space'))
+  }
+  catch {
+    return ''
+  }
+}
+
+function resolveSpaceJsonPath(fileName, spaceName = '') {
+  if (!spaceName) {
+    return path.resolve(__dirname, 'public', fileName)
+  }
+  return path.resolve(__dirname, 'public', 'spaces', spaceName, fileName)
+}
+
 function registerMockApi(middlewares) {
-  middlewares.use(/^\/api\/auth\/(github|google)\/exchange$/, async (req, res) => {
+  middlewares.use(/^\/api\/auth\/github\/exchange$/, async (req, res) => {
     if (req.method !== 'POST') {
       res.statusCode = 405
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -66,22 +88,32 @@ function registerMockApi(middlewares) {
     }
   })
 
-  middlewares.use('/api/world-config', async (_req, res) => {
+  middlewares.use('/api/world-config', async (req, res) => {
+    const spaceName = getSpaceNameFromRequest(req)
     try {
-      const jsonPath = path.resolve(__dirname, 'public', 'world-config.json')
+      const jsonPath = resolveSpaceJsonPath('world-config.json', spaceName)
       const content = await fs.readFile(jsonPath, 'utf-8')
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
       res.end(content)
     }
     catch {
-      res.statusCode = 500
-      res.setHeader('Content-Type', 'application/json; charset=utf-8')
-      res.end(JSON.stringify({ error: 'failed_to_read_world_config' }))
+      try {
+        const fallbackPath = resolveSpaceJsonPath('world-config.json')
+        const fallbackContent = await fs.readFile(fallbackPath, 'utf-8')
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(fallbackContent)
+      }
+      catch {
+        res.statusCode = 500
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'failed_to_read_world_config' }))
+      }
     }
   })
 
   middlewares.use('/api/world-state', async (req, res) => {
-    const statePath = path.resolve(__dirname, 'public', 'world-state.json')
+    const spaceName = getSpaceNameFromRequest(req)
+    const statePath = resolveSpaceJsonPath('world-state.json', spaceName)
 
     if (req.method === 'GET') {
       try {
@@ -92,7 +124,7 @@ function registerMockApi(middlewares) {
       catch {
         res.statusCode = 200
         res.setHeader('Content-Type', 'application/json; charset=utf-8')
-        res.end(JSON.stringify({ worldState: { schematicOnlyMode: false }, modifications: {} }))
+        res.end(JSON.stringify({ worldState: { schematicOnlyMode: !!spaceName }, modifications: {} }))
       }
       return
     }
@@ -110,6 +142,7 @@ function registerMockApi(middlewares) {
             : {},
         }
 
+        await fs.mkdir(path.dirname(statePath), { recursive: true })
         await fs.writeFile(statePath, JSON.stringify(normalized, null, 2), 'utf-8')
         res.statusCode = 200
         res.setHeader('Content-Type', 'application/json; charset=utf-8')

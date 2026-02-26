@@ -10,12 +10,6 @@ const PROVIDER_CONFIG = {
     scope: 'read:user user:email',
     clientIdEnv: 'VITE_OAUTH_GITHUB_CLIENT_ID',
   },
-  google: {
-    label: 'Google',
-    authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-    scope: 'openid profile email',
-    clientIdEnv: 'VITE_OAUTH_GOOGLE_CLIENT_ID',
-  },
 }
 
 function toBase64Url(bytes) {
@@ -175,7 +169,6 @@ async function exchangeCode({ provider, code, codeVerifier, redirectUri }) {
 export function getAuthProviders() {
   return [
     { id: 'github', label: PROVIDER_CONFIG.github.label },
-    { id: 'google', label: PROVIDER_CONFIG.google.label },
   ]
 }
 
@@ -255,11 +248,6 @@ export async function signInWithProvider(provider) {
   authUrl.searchParams.set('scope', runtime.scope)
   authUrl.searchParams.set('code_challenge', codeChallenge)
   authUrl.searchParams.set('code_challenge_method', 'S256')
-
-  if (provider === 'google') {
-    authUrl.searchParams.set('access_type', 'offline')
-    authUrl.searchParams.set('prompt', 'select_account')
-  }
 
   const popup = openOAuthPopup(authUrl.toString(), provider)
   const { code } = await waitForOAuthCode({ provider, state, popup })

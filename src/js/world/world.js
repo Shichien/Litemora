@@ -15,12 +15,15 @@ import BlockRaycaster from '../interaction/block-raycaster.js'
 import BlockSelectionHelper from '../interaction/block-selection-helper.js'
 import ItemPickupAnimator from '../interaction/item-pickup-animator.js'
 import emitter from '../utils/event/event-bus.js'
+import { buildSpaceScopedKey, getActiveSpaceName } from '../utils/space-context.js'
 import { loadBackendWorldConfig } from './backend-world-config.js'
 import Environment from './environment.js'
 import Player from './player/player.js'
 import ChunkManager from './terrain/chunk-manager.js'
 import { preloadAtlasTextureImage } from './terrain/java-atlas-texture-provider.js'
 import schematicService from './terrain/schematic-service.js'
+
+const WORLD_STATE_STORAGE_KEY = 'mc-world-state'
 
 /**
  * World 场景编排器：只负责在 core:ready 后按依赖顺序创建组件、编排 update/destroy。
@@ -208,20 +211,53 @@ export default class World {
   }
 
   async _loadSharedWorldState() {
+    const activeSpace = getActiveSpaceName()
+    const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
+
     try {
-      const response = await fetch('/api/world-state', { cache: 'no-store' })
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object') {
+          return parsed
+        }
+      }
+    }
+    catch {
+      // ignore invalid local state
+    }
+
+    try {
+      const requestUrl = activeSpace
+        ? `/api/world-state?space=${encodeURIComponent(activeSpace)}`
+        : '/api/world-state'
+      const response = await fetch(requestUrl, { cache: 'no-store' })
       if (!response.ok) {
-        return null
+        return activeSpace
+          ? { worldState: { schematicOnlyMode: true }, modifications: {} }
+          : null
       }
 
       const data = await response.json()
       if (!data || typeof data !== 'object') {
-        return null
+        return activeSpace
+          ? { worldState: { schematicOnlyMode: true }, modifications: {} }
+          : null
       }
+
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(data))
+      }
+      catch {
+        // ignore local storage quota errors
+      }
+
       return data
     }
     catch {
-      return null
+      return activeSpace
+        ? { worldState: { schematicOnlyMode: true }, modifications: {} }
+        : null
     }
   }
 
@@ -232,7 +268,21 @@ export default class World {
 
     try {
       const payload = this.chunkManager.persistence.exportSnapshot()
-      await fetch('/api/world-state', {
+      const activeSpace = getActiveSpaceName()
+      const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
+
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(payload))
+      }
+      catch {
+        // ignore local storage quota errors
+      }
+
+      const requestUrl = activeSpace
+        ? `/api/world-state?space=${encodeURIComponent(activeSpace)}`
+        : '/api/world-state'
+
+      await fetch(requestUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

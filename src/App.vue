@@ -4,14 +4,21 @@ import AdminConfigPage from '@ui-components/admin/AdminConfigPage.vue'
 import Crosshair from '@ui-components/Crosshair.vue'
 import EventMonitorPanel from '@ui-components/debug/EventMonitorPanel.vue'
 import GameHud from '@ui-components/hud/GameHud.vue'
+import PortalHome from '@ui-components/landing/PortalHome.vue'
 import UiRoot from '@ui-components/menu/UiRoot.vue'
+import { isRootPortalHost } from '@three/utils/space-context.js'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const threeCanvas = ref(null)
 const isAdminMode = ref(window.location.hash === '#admin')
+const isRootPortal = ref(isRootPortalHost())
 let experience = null
 
 function createExperienceIfNeeded() {
+  if (isRootPortal.value) {
+    return
+  }
+
   if (!experience && threeCanvas.value) {
     experience = new Experience(threeCanvas.value)
   }
@@ -49,7 +56,8 @@ const isDebugMode = window.location.hash === '#debug'
 
 <template>
   <!-- 主容器：相对定位 -->
-  <div class="relative w-screen h-screen overflow-hidden">
+  <PortalHome v-if="isRootPortal" />
+  <div v-else class="relative w-screen h-screen overflow-hidden">
     <!-- Three.js Canvas -->
     <canvas ref="threeCanvas" class="three-canvas absolute inset-0 z-0" />
 

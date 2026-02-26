@@ -1,3 +1,5 @@
+import { buildSpaceScopedKey, getActiveSpaceName } from '../../utils/space-context.js'
+
 const SCHEMATIC_DB_NAME = 'mc-admin-storage'
 const SCHEMATIC_DB_STORE = 'schematic-files'
 const SCHEMATIC_DB_VERSION = 1
@@ -5,7 +7,11 @@ const SCHEMATIC_FALLBACK_PREFIX = 'mc-admin-schematic-fallback'
 
 function buildSchematicKey(accountId = '') {
   const normalizedId = String(accountId || '').trim()
-  return normalizedId ? `account:${encodeURIComponent(normalizedId)}` : 'account:default'
+  const baseKey = normalizedId ? `account:${encodeURIComponent(normalizedId)}` : 'account:default'
+  if (normalizedId) {
+    return baseKey
+  }
+  return buildSpaceScopedKey(baseKey, getActiveSpaceName())
 }
 
 function openDb() {
