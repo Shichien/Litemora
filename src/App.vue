@@ -14,6 +14,16 @@ const isAdminMode = ref(window.location.hash === '#admin')
 const isRootPortal = ref(shouldUseRootPortalView())
 let experience = null
 
+function hideStaticBootLoadingScreen() {
+  const loadingScreen = document.getElementById('loading-screen')
+  if (!loadingScreen) {
+    return
+  }
+
+  loadingScreen.style.opacity = '0'
+  loadingScreen.style.display = 'none'
+}
+
 function createExperienceIfNeeded() {
   if (isRootPortal.value) {
     return
@@ -42,6 +52,9 @@ function handleHashChange() {
 
 onMounted(() => {
   window.addEventListener('hashchange', handleHashChange)
+  if (isRootPortal.value) {
+    hideStaticBootLoadingScreen()
+  }
   createExperienceIfNeeded()
 })
 
