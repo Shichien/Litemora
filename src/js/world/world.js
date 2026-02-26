@@ -81,7 +81,8 @@ export default class World {
           },
         }
         const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
-        await this._saveSharedWorldState()
+        const persistenceSaved = await this._saveSharedWorldState()
+        result.persistenceSaved = persistenceSaved
         emitter.emit('schematic:apply-result', { ok: true, result })
       }
       catch (error) {
@@ -289,7 +290,7 @@ export default class World {
 
   async _saveSharedWorldState() {
     if (!this.chunkManager?.persistence?.exportSnapshot) {
-      return
+      return false
     }
 
     try {
@@ -322,9 +323,12 @@ export default class World {
       if (!response.ok) {
         throw new Error(`remote_world_state_save_failed_${response.status}`)
       }
+
+      return true
     }
-    catch {
-      // no-op: fallback to local persistence only
+    catch (error) {
+      console.warn('[World] Failed to persist shared world state remotely:', error)
+      return false
     }
   }
 

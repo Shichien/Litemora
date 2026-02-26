@@ -421,6 +421,7 @@ async function applySchematic() {
     const result = payload.result
     const shapeUsage = result?.importDiagnostics?.shapeUsage || { stairs: 0, slabs: 0, walls: 0 }
     const topTextures = result?.importDiagnostics?.topTextures || []
+    const persistenceSaved = result?.persistenceSaved !== false
     const minPlacedY = (schematicPreview.value?.yStats?.minY ?? 0) + offset.y
     if (minPlacedY < 0) {
       setStatus(
@@ -444,8 +445,12 @@ async function applySchematic() {
 
     setStatus(
       `应用完成：放置 ${result.placed}，替换 ${result.replaced}，楼梯 ${shapeUsage.stairs}，台阶 ${shapeUsage.slabs}，墙 ${shapeUsage.walls}，跳过 ${result.skipped}，清空区块 ${result.worldClearedChunks || 0}，涉及 ${result.touchedChunks} 个区块`,
-      'success',
+      persistenceSaved ? 'success' : 'warning',
     )
+
+    if (!persistenceSaved) {
+      setStatus('应用完成但远端持久化失败（请检查 KV 写入限制/绑定）', 'warning')
+    }
     appendSchematicImportLog({
       level: 'success',
       summary: `导入完成: 楼梯 ${shapeUsage.stairs} / 台阶 ${shapeUsage.slabs} / 墙 ${shapeUsage.walls}`,
