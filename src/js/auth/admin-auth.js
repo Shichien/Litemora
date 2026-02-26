@@ -2,6 +2,7 @@ const ADMIN_AUTH_SESSION_KEY = 'mc-admin-auth-session'
 const OAUTH_POPUP_TIMEOUT_MS = 120000
 const ADMIN_AUTH_SESSION_TTL_MS = 1000 * 60 * 60 * 24
 const TEMP_ADMIN_PASSWORD = 'admin123'
+const ROOT_OAUTH_ORIGIN = 'https://litemora.art'
 
 const PROVIDER_CONFIG = {
   github: {
@@ -39,7 +40,10 @@ async function sha256Base64Url(input) {
 }
 
 function getRedirectUri(provider) {
-  const url = new URL('/auth-callback.html', window.location.origin)
+  const host = String(window.location.hostname || '').toLowerCase()
+  const isLocal = host === 'localhost' || host === '127.0.0.1'
+  const callbackOrigin = isLocal ? window.location.origin : ROOT_OAUTH_ORIGIN
+  const url = new URL('/auth-callback.html', callbackOrigin)
   url.searchParams.set('provider', provider)
   return url.toString()
 }
@@ -80,13 +84,13 @@ function openOAuthPopup(url, provider) {
   return popup
 }
 
-function waitForOAuthCode({ provider, state, popup }) {
+function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
   return new Promise((resolve, reject) => {
     let timeoutId = null
     let closedCheckId = null
 
     const onMessage = (event) => {
-      if (event.origin !== window.location.origin) {
+      if (event.origin !== expectedOrigin) {
         return
       }
 
@@ -250,7 +254,12 @@ export async function signInWithProvider(provider) {
   authUrl.searchParams.set('code_challenge_method', 'S256')
 
   const popup = openOAuthPopup(authUrl.toString(), provider)
-  const { code } = await waitForOAuthCode({ provider, state, popup })
+  const { code } = await waitForOAuthCode({
+    provider,
+    state,
+    popup,
+    expectedOrigin: new URL(runtime.redirectUri).origin,
+  })
 
   popup.close()
 
