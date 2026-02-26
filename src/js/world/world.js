@@ -77,8 +77,8 @@ export default class World {
           },
         }
         const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
-        await this._saveSharedWorldState()
         emitter.emit('schematic:apply-result', { ok: true, result })
+        void this._saveSharedWorldState()
       }
       catch (error) {
         emitter.emit('schematic:apply-result', {

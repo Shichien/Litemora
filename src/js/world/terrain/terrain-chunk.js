@@ -46,6 +46,7 @@ export default class TerrainChunk {
       sharedBiomeGenerator, // STEP 2: 共享群系生成器
       biomeSource,
       forcedBiome,
+      schematicOnlyMode = false,
     } = options
 
     // 保存共享参数引用，供刷新时使用
@@ -53,6 +54,7 @@ export default class TerrainChunk {
     this._sharedWaterParams = sharedWaterParams
     this._chunkWidth = chunkWidth
     this._chunkHeight = chunkHeight
+    this._schematicOnlyMode = !!schematicOnlyMode
 
     // 获取 Experience 单例实例
     this.experience = new Experience()
@@ -126,7 +128,9 @@ export default class TerrainChunk {
 
     // ===== 水面 mesh =====
     this.waterMesh = null
-    this._createWaterMesh()
+    if (!this._schematicOnlyMode) {
+      this._createWaterMesh()
+    }
   }
 
   // #region 水面相关方法
@@ -137,6 +141,10 @@ export default class TerrainChunk {
    * - 挂到 renderer.group 下，自动继承 chunk 世界偏移与缩放
    */
   _createWaterMesh() {
+    if (this._schematicOnlyMode) {
+      return
+    }
+
     const waterOffset = this._sharedWaterParams?.waterOffset ?? 8
     const heightScale = this._sharedRenderParams?.heightScale ?? 1
 
@@ -191,6 +199,22 @@ export default class TerrainChunk {
     const heightScale = this._sharedRenderParams?.heightScale ?? 1
 
     this.waterMesh.position.y = waterOffset * heightScale + WATER_Y_EPSILON
+  }
+
+  setSchematicOnlyMode(enabled = true) {
+    const nextMode = !!enabled
+    if (this._schematicOnlyMode === nextMode) {
+      return
+    }
+
+    this._schematicOnlyMode = nextMode
+
+    if (this._schematicOnlyMode) {
+      this._disposeWaterMesh()
+      return
+    }
+
+    this._createWaterMesh()
   }
 
   /**

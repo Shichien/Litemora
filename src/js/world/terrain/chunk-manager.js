@@ -166,6 +166,10 @@ export default class ChunkManager {
     this.persistence?.setWorldState?.({ schematicOnlyMode: nextMode })
     this.persistence?.save?.()
 
+    for (const chunk of this.chunks.values()) {
+      chunk?.setSchematicOnlyMode?.(nextMode)
+    }
+
     if (nextMode) {
       this._restoreSchematicOnlyChunks()
     }
@@ -183,6 +187,8 @@ export default class ChunkManager {
       if (!chunk || chunk.state === 'disposed') {
         continue
       }
+
+      chunk.setSchematicOnlyMode?.(true)
 
       if (chunk.state === 'init') {
         chunk.container.clear()
@@ -515,6 +521,7 @@ export default class ChunkManager {
       sharedBiomeGenerator: this.biomeGenerator, // STEP 2: 共享群系生成器
       biomeSource: this.biomeParams.biomeSource,
       forcedBiome: this.biomeParams.forcedBiome,
+      schematicOnlyMode: this.schematicOnlyMode,
     })
 
     this.chunks.set(key, chunk)
