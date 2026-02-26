@@ -84,51 +84,13 @@ export default class ChunkManager {
   setSeed(newSeed) {
     this.seed = newSeed
     this.biomeGenerator.seed = newSeed
-    this._regenerateAllChunks()
   }
 
   applyWorldGenParams({ terrain, trees, water, biome } = {}) {
-    if (terrain) {
-      if (terrain.scale !== undefined)
-        this.terrainParams.scale = terrain.scale
-      if (terrain.magnitude !== undefined)
-        this.terrainParams.magnitude = terrain.magnitude
-      if (terrain.offset !== undefined)
-        this.terrainParams.offset = terrain.offset
-      if (terrain.fbm) {
-        if (terrain.fbm.octaves !== undefined)
-          this.terrainParams.fbm.octaves = terrain.fbm.octaves
-        if (terrain.fbm.gain !== undefined)
-          this.terrainParams.fbm.gain = terrain.fbm.gain
-        if (terrain.fbm.lacunarity !== undefined)
-          this.terrainParams.fbm.lacunarity = terrain.fbm.lacunarity
-      }
-    }
-
-    if (trees) {
-      if (trees.minHeight !== undefined)
-        this.treeParams.minHeight = trees.minHeight
-      if (trees.maxHeight !== undefined)
-        this.treeParams.maxHeight = trees.maxHeight
-      if (trees.minRadius !== undefined)
-        this.treeParams.minRadius = trees.minRadius
-      if (trees.maxRadius !== undefined)
-        this.treeParams.maxRadius = trees.maxRadius
-      if (trees.frequency !== undefined)
-        this.treeParams.frequency = trees.frequency
-    }
-
-    if (water) {
-      if (water.waterOffset !== undefined)
-        this.waterParams.waterOffset = water.waterOffset
-    }
-
-    if (biome) {
-      if (biome.biomeSource !== undefined)
-        this.biomeParams.biomeSource = biome.biomeSource
-      if (biome.forcedBiome !== undefined)
-        this.biomeParams.forcedBiome = biome.forcedBiome
-    }
+    void terrain
+    void trees
+    void water
+    void biome
   }
 
   setSchematicOnlyMode(enabled = true) {
@@ -188,14 +150,9 @@ export default class ChunkManager {
       return false
     }
 
-    if (this.schematicOnlyMode) {
-      chunk.container.clear()
-      chunk.state = 'dataReady'
-      return true
-    }
-
-    chunk.generator.params.seed = this.seed
-    return chunk.generateData()
+    chunk.container.clear()
+    chunk.state = 'dataReady'
+    return true
   }
 
   regenerateAll({
@@ -207,41 +164,17 @@ export default class ChunkManager {
     centerPos = { x: this.chunkWidth * 0.5, z: this.chunkWidth * 0.5 },
     forceSyncCenterChunk = true,
   } = {}) {
-    this.idleQueue.clear?.()
-    this.chunks.forEach((_, key) => {
-      this.idleQueue.cancelByPrefix(`${key}:`)
-    })
-
+    void terrain
+    void trees
+    void water
+    void biome
+    void centerPos
+    void forceSyncCenterChunk
     if (seed !== undefined) {
       this.seed = seed
       this.biomeGenerator.seed = seed
     }
-
-    this.applyWorldGenParams({ terrain, trees, water, biome })
-
-    this._regenerateAllChunks()
-
-    this._lastPlayerChunkX = null
-    this._lastPlayerChunkZ = null
-    this.updateStreaming(centerPos, true)
-
-    if (forceSyncCenterChunk) {
-      const pcx = Math.floor(centerPos.x / this.chunkWidth)
-      const pcz = Math.floor(centerPos.z / this.chunkWidth)
-      const currentKey = this._key(pcx, pcz)
-      const currentChunk = this.chunks.get(currentKey)
-      if (currentChunk?.state === 'init') {
-        const prepared = this._prepareChunkData(currentChunk)
-        if (!prepared) {
-          return { seed: this.seed }
-        }
-        this._applyChunkModifications(currentChunk)
-        currentChunk.buildMesh()
-        currentChunk.renderer.group.scale.setScalar(this.renderParams.scale)
-      }
-    }
-
-    return { seed: this.seed }
+    return { seed: this.seed, disabled: true }
   }
 
   /**

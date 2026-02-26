@@ -59,22 +59,6 @@ export default class Experience {
       this.isPaused = paused
     })
 
-    // Listen for world creation/reset events from UI
-    emitter.on('game:create_world', ({ seed, terrain, trees }) => {
-      // First world creation - world is initialized on core:ready
-      // Just update seed if chunkManager already exists
-      if (this.world?.chunkManager) {
-        this.world.reset({ seed, terrain, trees })
-      }
-    })
-
-    emitter.on('game:reset_world', ({ seed, terrain, trees }) => {
-      // Reset existing world with new seed and worldgen params
-      if (this.world) {
-        this.world.reset({ seed, terrain, trees })
-      }
-    })
-
     window.addEventListener('beforeunload', () => {
       this.destroy()
     })

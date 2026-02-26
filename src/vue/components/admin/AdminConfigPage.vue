@@ -7,12 +7,6 @@ import {
   signInWithPassword,
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
-import {
-  buildWorldGenParams,
-  DEFAULT_WORLDGEN_DRAFT,
-  WORLDGEN_PRESET_IDS,
-  WORLDGEN_PRESETS,
-} from '@three/config/worldgen-presets.js'
 import emitter from '@three/utils/event/event-bus.js'
 import { getActiveSpaceName } from '@three/utils/space-context.js'
 
@@ -33,9 +27,6 @@ import SchematicPreviewCanvas from '@ui-components/admin/SchematicPreviewCanvas.
 
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-const SEED_MAX = 2_000_000_000
-const SEED_REGEX = /^\d+$/
 
 const settingsStore = useSettingsStore()
 const { locale } = useI18n()
@@ -74,17 +65,6 @@ const schematicOffsetY = ref(0)
 const schematicOffsetZ = ref(0)
 const schematicApplyProgress = ref(null)
 const schematicImportLogs = ref([])
-
-const worldGenSeedDraft = ref('')
-const worldGenSeedError = ref('')
-const isApplyingWorldGen = ref(false)
-const adminWorldGenDraft = reactive({
-  presetId: DEFAULT_WORLDGEN_DRAFT.presetId,
-  magnitude: DEFAULT_WORLDGEN_DRAFT.magnitude,
-  treeMinHeight: DEFAULT_WORLDGEN_DRAFT.treeMinHeight,
-  treeMaxHeight: DEFAULT_WORLDGEN_DRAFT.treeMaxHeight,
-  viewDistance: 2,
-})
 
 const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
@@ -489,40 +469,6 @@ async function applySchematic() {
   }
 }
 
-function setWorldGenSeedDraft(value) {
-  worldGenSeedDraft.value = value
-  if (value.trim() !== '' && !SEED_REGEX.test(value.trim())) {
-    worldGenSeedError.value = 'Seed must be numeric only'
-  }
-  else {
-    worldGenSeedError.value = ''
-  }
-}
-
-function getOrCreateWorldGenSeed() {
-  const trimmed = worldGenSeedDraft.value.trim()
-  if (trimmed === '') {
-    return Math.floor(Math.random() * SEED_MAX)
-  }
-  return Number.parseInt(trimmed, 10)
-}
-
-function applyWorldGenPresetInAdmin(presetId) {
-  const preset = WORLDGEN_PRESETS[presetId]
-  if (!preset) {
-    return
-  }
-
-  adminWorldGenDraft.presetId = presetId
-  adminWorldGenDraft.magnitude = preset.terrain.magnitude
-  adminWorldGenDraft.treeMinHeight = preset.trees.minHeight
-  adminWorldGenDraft.treeMaxHeight = preset.trees.maxHeight
-}
-
-async function applyAdminWorldGen() {
-  setStatus('已禁用世界噪声生成：当前仅保留原理图世界模式', 'warning')
-}
-
 onMounted(async () => {
   emitter.on('schematic:apply-progress', onSchematicApplyProgress)
 
@@ -530,7 +476,6 @@ onMounted(async () => {
     await hydrateCurrentAccountData()
   }
 
-  adminWorldGenDraft.viewDistance = Number(settingsStore.chunkViewDistance) || 2
 })
 
 watch(currentAccountId, async (nextId, previousId) => {
@@ -639,8 +584,8 @@ onBeforeUnmount(() => {
             <label class="full">
               视距
               <div class="range-wrap range-wrap-compact">
-                <input v-model.number="adminWorldGenDraft.viewDistance" min="1" max="8" step="1" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.viewDistance, 8) }}</span>
+                <input v-model.number="configDraft.settings.chunk.viewDistance" min="1" max="8" step="1" type="range">
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.chunk.viewDistance, 8) }}</span>
               </div>
             </label>
           </div>
@@ -908,70 +853,6 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="subsection-title">
-            创建世界
-          </div>
-          <div class="setting-row">
-            <label class="full">
-              Seed
-              <input
-                type="text"
-                inputmode="numeric"
-                pattern="\d*"
-                :value="worldGenSeedDraft"
-                placeholder="留空以使用随机种子"
-                @input="setWorldGenSeedDraft($event.target.value)"
-              >
-            </label>
-          </div>
-          <div v-if="worldGenSeedError" class="warning-text">
-            {{ worldGenSeedError }}
-          </div>
-
-          <div class="setting-row">
-            <span class="row-label">世界类型</span>
-            <div class="option-group">
-              <button
-                v-for="presetId in WORLDGEN_PRESET_IDS"
-                :key="`wg-preset-${presetId}`"
-                class="option-btn"
-                :class="{ active: adminWorldGenDraft.presetId === presetId }"
-                @click="applyWorldGenPresetInAdmin(presetId)"
-              >
-                {{ WORLDGEN_PRESETS[presetId].name }}
-              </button>
-            </div>
-          </div>
-
-          <div class="setting-row grid-three">
-            <label>
-              地形高度
-              <div class="range-wrap">
-                <input v-model.number="adminWorldGenDraft.magnitude" min="0" max="32" step="1" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.magnitude, 32) }}</span>
-              </div>
-            </label>
-            <label>
-              树最小高
-              <div class="range-wrap">
-                <input v-model.number="adminWorldGenDraft.treeMinHeight" min="1" max="16" step="1" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.treeMinHeight, 16) }}</span>
-              </div>
-            </label>
-            <label>
-              树最大高
-              <div class="range-wrap">
-                <input v-model.number="adminWorldGenDraft.treeMaxHeight" min="1" max="32" step="1" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(adminWorldGenDraft.treeMaxHeight, 32) }}</span>
-              </div>
-            </label>
-          </div>
-
-          <div class="preview-actions-right" style="margin-top: 12px;">
-            <button class="btn primary" :disabled="isApplyingWorldGen" @click="applyAdminWorldGen">
-              {{ isApplyingWorldGen ? '应用中...' : '创建/重置世界' }}
-            </button>
-          </div>
         </section>
       </div>
     </div>
