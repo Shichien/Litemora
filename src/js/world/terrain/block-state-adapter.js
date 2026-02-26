@@ -117,6 +117,14 @@ export function torchGeometryTypeFromProperties(properties = {}, { wall = false 
   return `torch_wall_${facing}`
 }
 
+export function flowerPotGeometryTypeFromProperties() {
+  return 'flower_pot'
+}
+
+export function plantCrossGeometryTypeFromProperties() {
+  return 'plant_cross'
+}
+
 export function buildVariantKey(properties = {}) {
   const type = variantString(properties?.type || properties?.slab_type)
   const half = variantString(properties?.half)

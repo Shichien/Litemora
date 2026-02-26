@@ -16,9 +16,11 @@ import {
   carpetGeometryTypeFromProperties,
   doorGeometryTypeFromProperties,
   fenceGeometryTypeFromProperties,
+  flowerPotGeometryTypeFromProperties,
   buildVariantKey,
   normalizeFacing,
   normalizeStairShape,
+  plantCrossGeometryTypeFromProperties,
   slabGeometryTypeFromProperties,
   torchGeometryTypeFromProperties,
   trapdoorGeometryTypeFromProperties,
@@ -35,6 +37,38 @@ if (typeof globalThis.Buffer === 'undefined') {
 
 const ATLAS_TEXTURE_PREFIX = 'atlas:'
 const MISSING_TEXTURE_MARKER = `${ATLAS_TEXTURE_PREFIX}block/__missing__`
+const CROSS_PLANT_BLOCK_SET = new Set([
+  'dead_bush',
+  'short_grass',
+  'short_dry_grass',
+  'fern',
+  'dandelion',
+  'poppy',
+  'blue_orchid',
+  'allium',
+  'azure_bluet',
+  'red_tulip',
+  'orange_tulip',
+  'white_tulip',
+  'pink_tulip',
+  'oxeye_daisy',
+  'cornflower',
+  'lily_of_the_valley',
+  'wither_rose',
+  'torchflower',
+  'pink_petals',
+  'brown_mushroom',
+  'red_mushroom',
+  'crimson_fungus',
+  'warped_fungus',
+  'crimson_roots',
+  'warped_roots',
+  'nether_sprouts',
+  'mangrove_propagule',
+  'bamboo_sapling',
+  'spore_blossom',
+  'glow_lichen',
+])
 
 /**
  * Litematica 原理图服务
@@ -374,6 +408,8 @@ class SchematicService {
     const isCarpetBlock = /_carpet$/u.test(normalizedName)
     const isVineBlock = normalizedName === 'vine'
     const isTorchBlock = /(^|_)torch$/u.test(normalizedName)
+    const isFlowerPotBlock = normalizedName === 'flower_pot' || normalizedName.startsWith('potted_')
+    const isPlantLikeBlock = this._isCrossPlantBlockName(normalizedName)
 
     if (isSlabBlockName(normalizedName)) {
       const slabBaseName = normalizedName.replace(/_slab$/u, '')
@@ -657,6 +693,49 @@ class SchematicService {
       }
     }
 
+    if (isFlowerPotBlock) {
+      const flowerPotTextureName = this._resolveTextureName(normalizedName)
+        || this._resolveTextureName('flower_pot')
+      if (flowerPotTextureName) {
+        const geometryType = flowerPotGeometryTypeFromProperties(properties)
+        const flowerPotBlock = ensureDynamicBlockType(flowerPotTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (flowerPotBlock?.id) {
+          const result = {
+            id: flowerPotBlock.id,
+            source: 'atlas-dynamic',
+            textureName: flowerPotTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isPlantLikeBlock) {
+      const plantTextureName = this._resolveTextureName(normalizedName)
+      if (plantTextureName) {
+        const geometryType = plantCrossGeometryTypeFromProperties(properties)
+        const plantBlock = ensureDynamicBlockType(plantTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (plantBlock?.id) {
+          const result = {
+            id: plantBlock.id,
+            source: 'atlas-dynamic',
+            textureName: plantTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
     const textureName = this._resolveTextureName(normalizedName)
     if (textureName) {
       const dynamicBlock = ensureDynamicBlockType(textureName, {
@@ -696,6 +775,34 @@ class SchematicService {
 
   _normalizeVariantString(value) {
     return variantString(value)
+  }
+
+  _isCrossPlantBlockName(normalizedName = '') {
+    if (!normalizedName) {
+      return false
+    }
+
+    if (CROSS_PLANT_BLOCK_SET.has(normalizedName)) {
+      return true
+    }
+
+    if (/_sapling$/u.test(normalizedName)) {
+      return true
+    }
+
+    if (/_flower$/u.test(normalizedName)) {
+      return true
+    }
+
+    if (/_tulip$/u.test(normalizedName)) {
+      return true
+    }
+
+    if (/^(sunflower|lilac|rose_bush|peony)$/u.test(normalizedName)) {
+      return true
+    }
+
+    return false
   }
 
   _mapHorizontalFacingForWorld(facing) {

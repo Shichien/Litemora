@@ -513,6 +513,12 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     blockType.depthWrite = false
   }
 
+  if (geometryType === 'plant_cross') {
+    blockType.transparent = true
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.depthWrite = false
+  }
+
   if (hintSource.includes('leaves')) {
     blockType.mixColor = 0x5E9C45
     blockType.alphaTest = blockType.alphaTest ?? 0.5
@@ -1198,8 +1204,36 @@ function createVineGeometry({ up = false, north = false, east = false, south = f
   return merged
 }
 
+const flowerPotGeometry = (() => {
+  const geometry = new THREE.BoxGeometry(0.625, 0.375, 0.625)
+  geometry.translate(0, -0.3125, 0)
+  return geometry
+})()
+
+const plantCrossGeometry = (() => {
+  const planes = []
+
+  const planeA = new THREE.PlaneGeometry(1, 1)
+  planeA.rotateY(Math.PI / 4)
+  planes.push(planeA)
+
+  const planeB = new THREE.PlaneGeometry(1, 1)
+  planeB.rotateY(-Math.PI / 4)
+  planes.push(planeB)
+
+  const merged = mergeToSingleGeometry(planes)
+  planes.forEach(plane => plane.dispose())
+  return merged
+})()
+
 export function getGeometryForBlockType(blockType) {
   const geometryType = blockType?.geometryType || 'cube'
+  if (geometryType === 'flower_pot') {
+    return flowerPotGeometry
+  }
+  if (geometryType === 'plant_cross') {
+    return plantCrossGeometry
+  }
   if (geometryType === 'carpet') {
     return carpetGeometry
   }
