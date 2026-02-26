@@ -6,12 +6,12 @@ import EventMonitorPanel from '@ui-components/debug/EventMonitorPanel.vue'
 import GameHud from '@ui-components/hud/GameHud.vue'
 import PortalHome from '@ui-components/landing/PortalHome.vue'
 import UiRoot from '@ui-components/menu/UiRoot.vue'
-import { isRootPortalHost } from '@three/utils/space-context.js'
+import { shouldUseRootPortalView } from '@three/utils/space-context.js'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const threeCanvas = ref(null)
 const isAdminMode = ref(window.location.hash === '#admin')
-const isRootPortal = ref(isRootPortalHost())
+const isRootPortal = ref(shouldUseRootPortalView())
 let experience = null
 
 function createExperienceIfNeeded() {

@@ -19,6 +19,11 @@ export function isRootPortalHost(hostname = window.location.hostname) {
   return host === ROOT_DOMAIN || host === `www.${ROOT_DOMAIN}`
 }
 
+export function isLocalDevHost(hostname = window.location.hostname) {
+  const host = normalizeHost(hostname)
+  return host === 'localhost' || host === '127.0.0.1'
+}
+
 export function getSpaceNameFromHost(hostname = window.location.hostname) {
   const host = normalizeHost(hostname)
 
@@ -52,7 +57,7 @@ export function buildSpaceUrl(spaceName) {
   }
 
   const host = normalizeHost()
-  const isLocalDev = host === 'localhost' || host === '127.0.0.1'
+  const isLocalDev = isLocalDevHost(host)
 
   if (isLocalDev) {
     const url = new URL(window.location.origin)
@@ -62,6 +67,18 @@ export function buildSpaceUrl(spaceName) {
 
   const protocol = window.location.protocol || 'https:'
   return `${protocol}//${normalized}.${ROOT_DOMAIN}`
+}
+
+export function shouldUseRootPortalView() {
+  if (isRootPortalHost()) {
+    return true
+  }
+
+  if (isLocalDevHost()) {
+    return !getActiveSpaceName()
+  }
+
+  return false
 }
 
 export function buildSpaceScopedKey(baseKey, scope = '') {
