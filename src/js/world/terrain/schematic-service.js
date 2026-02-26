@@ -34,6 +34,7 @@ if (typeof globalThis.Buffer === 'undefined') {
 }
 
 const ATLAS_TEXTURE_PREFIX = 'atlas:'
+const MISSING_TEXTURE_MARKER = `${ATLAS_TEXTURE_PREFIX}block/__missing__`
 
 /**
  * Litematica 原理图服务
@@ -673,7 +674,7 @@ class SchematicService {
       }
     }
 
-    const fallbackTextureName = this._resolveAtlasTextureName('stone') || `${ATLAS_TEXTURE_PREFIX}block/${normalizedName}`
+    const fallbackTextureName = MISSING_TEXTURE_MARKER
     const fallbackDynamicBlock = ensureDynamicBlockType(fallbackTextureName, {
       blockName: normalizedName,
     })

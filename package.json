@@ -15,6 +15,7 @@
     "postinstall": "husky",
     "clean:dist": "npx rimraf dist",
     "sync:bedrock-textures": "node ./scripts/sync-bedrock-textures.mjs",
+    "gen:litematic:all-blocks": "node ./scripts/generate-all-blocks-litematic.mjs",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "dev": "vite --host localhost",
