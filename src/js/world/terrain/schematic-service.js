@@ -15,12 +15,14 @@ import {
   barsGeometryTypeFromProperties,
   carpetGeometryTypeFromProperties,
   doorGeometryTypeFromProperties,
+  fireGeometryTypeFromProperties,
   fenceGeometryTypeFromProperties,
   flowerPotGeometryTypeFromProperties,
   buildVariantKey,
   normalizeFacing,
   normalizeStairShape,
   plantCrossGeometryTypeFromProperties,
+  railGeometryTypeFromProperties,
   slabGeometryTypeFromProperties,
   torchGeometryTypeFromProperties,
   trapdoorGeometryTypeFromProperties,
@@ -68,6 +70,32 @@ const CROSS_PLANT_BLOCK_SET = new Set([
   'bamboo_sapling',
   'spore_blossom',
   'glow_lichen',
+  'sugar_cane',
+  'seagrass',
+  'tall_seagrass',
+  'kelp',
+  'kelp_plant',
+  'sea_pickle',
+  'tube_coral',
+  'brain_coral',
+  'bubble_coral',
+  'fire_coral',
+  'horn_coral',
+  'dead_tube_coral',
+  'dead_brain_coral',
+  'dead_bubble_coral',
+  'dead_fire_coral',
+  'dead_horn_coral',
+  'tube_coral_fan',
+  'brain_coral_fan',
+  'bubble_coral_fan',
+  'fire_coral_fan',
+  'horn_coral_fan',
+  'dead_tube_coral_fan',
+  'dead_brain_coral_fan',
+  'dead_bubble_coral_fan',
+  'dead_fire_coral_fan',
+  'dead_horn_coral_fan',
 ])
 
 /**
@@ -408,6 +436,8 @@ class SchematicService {
     const isCarpetBlock = /_carpet$/u.test(normalizedName)
     const isVineBlock = normalizedName === 'vine'
     const isTorchBlock = /(^|_)torch$/u.test(normalizedName)
+    const isRailBlock = /_rail$/u.test(normalizedName) || normalizedName === 'rail'
+    const isFireBlock = normalizedName === 'fire' || normalizedName === 'soul_fire'
     const isPlainFlowerPotBlock = normalizedName === 'flower_pot'
     const isPottedPlantBlock = normalizedName.startsWith('potted_')
     const isPlantLikeBlock = this._isCrossPlantBlockName(normalizedName)
@@ -694,6 +724,48 @@ class SchematicService {
       }
     }
 
+    if (isRailBlock) {
+      const railTextureName = this._resolveTextureName(normalizedName)
+      if (railTextureName) {
+        const geometryType = railGeometryTypeFromProperties(properties)
+        const railBlock = ensureDynamicBlockType(railTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (railBlock?.id) {
+          const result = {
+            id: railBlock.id,
+            source: 'atlas-dynamic',
+            textureName: railTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
+    if (isFireBlock) {
+      const fireTextureName = this._resolveFireTextureName(normalizedName)
+      if (fireTextureName) {
+        const geometryType = fireGeometryTypeFromProperties(properties)
+        const fireBlock = ensureDynamicBlockType(fireTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (fireBlock?.id) {
+          const result = {
+            id: fireBlock.id,
+            source: 'atlas-dynamic',
+            textureName: fireTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
     if (isPlainFlowerPotBlock) {
       const flowerPotTextureName = this._resolveTextureName('flower_pot')
       if (flowerPotTextureName) {
@@ -820,6 +892,14 @@ class SchematicService {
     }
 
     if (/^(sunflower|lilac|rose_bush|peony)$/u.test(normalizedName)) {
+      return true
+    }
+
+    if (/(^|_)seagrass$/u.test(normalizedName) || /(^|_)kelp(_plant)?$/u.test(normalizedName)) {
+      return true
+    }
+
+    if (/_coral(_fan|_wall_fan)?$/u.test(normalizedName)) {
       return true
     }
 
@@ -967,6 +1047,23 @@ class SchematicService {
       || this._resolveTextureName(plantName)
       || this._resolveTextureName(`${plantName}_plant`)
       || this._resolveTextureName(`${plantName}_bush`)
+  }
+
+  _resolveFireTextureName(normalizedName) {
+    if (normalizedName === 'soul_fire') {
+      return this._resolveAtlasTextureNameExact([
+        'soul_fire_0',
+        'soul_fire_1',
+        'soul_fire_flame',
+        'soul_fire',
+      ])
+    }
+
+    return this._resolveAtlasTextureNameExact([
+      'fire_0',
+      'fire_1',
+      'fire',
+    ])
   }
 
   _resolveDoorTextureName(normalizedName, properties = {}) {

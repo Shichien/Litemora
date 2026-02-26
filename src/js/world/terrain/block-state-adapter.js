@@ -117,6 +117,28 @@ export function torchGeometryTypeFromProperties(properties = {}, { wall = false 
   return `torch_wall_${facing}`
 }
 
+export function railGeometryTypeFromProperties(properties = {}) {
+  const shape = variantString(properties?.shape)
+  const allowedShapes = new Set([
+    'north_south',
+    'east_west',
+    'ascending_north',
+    'ascending_south',
+    'ascending_east',
+    'ascending_west',
+    'north_east',
+    'north_west',
+    'south_east',
+    'south_west',
+  ])
+  const normalizedShape = allowedShapes.has(shape) ? shape : 'north_south'
+  return `rail_${normalizedShape}`
+}
+
+export function fireGeometryTypeFromProperties() {
+  return 'fire_cross'
+}
+
 export function flowerPotGeometryTypeFromProperties() {
   return 'flower_pot'
 }

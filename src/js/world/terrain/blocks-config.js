@@ -519,6 +519,12 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     blockType.depthWrite = false
   }
 
+  if (geometryType === 'fire_cross' || geometryType.startsWith('rail_')) {
+    blockType.transparent = true
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.depthWrite = false
+  }
+
   if (hintSource.includes('leaves')) {
     blockType.mixColor = 0x5E9C45
     blockType.alphaTest = blockType.alphaTest ?? 0.5
@@ -1204,6 +1210,66 @@ function createVineGeometry({ up = false, north = false, east = false, south = f
   return merged
 }
 
+function createRailGeometry(shape = 'north_south') {
+  const thickness = 0.0625
+  const normalized = String(shape || 'north_south')
+
+  if (normalized.startsWith('ascending_')) {
+    const geometry = new THREE.BoxGeometry(1, thickness, Math.SQRT2)
+    const direction = normalized.replace('ascending_', '')
+
+    let rotationX = 0
+    let rotationY = 0
+
+    if (direction === 'north') {
+      rotationX = Math.PI / 4
+      rotationY = 0
+    }
+    else if (direction === 'south') {
+      rotationX = -Math.PI / 4
+      rotationY = 0
+    }
+    else if (direction === 'east') {
+      rotationX = -Math.PI / 4
+      rotationY = Math.PI / 2
+    }
+    else if (direction === 'west') {
+      rotationX = Math.PI / 4
+      rotationY = Math.PI / 2
+    }
+
+    if (rotationY !== 0) {
+      geometry.rotateY(rotationY)
+    }
+    if (rotationX !== 0) {
+      geometry.rotateX(rotationX)
+    }
+
+    geometry.translate(0, -0.46875, 0)
+    return geometry
+  }
+
+  const geometry = new THREE.BoxGeometry(1, thickness, 1)
+  geometry.translate(0, -0.46875, 0)
+  return geometry
+}
+
+function createFireGeometry() {
+  const planes = []
+
+  const planeA = new THREE.PlaneGeometry(1, 1)
+  planeA.rotateY(Math.PI / 4)
+  planes.push(planeA)
+
+  const planeB = new THREE.PlaneGeometry(1, 1)
+  planeB.rotateY(-Math.PI / 4)
+  planes.push(planeB)
+
+  const merged = mergeToSingleGeometry(planes)
+  planes.forEach(plane => plane.dispose())
+  return merged
+}
+
 const flowerPotGeometry = (() => {
   const geometry = new THREE.BoxGeometry(0.625, 0.375, 0.625)
   geometry.translate(0, -0.3125, 0)
@@ -1226,13 +1292,26 @@ const plantCrossGeometry = (() => {
   return merged
 })()
 
+const fireGeometry = createFireGeometry()
+const railGeometryCache = new Map()
+
 export function getGeometryForBlockType(blockType) {
   const geometryType = blockType?.geometryType || 'cube'
+  if (geometryType === 'fire_cross') {
+    return fireGeometry
+  }
   if (geometryType === 'flower_pot') {
     return flowerPotGeometry
   }
   if (geometryType === 'plant_cross') {
     return plantCrossGeometry
+  }
+  const railMatch = geometryType.match(/^rail_(north_south|east_west|ascending_north|ascending_south|ascending_east|ascending_west|north_east|north_west|south_east|south_west)$/u)
+  if (railMatch) {
+    if (!railGeometryCache.has(geometryType)) {
+      railGeometryCache.set(geometryType, createRailGeometry(railMatch[1]))
+    }
+    return railGeometryCache.get(geometryType)
   }
   if (geometryType === 'carpet') {
     return carpetGeometry
