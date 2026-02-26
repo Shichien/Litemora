@@ -5,6 +5,14 @@ const BACKEND_CONFIG_URLS = [
 
 const ADMIN_WORLD_CONFIG_STORAGE_KEY = 'mc-admin-world-config'
 
+function buildAdminWorldConfigStorageKey(accountId = '') {
+  const normalizedId = String(accountId || '').trim()
+  if (!normalizedId) {
+    return ADMIN_WORLD_CONFIG_STORAGE_KEY
+  }
+  return `${ADMIN_WORLD_CONFIG_STORAGE_KEY}:${encodeURIComponent(normalizedId)}`
+}
+
 const DEFAULT_BACKEND_WORLD_CONFIG = {
   player: {
     spawnPoint: { x: 32, y: 20, z: 32 },
@@ -113,9 +121,26 @@ export function normalizeBackendWorldConfig(raw = {}) {
   return mergeBackendConfig(raw)
 }
 
-export function getAdminWorldConfig() {
+export function getAdminWorldConfig(accountId = '') {
   try {
-    const raw = localStorage.getItem(ADMIN_WORLD_CONFIG_STORAGE_KEY)
+    const scopedKey = buildAdminWorldConfigStorageKey(accountId)
+    const raw = localStorage.getItem(scopedKey)
+    if (raw) {
+      const json = JSON.parse(raw)
+      return mergeBackendConfig(json)
+    }
+
+    if (accountId) {
+      const legacyRaw = localStorage.getItem(ADMIN_WORLD_CONFIG_STORAGE_KEY)
+      if (!legacyRaw) {
+        return null
+      }
+
+      const legacy = mergeBackendConfig(JSON.parse(legacyRaw))
+      localStorage.setItem(scopedKey, JSON.stringify(legacy))
+      return legacy
+    }
+
     if (!raw) {
       return null
     }
@@ -128,21 +153,23 @@ export function getAdminWorldConfig() {
   }
 }
 
-export function saveAdminWorldConfig(raw = {}) {
+export function saveAdminWorldConfig(raw = {}, accountId = '') {
   const normalized = mergeBackendConfig(raw)
+  const scopedKey = buildAdminWorldConfigStorageKey(accountId)
   localStorage.setItem(
-    ADMIN_WORLD_CONFIG_STORAGE_KEY,
+    scopedKey,
     JSON.stringify(normalized),
   )
   return normalized
 }
 
-export function clearAdminWorldConfig() {
-  localStorage.removeItem(ADMIN_WORLD_CONFIG_STORAGE_KEY)
+export function clearAdminWorldConfig(accountId = '') {
+  const scopedKey = buildAdminWorldConfigStorageKey(accountId)
+  localStorage.removeItem(scopedKey)
 }
 
-export async function loadBackendWorldConfig() {
-  const adminConfig = getAdminWorldConfig()
+export async function loadBackendWorldConfig(accountId = '') {
+  const adminConfig = getAdminWorldConfig(accountId)
   if (adminConfig) {
     return adminConfig
   }
@@ -166,3 +193,4 @@ export async function loadBackendWorldConfig() {
 
 export { DEFAULT_BACKEND_WORLD_CONFIG }
 export { ADMIN_WORLD_CONFIG_STORAGE_KEY }
+export { buildAdminWorldConfigStorageKey }

@@ -137,7 +137,7 @@ E:\圖形學\Third-Person-MC\
 
 ## 素材出处
 - **模型**: 基于 Minecraft 风格自定义建模 ( character.glb )
-- **皮肤**: 
+- **皮肤**:
   - **Steve & Alex**: 由 [hibiki_ekko](https://www.planetminecraft.com/member/hibiki_ekko/) 创作，来源 [Planet Minecraft](https://www.planetminecraft.com/member/hibiki_ekko/)
   - **Classic (Player)**: 由 [holland0519](https://www.minecraftskins.com/profile/5521971/holland0519) 创作，来源 [Minecraft Skins](https://www.minecraftskins.com/profile/5521971/holland0519)
   - 特别感谢 **hibiki_ekko** 和 **holland0519** 为项目提供的精美皮肤资源！
@@ -168,6 +168,81 @@ pnpm dev
 ```
 
 然后打开终端输出的本地地址（Vite 会以 `--host` 启动）。
+
+### 管理后台 OAuth 登录（GitHub / Google，可部署）
+
+管理后台使用标准 `Authorization Code + PKCE` 流程，生产环境可直接使用仓库内接口：
+
+- `POST /api/auth/github/exchange`
+- `POST /api/auth/google/exchange`
+
+接口位置：
+
+- `api/auth/github/exchange.js`
+- `api/auth/google/exchange.js`
+
+#### 1) 前端环境变量（公开）
+
+写到 `.env.local`（本地）或部署平台的前端环境变量：
+
+```bash
+VITE_OAUTH_GITHUB_CLIENT_ID=your_github_client_id
+VITE_OAUTH_GOOGLE_CLIENT_ID=your_google_client_id
+```
+
+#### 2) 服务端环境变量（必须保密）
+
+写到部署平台（例如 Vercel Project Settings → Environment Variables）：
+
+```bash
+OAUTH_GITHUB_CLIENT_ID=your_github_client_id
+OAUTH_GITHUB_CLIENT_SECRET=your_github_client_secret
+OAUTH_GOOGLE_CLIENT_ID=your_google_client_id
+OAUTH_GOOGLE_CLIENT_SECRET=your_google_client_secret
+```
+
+> 注意：`*_CLIENT_SECRET` 只能放服务端环境变量，不能放 `VITE_` 前缀。
+
+#### 3) OAuth 平台回调地址
+
+- 本地开发：
+  - `http://localhost:5173/auth-callback.html?provider=github`
+  - `http://localhost:5173/auth-callback.html?provider=google`
+- 生产部署（示例）：
+  - `https://your-domain.com/auth-callback.html?provider=github`
+  - `https://your-domain.com/auth-callback.html?provider=google`
+
+GitHub OAuth App 填 `Authorization callback URL`，Google OAuth Client 填 `Authorized redirect URIs`。
+
+#### 4) exchange 请求/响应格式
+
+请求体示例：
+
+```json
+{
+  "code": "oauth_authorization_code",
+  "codeVerifier": "pkce_code_verifier",
+  "redirectUri": "https://your-domain.com/auth-callback.html?provider=github"
+}
+```
+
+响应体示例：
+
+```json
+{
+  "account": {
+    "id": "github:123456",
+    "provider": "github",
+    "name": "Admin",
+    "email": "admin@example.com",
+    "avatar": "https://..."
+  }
+}
+```
+
+#### 5) 本地 mock 说明
+
+`vite.config.js` 仍保留本地开发 mock，方便无密钥联调；生产环境应使用上面的真实 `api/auth/*/exchange` 接口。
 
 ## 常用命令（与 `package.json` 对齐）
 

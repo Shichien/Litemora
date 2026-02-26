@@ -1,6 +1,13 @@
 <script setup>
 import { useSettingsStore } from '@pinia/settingsStore.js'
 import {
+  clearAdminAuthSession,
+  getAuthProviders,
+  loadAdminAuthSession,
+  signInWithPassword,
+  signInWithProvider,
+} from '@three/auth/admin-auth.js'
+import {
   buildWorldGenParams,
   DEFAULT_WORLDGEN_DRAFT,
   WORLDGEN_PRESET_IDS,
@@ -14,26 +21,43 @@ import {
   normalizeBackendWorldConfig,
   saveAdminWorldConfig,
 } from '@three/world/backend-world-config.js'
+import {
+  clearAdminSchematicFile,
+  loadAdminSchematicFile,
+  saveAdminSchematicFile,
+} from '@three/world/terrain/admin-schematic-storage.js'
 import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicPreviewCanvas from '@ui-components/admin/SchematicPreviewCanvas.vue'
 
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const ADMIN_PASSWORD = 'admin123'
 const SEED_MAX = 2_000_000_000
 const SEED_REGEX = /^\d+$/
 
 const settingsStore = useSettingsStore()
 const { locale } = useI18n()
 
-const isAuthenticated = ref(false)
-const passwordInput = ref('')
+const authProviders = getAuthProviders()
+const authSession = ref(loadAdminAuthSession())
+const isAuthenticating = ref(false)
 const authError = ref('')
+const tempAdminPassword = ref('')
 const configDraft = ref(structuredClone(DEFAULT_BACKEND_WORLD_CONFIG))
 const statusText = ref('')
 const statusType = ref('neutral')
 const isApplying = ref(false)
+
+const currentAccount = computed(() => authSession.value?.account || null)
+const currentAccountId = computed(() => currentAccount.value?.id || '')
+const currentAccountDisplay = computed(() => {
+  const account = currentAccount.value
+  if (!account) {
+    return ''
+  }
+  return account.name || account.email || account.id
+})
+const isAuthenticated = computed(() => !!currentAccount.value)
 
 // 原理图导入状态
 const schematicFile = ref(null)
@@ -126,27 +150,101 @@ function backToGame() {
   window.location.hash = ''
 }
 
-function handleAuth() {
-  if (passwordInput.value === ADMIN_PASSWORD) {
-    isAuthenticated.value = true
-    authError.value = ''
-    passwordInput.value = ''
+async function restorePersistedSchematic() {
+  const accountId = currentAccountId.value
+  if (!accountId) {
+    clearSchematicFile({ withStatus: false })
+    return
   }
-  else {
-    authError.value = '密码错误'
-    passwordInput.value = ''
+
+  const persisted = await loadAdminSchematicFile(accountId)
+  if (!persisted?.file) {
+    clearSchematicFile({ withStatus: false })
+    return
+  }
+
+  isParsingSchematic.value = true
+  try {
+    const schematic = await schematicService.parseFile(persisted.file)
+    schematicFile.value = persisted.fileName || persisted.file.name || null
+    schematicPreview.value = schematicService.getPreview()
+    isBuildingSchematicPreview.value = true
+    schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 30000 })
+    setStatus(`已恢复投影文件: ${schematic.name} (${schematicPreview.value.blockCount} 方块)`, 'success')
+  }
+  catch (error) {
+    clearSchematicFile({ withStatus: false })
+    setStatus(`恢复投影文件失败: ${error.message}`, 'warning')
+  }
+  finally {
+    isBuildingSchematicPreview.value = false
+    isParsingSchematic.value = false
+  }
+}
+
+async function hydrateCurrentAccountData() {
+  if (!currentAccountId.value) {
+    return
+  }
+
+  await loadCurrentConfig()
+  await restorePersistedSchematic()
+}
+
+async function handleProviderAuth(provider) {
+  if (isAuthenticating.value) {
+    return
+  }
+
+  isAuthenticating.value = true
+  authError.value = ''
+  try {
+    const session = await signInWithProvider(provider)
+    authSession.value = session
+    setStatus(`已使用 ${session.account.provider} 登录: ${session.account.name || session.account.email || session.account.id}`, 'success')
+    await hydrateCurrentAccountData()
+  }
+  catch (error) {
+    authError.value = error?.message || '登录失败'
+  }
+  finally {
+    isAuthenticating.value = false
+  }
+}
+
+async function handlePasswordAuth() {
+  if (isAuthenticating.value) {
+    return
+  }
+
+  isAuthenticating.value = true
+  authError.value = ''
+  try {
+    const session = await signInWithPassword(tempAdminPassword.value)
+    authSession.value = session
+    tempAdminPassword.value = ''
+    setStatus('已使用临时密码登录', 'success')
+    await hydrateCurrentAccountData()
+  }
+  catch (error) {
+    authError.value = error?.message || '登录失败'
+  }
+  finally {
+    isAuthenticating.value = false
   }
 }
 
 function logout() {
-  isAuthenticated.value = false
-  passwordInput.value = ''
+  clearAdminAuthSession()
+  authSession.value = null
+  tempAdminPassword.value = ''
   authError.value = ''
+  clearSchematicFile({ withStatus: false })
   backToGame()
 }
 
 async function loadCurrentConfig() {
-  const loaded = await loadBackendWorldConfig()
+  const loaded = await loadBackendWorldConfig(currentAccountId.value)
   markSaved(loaded)
   setStatus('已读取当前生效配置', 'success')
 }
@@ -168,7 +266,7 @@ function resetToDefaultTemplate() {
 
 async function applyConfig() {
   isApplying.value = true
-  const saved = saveAdminWorldConfig(configDraft.value)
+  const saved = saveAdminWorldConfig(configDraft.value, currentAccountId.value)
   markSaved(saved)
   emitter.emit('backend:config-updated', saved)
   setStatus('已保存并应用', 'success')
@@ -205,6 +303,10 @@ async function handleSchematicFileSelect(event) {
     schematicPreview.value = schematicService.getPreview()
     isBuildingSchematicPreview.value = true
     schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 30000 })
+    await saveAdminSchematicFile({
+      accountId: currentAccountId.value,
+      file,
+    })
     const yInfo = schematicPreview.value?.yStats
     if (yInfo?.hasBlocksBelowZero) {
       setStatus(
@@ -227,14 +329,19 @@ async function handleSchematicFileSelect(event) {
   }
 }
 
-function clearSchematicFile() {
+function clearSchematicFile({ withStatus = true } = {}) {
   schematicFile.value = null
   schematicPreview.value = null
   schematicModelData.value = null
   schematicOffsetX.value = 0
   schematicOffsetY.value = 0
   schematicOffsetZ.value = 0
-  setStatus('已清除原理图', 'neutral')
+  if (currentAccountId.value) {
+    clearAdminSchematicFile(currentAccountId.value)
+  }
+  if (withStatus) {
+    setStatus('已清除原理图', 'neutral')
+  }
 }
 
 function appendSchematicImportLog(entry) {
@@ -428,8 +535,19 @@ async function applyAdminWorldGen() {
 
 onMounted(async () => {
   emitter.on('schematic:apply-progress', onSchematicApplyProgress)
-  await loadCurrentConfig()
+
+  if (isAuthenticated.value) {
+    await hydrateCurrentAccountData()
+  }
+
   adminWorldGenDraft.viewDistance = Number(settingsStore.chunkViewDistance) || 2
+})
+
+watch(currentAccountId, async (nextId, previousId) => {
+  if (!nextId || nextId === previousId) {
+    return
+  }
+  await hydrateCurrentAccountData()
 })
 
 onBeforeUnmount(() => {
@@ -443,19 +561,47 @@ onBeforeUnmount(() => {
     <div v-if="!isAuthenticated" class="auth-modal">
       <div class="auth-container">
         <h2>管理后台</h2>
+        <p class="auth-tip">
+          使用管理员 OAuth 账户登录，或输入临时密码
+        </p>
+        <div class="oauth-actions">
+          <button
+            v-for="provider in authProviders"
+            :key="provider.id"
+            class="btn primary oauth-btn"
+            :disabled="isAuthenticating"
+            @click="handleProviderAuth(provider.id)"
+          >
+            <span class="oauth-btn-inner">
+              <span class="oauth-icon" :class="`is-${provider.id}`" aria-hidden="true">
+                <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0.5C5.372 0.5 0 5.915 0 12.596C0 17.945 3.438 22.483 8.205 24.084C8.805 24.196 9.025 23.822 9.025 23.5C9.025 23.212 9.015 22.44 9.01 21.415C5.672 22.158 4.968 19.783 4.968 19.783C4.422 18.36 3.633 17.982 3.633 17.982C2.546 17.217 3.715 17.233 3.715 17.233C4.916 17.319 5.549 18.488 5.549 18.488C6.616 20.351 8.349 19.813 9.05 19.497C9.157 18.705 9.467 18.163 9.81 17.857C7.145 17.545 4.344 16.49 4.344 11.779C4.344 10.437 4.814 9.339 5.58 8.475C5.455 8.161 5.046 6.898 5.697 5.188C5.697 5.188 6.705 4.859 8.998 6.436C9.959 6.162 10.989 6.025 12.019 6.021C13.049 6.025 14.08 6.162 15.043 6.436C17.334 4.859 18.34 5.188 18.34 5.188C18.994 6.898 18.584 8.161 18.461 8.475C19.229 9.339 19.696 10.437 19.696 11.779C19.696 16.503 16.891 17.541 14.218 17.847C14.648 18.223 15.03 18.966 15.03 20.106C15.03 21.738 15.015 23.056 15.015 23.5C15.015 23.825 15.232 24.202 15.84 24.083C20.604 22.48 24 17.944 24 12.596C24 5.915 18.627 0.5 12 0.5Z" />
+                </svg>
+                <svg v-else-if="provider.id === 'google'" viewBox="0 0 24 24">
+                  <path fill="#EA4335" d="M12 10.1v4.26h5.95c-.26 1.36-1.04 2.51-2.22 3.28l3.59 2.79c2.09-1.93 3.29-4.77 3.29-8.14 0-.77-.07-1.5-.2-2.21H12z" />
+                  <path fill="#34A853" d="M12 22c2.97 0 5.46-.98 7.28-2.67l-3.59-2.79c-.99.67-2.26 1.07-3.69 1.07-2.84 0-5.25-1.92-6.11-4.49l-3.71 2.87C3.99 19.62 7.69 22 12 22z" />
+                  <path fill="#4A90E2" d="M5.89 13.12c-.22-.67-.35-1.39-.35-2.12s.13-1.45.35-2.12L2.18 6.01C1.42 7.52 1 9.22 1 11s.42 3.48 1.18 4.99l3.71-2.87z" />
+                  <path fill="#FBBC05" d="M12 4.39c1.62 0 3.08.56 4.22 1.67l3.17-3.17C17.45 1.09 14.96 0 12 0 7.69 0 3.99 2.38 2.18 6.01l3.71 2.87c.86-2.57 3.27-4.49 6.11-4.49z" />
+                </svg>
+              </span>
+              <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
+            </span>
+          </button>
+        </div>
         <input
-          v-model="passwordInput"
+          v-model="tempAdminPassword"
           type="password"
-          autofocus
-          placeholder="输入管理员密码"
-          @keydown.enter="handleAuth"
+          placeholder="临时密码"
+          autocomplete="current-password"
+          :disabled="isAuthenticating"
+          @keydown.enter.prevent="handlePasswordAuth"
         >
         <p v-if="authError" class="error">
           {{ authError }}
         </p>
         <div class="auth-actions">
-          <button class="btn primary" @click="handleAuth">
-            进入
+          <button class="btn primary" :disabled="isAuthenticating || !tempAdminPassword" @click="handlePasswordAuth">
+            {{ isAuthenticating ? '登录中...' : '使用密码登录' }}
           </button>
           <button class="btn ghost" @click="backToGame">
             返回
@@ -469,6 +615,9 @@ onBeforeUnmount(() => {
       <header class="admin-header">
         <div>
           <h2>控制台</h2>
+          <p v-if="currentAccountDisplay" class="subtitle">
+            当前账户: {{ currentAccountDisplay }}
+          </p>
         </div>
         <div class="header-right">
           <span class="dirty" :class="{ active: isDirty }">{{ isDirty ? '未保存' : '已保存' }}</span>
@@ -893,6 +1042,52 @@ onBeforeUnmount(() => {
   color: #cbd5e1;
 }
 
+.auth-tip {
+  margin-bottom: 12px;
+}
+
+.oauth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.oauth-btn {
+  width: 100%;
+}
+
+.oauth-btn-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.oauth-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+}
+
+.oauth-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.oauth-icon.is-github {
+  color: #111827;
+}
+
+.oauth-icon.is-google {
+  color: #fff;
+}
+
 .auth-container input {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.24);
@@ -922,10 +1117,11 @@ onBeforeUnmount(() => {
 .auth-actions {
   display: flex;
   gap: 8px;
+  justify-content: center;
 }
 
 .auth-actions .btn {
-  flex: 1;
+  min-width: 120px;
 }
 
 .admin-shell {

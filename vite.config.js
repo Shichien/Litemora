@@ -25,6 +25,48 @@ function readRequestBody(req) {
 }
 
 function registerMockApi(middlewares) {
+  middlewares.use(/^\/api\/auth\/(github|google)\/exchange$/, async (req, res) => {
+    if (req.method !== 'POST') {
+      res.statusCode = 405
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'method_not_allowed' }))
+      return
+    }
+
+    try {
+      const rawBody = await readRequestBody(req)
+      const payload = rawBody ? JSON.parse(rawBody) : {}
+      const provider = String(req.url || '').includes('/google/') ? 'google' : 'github'
+      const code = String(payload?.code || '').trim()
+
+      if (!code) {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'missing_oauth_code' }))
+        return
+      }
+
+      const shortCode = code.slice(0, 8)
+      const namePrefix = provider === 'google' ? 'Google' : 'GitHub'
+      const account = {
+        id: `${provider}:${shortCode || 'local-user'}`,
+        provider,
+        name: `${namePrefix} User`,
+        email: `${provider}-${shortCode || 'local'}@mock.local`,
+        avatar: '',
+      }
+
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ account }))
+    }
+    catch {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'invalid_auth_payload' }))
+    }
+  })
+
   middlewares.use('/api/world-config', async (_req, res) => {
     try {
       const jsonPath = path.resolve(__dirname, 'public', 'world-config.json')
@@ -92,6 +134,13 @@ export default {
   server: {
     host: HOST,
     port: PORT,
+  },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+      },
+    },
   },
   resolve: {
     alias: {

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>登录处理中</title>
+</head>
+<body>
+  <script>
+    ;(() => {
+      const params = new URLSearchParams(window.location.search)
+      const provider = params.get('provider') || ''
+      const code = params.get('code') || ''
+      const state = params.get('state') || ''
+      const error = params.get('error') || ''
+      const errorDescription = params.get('error_description') || ''
+
+      const payload = {
+        type: 'mc-admin-oauth-code',
+        provider,
+        code,
+        state,
+        error,
+        errorDescription,
+      }
+
+      if (window.opener && typeof window.opener.postMessage === 'function') {
+        window.opener.postMessage(payload, window.location.origin)
+      }
+
+      window.close()
+      setTimeout(() => {
+        document.body.textContent = '登录完成，你可以关闭此窗口。'
+      }, 120)
+    })()
+  </script>
+</body>
+</html>
