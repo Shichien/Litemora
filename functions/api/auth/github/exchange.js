@@ -6,7 +6,7 @@ import {
   sendAccount,
   sendError,
   trimString,
-} from '../../_shared.js'
+} from '../_shared.js'
 
 async function fetchGithubUser(accessToken) {
   const profileRes = await fetch('https://api.github.com/user', {

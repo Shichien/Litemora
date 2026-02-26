@@ -6,7 +6,7 @@ import {
   sendAccount,
   sendError,
   trimString,
-} from '../../_shared.js'
+} from '../_shared.js'
 
 async function fetchGoogleUser(accessToken) {
   const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
