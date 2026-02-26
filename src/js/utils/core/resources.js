@@ -24,6 +24,7 @@ export default class Resources {
     this._readyEmitted = false
     this.toLoad = this.sources.filter(source => !source.lazy).length
     this.loaded = 0
+    this.failed = 0
 
     // Loading screen elements
     this.loadingScreen = document.getElementById('loading-screen')
@@ -70,9 +71,12 @@ export default class Resources {
     const eagerSources = this.sources.filter(source => !source.lazy)
 
     if (eagerSources.length === 0) {
+      this._emitLoadingProgress()
       this._emitReadyOnce()
       return
     }
+
+    this._emitLoadingProgress()
 
     for (const source of eagerSources) {
       void this.loadSource(source, { countInProgress: true })
@@ -102,7 +106,8 @@ export default class Resources {
 
       const onError = (error) => {
         console.error(`[Resources] Failed to load source: ${source.name} (${source.path})`, error)
-        reject(error)
+        this.sourceFailed(source, error, { countInProgress })
+        resolve(null)
       }
 
       switch (source.type) {
@@ -176,7 +181,34 @@ export default class Resources {
       this.loaded++
     }
 
-    // Update loading progress
+    this._updateLoadingUi()
+
+    if (countInProgress && this.loaded + this.failed === this.toLoad) {
+      this._emitReadyOnce()
+    }
+  }
+
+  sourceFailed(source, error, options = {}) {
+    const { countInProgress = false } = options
+
+    if (countInProgress) {
+      this.failed++
+    }
+
+    emitter.emit('core:resource-error', {
+      name: source?.name || '',
+      path: source?.path || '',
+      message: String(error?.message || 'unknown_resource_error'),
+    })
+
+    this._updateLoadingUi()
+
+    if (countInProgress && this.loaded + this.failed === this.toLoad) {
+      this._emitReadyOnce()
+    }
+  }
+
+  _updateLoadingUi() {
     const progress = this.loadProgress
     const percentage = Math.round(progress * 100)
 
@@ -187,9 +219,16 @@ export default class Resources {
       this.loadingPercentage.textContent = `${percentage}%`
     }
 
-    if (countInProgress && this.loaded === this.toLoad) {
-      this._emitReadyOnce()
-    }
+    this._emitLoadingProgress()
+  }
+
+  _emitLoadingProgress() {
+    emitter.emit('core:loading-progress', {
+      loaded: this.loaded,
+      failed: this.failed,
+      total: this.toLoad,
+      progress: this.loadProgress,
+    })
   }
 
   _emitReadyOnce() {
@@ -249,11 +288,14 @@ export default class Resources {
   }
 
   get loadProgress() {
-    return this.loaded / this.toLoad
+    if (!this.toLoad) {
+      return 1
+    }
+    return (this.loaded + this.failed) / this.toLoad
   }
 
   get isLoaded() {
-    return this.loaded === this.toLoad
+    return this.loaded + this.failed === this.toLoad
   }
 
   destroy() {
@@ -282,5 +324,6 @@ export default class Resources {
     // Clear items
     this.items = {}
     this.loaded = 0
+    this.failed = 0
   }
 }
