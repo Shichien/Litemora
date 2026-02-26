@@ -89,6 +89,25 @@ export function normalizeWorldStatePayload(payload, spaceName = '') {
     ? payload.modifications
     : {}
 
+  const compactChunks = payload?.chunks && typeof payload.chunks === 'object'
+    ? payload.chunks
+    : {}
+
+  const compactChunkWidth = Number(payload?.chunkWidth)
+  const hasCompactChunks = Object.keys(compactChunks).length > 0
+
+  if (payload?.format === 'chunk-v2' && hasCompactChunks) {
+    return {
+      format: 'chunk-v2',
+      version: Number(payload?.version) || 1,
+      chunkWidth: Number.isFinite(compactChunkWidth) ? compactChunkWidth : 64,
+      worldState: {
+        schematicOnlyMode: payload?.worldState?.schematicOnlyMode ?? !!spaceName,
+      },
+      chunks: compactChunks,
+    }
+  }
+
   return {
     worldState: {
       schematicOnlyMode: payload?.worldState?.schematicOnlyMode ?? !!spaceName,

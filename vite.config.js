@@ -163,14 +163,29 @@ function registerMockApi(middlewares) {
       try {
         const rawBody = await readRequestBody(req)
         const payload = rawBody ? JSON.parse(rawBody) : {}
-        const normalized = {
-          worldState: {
-            schematicOnlyMode: !!payload?.worldState?.schematicOnlyMode,
-          },
-          modifications: payload?.modifications && typeof payload.modifications === 'object'
-            ? payload.modifications
-            : {},
-        }
+        const hasCompactChunks = payload?.format === 'chunk-v2'
+          && payload?.chunks
+          && typeof payload.chunks === 'object'
+          && Object.keys(payload.chunks).length > 0
+
+        const normalized = hasCompactChunks
+          ? {
+              format: 'chunk-v2',
+              version: Number(payload?.version) || 1,
+              chunkWidth: Number(payload?.chunkWidth) || 64,
+              worldState: {
+                schematicOnlyMode: !!payload?.worldState?.schematicOnlyMode,
+              },
+              chunks: payload.chunks,
+            }
+          : {
+              worldState: {
+                schematicOnlyMode: !!payload?.worldState?.schematicOnlyMode,
+              },
+              modifications: payload?.modifications && typeof payload.modifications === 'object'
+                ? payload.modifications
+                : {},
+            }
 
         await fs.mkdir(path.dirname(statePath), { recursive: true })
         await fs.writeFile(statePath, JSON.stringify(normalized, null, 2), 'utf-8')

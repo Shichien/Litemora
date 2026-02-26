@@ -22,6 +22,7 @@ import Player from './player/player.js'
 import ChunkManager from './terrain/chunk-manager.js'
 import { preloadAtlasTextureImage } from './terrain/java-atlas-texture-provider.js'
 import schematicService from './terrain/schematic-service.js'
+import { decodeWorldStateSnapshot, encodeWorldStateSnapshot } from './terrain/world-state-codec.js'
 
 const WORLD_STATE_STORAGE_KEY = 'mc-world-state'
 
@@ -80,8 +81,8 @@ export default class World {
           },
         }
         const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
+        await this._saveSharedWorldState()
         emitter.emit('schematic:apply-result', { ok: true, result })
-        void this._saveSharedWorldState()
       }
       catch (error) {
         emitter.emit('schematic:apply-result', {
@@ -214,12 +215,35 @@ export default class World {
     const activeSpace = getActiveSpaceName()
     const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
 
+    if (activeSpace) {
+      try {
+        const requestUrl = `/api/world-state?space=${encodeURIComponent(activeSpace)}`
+        const response = await fetch(requestUrl, { cache: 'no-store' })
+        if (response.ok) {
+          const data = await response.json()
+          if (data && typeof data === 'object') {
+            const decoded = decodeWorldStateSnapshot(data)
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(data))
+            }
+            catch {
+              // ignore local storage quota errors
+            }
+            return decoded
+          }
+        }
+      }
+      catch {
+        // fallback to local state below
+      }
+    }
+
     try {
       const raw = localStorage.getItem(storageKey)
       if (raw) {
         const parsed = JSON.parse(raw)
         if (parsed && typeof parsed === 'object') {
-          return parsed
+          return decodeWorldStateSnapshot(parsed)
         }
       }
     }
@@ -245,6 +269,8 @@ export default class World {
           : null
       }
 
+      const decoded = decodeWorldStateSnapshot(data)
+
       try {
         localStorage.setItem(storageKey, JSON.stringify(data))
       }
@@ -252,7 +278,7 @@ export default class World {
         // ignore local storage quota errors
       }
 
-      return data
+      return decoded
     }
     catch {
       return activeSpace
@@ -268,11 +294,14 @@ export default class World {
 
     try {
       const payload = this.chunkManager.persistence.exportSnapshot()
+      const compactPayload = encodeWorldStateSnapshot(payload, {
+        chunkWidth: this.chunkManager.chunkWidth,
+      })
       const activeSpace = getActiveSpaceName()
       const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
 
       try {
-        localStorage.setItem(storageKey, JSON.stringify(payload))
+        localStorage.setItem(storageKey, JSON.stringify(compactPayload))
       }
       catch {
         // ignore local storage quota errors
@@ -282,13 +311,17 @@ export default class World {
         ? `/api/world-state?space=${encodeURIComponent(activeSpace)}`
         : '/api/world-state'
 
-      await fetch(requestUrl, {
+      const response = await fetch(requestUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(compactPayload),
       })
+
+      if (!response.ok) {
+        throw new Error(`remote_world_state_save_failed_${response.status}`)
+      }
     }
     catch {
       // no-op: fallback to local persistence only
