@@ -135,6 +135,11 @@ export default {
     host: HOST,
     port: PORT,
   },
+  build: {
+    rollupOptions: {
+      external: ['/_vercel/insights/script.js'],
+    },
+  },
   css: {
     preprocessorOptions: {
       scss: {
@@ -162,7 +167,22 @@ export default {
         registerMockApi(server.middlewares)
       },
     },
-    legacy(),
+    legacy({
+      targets: [
+        'chrome >= 67',
+        'edge >= 79',
+        'firefox >= 68',
+        'safari >= 14',
+        'ios >= 14',
+      ],
+      modernTargets: [
+        'chrome >= 67',
+        'edge >= 79',
+        'firefox >= 68',
+        'safari >= 14',
+        'ios >= 14',
+      ],
+    }),
     glsl(),
     vue(),
     partytownVite({
