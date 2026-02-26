@@ -26,6 +26,40 @@ import { decodeWorldStateSnapshot, encodeWorldStateSnapshot } from './terrain/wo
 
 const WORLD_STATE_STORAGE_KEY = 'mc-world-state'
 
+function hasSnapshotModifications(snapshot = null) {
+  const modifications = snapshot?.modifications
+  if (!modifications || typeof modifications !== 'object') {
+    return false
+  }
+
+  for (const value of Object.values(modifications)) {
+    if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function sanitizeSnapshot(snapshot = null) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return snapshot
+  }
+
+  const worldState = snapshot.worldState && typeof snapshot.worldState === 'object'
+    ? { ...snapshot.worldState }
+    : { schematicOnlyMode: false }
+
+  if (worldState.schematicOnlyMode && !hasSnapshotModifications(snapshot)) {
+    worldState.schematicOnlyMode = false
+  }
+
+  return {
+    ...snapshot,
+    worldState,
+  }
+}
+
 /**
  * World 场景编排器：只负责在 core:ready 后按依赖顺序创建组件、编排 update/destroy。
  * 具体职责见 .agent/skills/vtj-scene-management/SKILL.md
@@ -223,7 +257,7 @@ export default class World {
         if (response.ok) {
           const data = await response.json()
           if (data && typeof data === 'object') {
-            const decoded = decodeWorldStateSnapshot(data)
+            const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
             try {
               localStorage.setItem(storageKey, JSON.stringify(data))
             }
@@ -244,7 +278,7 @@ export default class World {
       if (raw) {
         const parsed = JSON.parse(raw)
         if (parsed && typeof parsed === 'object') {
-          return decodeWorldStateSnapshot(parsed)
+          return sanitizeSnapshot(decodeWorldStateSnapshot(parsed))
         }
       }
     }
@@ -270,7 +304,7 @@ export default class World {
           : null
       }
 
-      const decoded = decodeWorldStateSnapshot(data)
+      const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
 
       try {
         localStorage.setItem(storageKey, JSON.stringify(data))
@@ -334,6 +368,8 @@ export default class World {
 
   /** 地形：ChunkManager + 暴露 terrainDataManager + 初始网格 */
   _initTerrain(config = null, sharedWorldState = null) {
+    const activeSpace = getActiveSpaceName()
+    const scopedWorldName = buildSpaceScopedKey('terrain-persistence', activeSpace)
     const backendChunk = config?.settings?.chunk || {}
     const chunkHeight = backendChunk.height ?? CHUNK_BASIC_CONFIG.chunkHeight
     const viewDistance = backendChunk.viewDistance ?? CHUNK_BASIC_CONFIG.viewDistance
@@ -343,6 +379,7 @@ export default class World {
       chunkHeight,
       viewDistance,
       seed: 1265,
+      worldName: scopedWorldName || 'default',
       terrain: {
         scale: TERRAIN_PARAMS.scale,
         magnitude: TERRAIN_PARAMS.magnitude,
