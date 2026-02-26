@@ -24,11 +24,20 @@ function handleSubmit() {
     errorText.value = '创建空间失败，请稍后重试'
   }
 }
+
+function handleClose() {
+  inputSpaceName.value = ''
+  errorText.value = ''
+}
 </script>
 
 <template>
   <main class="portal-home">
     <section class="portal-panel">
+      <button type="button" class="portal-close" aria-label="关闭" @click="handleClose">
+        ×
+      </button>
+
       <p class="portal-kicker">
         创建你的空间
       </p>
@@ -88,114 +97,171 @@ function handleSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #030406;
-  color: #e5e7eb;
-  padding: 1.5rem;
+  background: #020304;
+  color: #e7e9ee;
+  padding: 2rem;
 }
 
 .portal-panel {
-  width: min(760px, 100%);
+  width: min(980px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: radial-gradient(1200px 600px at 50% -200px, rgba(255, 255, 255, 0.04), transparent), #020304;
+  padding: 3.1rem 3.1rem 2.4rem;
+  position: relative;
+}
+
+.portal-close {
+  position: absolute;
+  top: 1.8rem;
+  right: 1.8rem;
+  width: 3.2rem;
+  height: 3.2rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.75);
-  padding: 2.5rem 2.25rem;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .portal-kicker {
   margin: 0;
-  color: #8b9098;
-  font-size: 0.95rem;
+  color: #7f8793;
+  font-size: 1.05rem;
   text-align: center;
+  letter-spacing: 0.16em;
 }
 
 .portal-title {
-  margin: 0.75rem 0 1rem;
+  margin: 1rem 0 1.4rem;
   text-align: center;
-  font-size: clamp(2rem, 6vw, 3.3rem);
+  font-size: clamp(2.2rem, 6vw, 4rem);
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
 .portal-subtitle {
-  margin: 0 auto 2rem;
-  max-width: 620px;
+  margin: 0 auto 2.6rem;
+  max-width: 720px;
   text-align: center;
-  color: #9ca3af;
+  color: #8f96a3;
   line-height: 1.65;
+  font-size: 1.35rem;
 }
 
 .portal-label {
   display: block;
-  margin-bottom: 0.75rem;
-  color: #d1d5db;
+  margin-bottom: 1rem;
+  color: #cfd6df;
+  font-size: 1.4rem;
 }
 
 .portal-input-row {
   display: flex;
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(3, 4, 6, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #03060a;
+  height: 6.2rem;
 }
 
 .portal-input {
   flex: 1;
-  height: 4rem;
+  height: 100%;
   background: transparent;
   border: none;
   outline: none;
   color: #f9fafb;
-  font-size: 2rem;
-  padding: 0 1.25rem;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  padding: 0 1.5rem;
 }
 
 .portal-input::placeholder {
-  color: #6b7280;
-  font-size: 1.75rem;
+  color: #5f6673;
+  font-size: clamp(1.3rem, 3vw, 2rem);
 }
 
 .portal-suffix {
-  padding: 0 1.25rem;
-  color: #9ca3af;
-  font-size: 1.5rem;
+  padding: 0 1.5rem;
+  color: #7f8793;
+  font-size: clamp(1.2rem, 2.3vw, 2rem);
 }
 
 .portal-tip-box {
-  margin-top: 1.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 1rem 1.2rem;
-  color: #9ca3af;
+  margin-top: 1.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1.3rem 1.35rem;
+  color: #9098a5;
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .portal-tip-title {
   margin: 0 0 0.6rem;
-  color: #f3f4f6;
-  font-size: 1rem;
+  color: #f4f6fb;
+  font-size: 1.05rem;
 }
 
 .portal-tip-box ul {
   margin: 0;
   padding-left: 1.25rem;
-  line-height: 1.8;
+  line-height: 2;
 }
 
 .portal-error {
-  margin: 0.9rem 0 0;
+  margin: 0.95rem 0 0;
   color: #f87171;
 }
 
 .portal-create-btn {
-  margin-top: 1.5rem;
+  margin-top: 2rem;
   width: 100%;
-  height: 4rem;
+  height: 6rem;
   border: none;
-  background: #5f6165;
-  color: #101217;
-  font-size: 1.5rem;
+  background: #7b7d82;
+  color: #0f1218;
+  font-size: 2rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .portal-create-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.48;
   cursor: not-allowed;
+}
+
+.portal-create-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .portal-home {
+    padding: 1rem;
+  }
+
+  .portal-panel {
+    padding: 2.3rem 1.2rem 1.5rem;
+  }
+
+  .portal-close {
+    top: 1rem;
+    right: 1rem;
+  }
+
+  .portal-subtitle {
+    font-size: 1.05rem;
+  }
+
+  .portal-label {
+    font-size: 1.05rem;
+  }
+
+  .portal-input-row {
+    height: 4.5rem;
+  }
+
+  .portal-create-btn {
+    height: 4.5rem;
+    font-size: 1.35rem;
+  }
 }
 </style>
