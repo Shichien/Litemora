@@ -851,11 +851,8 @@ class SchematicService {
         }
       }
       else {
-        chunk.generator.params.seed = chunkManager.seed
-        const generated = chunk.generateData()
-        if (!generated) {
-          return null
-        }
+        chunk.container.clear()
+        chunk.state = 'dataReady'
       }
 
       if (typeof chunkManager._applyChunkModifications === 'function') {

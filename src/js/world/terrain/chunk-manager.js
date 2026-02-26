@@ -7,7 +7,6 @@ import {
 } from '../../config/chunk-config.js'
 import Experience from '../../experience.js'
 import IdleQueue from '../../utils/utils/idle-queue.js'
-import BiomeGenerator from './biome-generator.js'
 import { blocks, resources } from './blocks-config.js'
 import TerrainChunk from './terrain-chunk.js'
 import TerrainPersistence from './terrain-persistence.js'
@@ -32,7 +31,7 @@ export default class ChunkManager {
       forcedBiome: options.forcedBiome ?? 'plains',
     }
 
-    this.biomeGenerator = new BiomeGenerator(this.seed)
+    this.biomeGenerator = null
 
     this._statsParams = {
       totalInstances: 0,
@@ -83,7 +82,6 @@ export default class ChunkManager {
    */
   setSeed(newSeed) {
     this.seed = newSeed
-    this.biomeGenerator.seed = newSeed
   }
 
   applyWorldGenParams({ terrain, trees, water, biome } = {}) {
@@ -172,7 +170,6 @@ export default class ChunkManager {
     void forceSyncCenterChunk
     if (seed !== undefined) {
       this.seed = seed
-      this.biomeGenerator.seed = seed
     }
     return { seed: this.seed, disabled: true }
   }

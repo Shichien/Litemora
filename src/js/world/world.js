@@ -3,7 +3,6 @@ import { useUiStore } from '../../pinia/uiStore.js'
 import CameraRig from '../camera/camera-rig.js'
 import {
   CHUNK_BASIC_CONFIG,
-  TERRAIN_PARAMS,
 } from '../config/chunk-config.js'
 import { INTERACTION_CONFIG } from '../config/interaction-config.js'
 import Experience from '../experience.js'
@@ -429,13 +428,6 @@ export default class World {
       viewDistance,
       seed: 1265,
       worldName: scopedWorldName || 'default',
-      terrain: {
-        scale: TERRAIN_PARAMS.scale,
-        magnitude: TERRAIN_PARAMS.magnitude,
-        offset: TERRAIN_PARAMS.offset,
-        rockExpose: TERRAIN_PARAMS.rockExpose,
-        fbm: TERRAIN_PARAMS.fbm,
-      },
     })
 
     if (sharedWorldState && this.chunkManager?.persistence?.applySnapshot) {
