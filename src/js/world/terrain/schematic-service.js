@@ -13,6 +13,7 @@ import {
 } from './block-behaviors.js'
 import {
   barsGeometryTypeFromProperties,
+  doorGeometryTypeFromProperties,
   fenceGeometryTypeFromProperties,
   buildVariantKey,
   normalizeFacing,
@@ -363,6 +364,7 @@ class SchematicService {
     }
 
     const normalizedName = blockName.replace('minecraft:', '')
+    const isDoorBlock = /_door$/u.test(normalizedName) && !/_trapdoor$/u.test(normalizedName)
     const isFenceBlock = /_fence$/u.test(normalizedName) && !/_fence_gate$/u.test(normalizedName)
     const isGlassPaneBlock = normalizedName === 'glass_pane' || /_glass_pane$/u.test(normalizedName)
 
@@ -400,7 +402,8 @@ class SchematicService {
         || this._resolveTextureName(normalizedName)
 
       if (stairTextureName) {
-        const geometryType = this._stairGeometryTypeFromProperties(properties)
+        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties, { mapStairShape: true })
+        const geometryType = this._stairGeometryTypeFromProperties(mappedProperties)
         const stairBlock = ensureDynamicBlockType(stairTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -418,6 +421,29 @@ class SchematicService {
       }
     }
 
+    if (isDoorBlock) {
+      const doorTextureName = this._resolveDoorTextureName(normalizedName, properties)
+
+      if (doorTextureName) {
+        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties)
+        const geometryType = doorGeometryTypeFromProperties(mappedProperties)
+        const doorBlock = ensureDynamicBlockType(doorTextureName, {
+          blockName: normalizedName,
+          geometryType,
+        })
+
+        if (doorBlock?.id) {
+          const result = {
+            id: doorBlock.id,
+            source: 'atlas-dynamic',
+            textureName: doorTextureName,
+          }
+          this._blockResolveCache.set(cacheKey, result)
+          return result
+        }
+      }
+    }
+
     if (isTrapdoorBlockName(normalizedName)) {
       const trapdoorBaseName = normalizedName.replace(/_trapdoor$/u, '')
       const trapdoorTextureName = this._resolveTextureName(trapdoorBaseName)
@@ -425,7 +451,7 @@ class SchematicService {
         || this._resolveTextureName(normalizedName)
 
       if (trapdoorTextureName) {
-        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
+        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties)
         const geometryType = trapdoorGeometryTypeFromProperties(mappedProperties)
         const trapdoorBlock = ensureDynamicBlockType(trapdoorTextureName, {
           blockName: normalizedName,
@@ -447,8 +473,7 @@ class SchematicService {
     if (isIronBarsBlockName(normalizedName)) {
       const barsTextureName = this._resolveTextureName(normalizedName)
       if (barsTextureName) {
-        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
-        const geometryType = barsGeometryTypeFromProperties(mappedProperties)
+        const geometryType = barsGeometryTypeFromProperties(properties)
         const barsBlock = ensureDynamicBlockType(barsTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -467,11 +492,10 @@ class SchematicService {
     }
 
     if (isGlassPaneBlock) {
-      const paneTextureName = this._resolveTextureName(normalizedName)
+      const paneTextureName = this._resolveGlassPaneTextureName(normalizedName)
 
       if (paneTextureName) {
-        const mappedProperties = this._mapHorizontalPropertiesForWorld(properties)
-        const geometryType = barsGeometryTypeFromProperties(mappedProperties)
+        const geometryType = barsGeometryTypeFromProperties(properties)
         const paneBlock = ensureDynamicBlockType(paneTextureName, {
           blockName: normalizedName,
           geometryType,
@@ -490,7 +514,7 @@ class SchematicService {
     }
 
     if (isFenceBlock) {
-      const fenceTextureName = this._resolveTextureName(normalizedName)
+      const fenceTextureName = this._resolveFenceTextureName(normalizedName)
 
       if (fenceTextureName) {
         const geometryType = fenceGeometryTypeFromProperties(properties)
@@ -624,21 +648,25 @@ class SchematicService {
     return shape
   }
 
-  _mapHorizontalPropertiesForWorld(properties = {}) {
-    return {
+  _mapDirectionalPropertiesForWorld(properties = {}, options = {}) {
+    const mapped = {
       ...properties,
       facing: this._mapHorizontalFacingForWorld(variantString(properties?.facing)),
-      east: properties?.west,
-      west: properties?.east,
     }
+
+    if (options?.mapStairShape) {
+      mapped.shape = this._mapStairShapeForWorld(variantString(properties?.shape))
+    }
+
+    return mapped
   }
 
   _normalizeFacing(value) {
-    return this._mapHorizontalFacingForWorld(normalizeFacing(value))
+    return normalizeFacing(value)
   }
 
   _normalizeStairShape(value) {
-    return this._mapStairShapeForWorld(normalizeStairShape(value))
+    return normalizeStairShape(value)
   }
 
   _stairGeometryTypeFromProperties(properties = {}) {
@@ -674,6 +702,78 @@ class SchematicService {
 
   _resolveTextureName(normalizedName) {
     return this._resolveAtlasTextureName(normalizedName)
+  }
+
+  _resolveAtlasTextureNameExact(candidates = []) {
+    const seen = new Set()
+    for (const raw of candidates) {
+      const candidate = String(raw || '').trim()
+      if (!candidate || seen.has(candidate)) {
+        continue
+      }
+      seen.add(candidate)
+      const rectKey = `block/${candidate}`
+      if (javaAtlasBlockTextureRects[rectKey]) {
+        return `${ATLAS_TEXTURE_PREFIX}${rectKey}`
+      }
+    }
+    return null
+  }
+
+  _resolveFenceTextureName(normalizedName) {
+    const hints = Array.isArray(javaBlockTextureStemHintsByBlock[normalizedName])
+      ? javaBlockTextureStemHintsByBlock[normalizedName]
+      : []
+    const fenceBaseName = normalizedName.replace(/_fence$/u, '')
+
+    const exactCandidates = [
+      ...hints,
+      normalizedName,
+      `${fenceBaseName}_planks`,
+      `planks_${fenceBaseName}`,
+      fenceBaseName,
+    ]
+
+    return this._resolveAtlasTextureNameExact(exactCandidates)
+  }
+
+  _resolveGlassPaneTextureName(normalizedName) {
+    if (normalizedName === 'glass_pane') {
+      return this._resolveAtlasTextureNameExact([
+        'glass_pane_top',
+        'glass',
+      ])
+    }
+
+    const stainedMatch = normalizedName.match(/^([a-z0-9_]+)_stained_glass_pane$/u)
+    if (stainedMatch) {
+      const color = stainedMatch[1]
+      return this._resolveAtlasTextureNameExact([
+        `${color}_stained_glass_pane_top`,
+        `${color}_stained_glass`,
+      ])
+    }
+
+    return this._resolveAtlasTextureNameExact([normalizedName])
+  }
+
+  _resolveDoorTextureName(normalizedName, properties = {}) {
+    const hints = Array.isArray(javaBlockTextureStemHintsByBlock[normalizedName])
+      ? javaBlockTextureStemHintsByBlock[normalizedName]
+      : []
+    const doorBaseName = normalizedName.replace(/_door$/u, '')
+    const half = variantString(properties?.half) === 'upper' ? 'top' : 'bottom'
+
+    const exactCandidates = [
+      `${normalizedName}_${half}`,
+      `${doorBaseName}_door_${half}`,
+      ...hints,
+      normalizedName,
+      `${doorBaseName}_door`,
+      doorBaseName,
+    ]
+
+    return this._resolveAtlasTextureNameExact(exactCandidates)
   }
 
   _resolveAtlasTextureName(normalizedName) {
