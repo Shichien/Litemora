@@ -160,6 +160,11 @@ export default class World {
   _applyBackendUi(uiConfig) {
     const ui = useUiStore()
     ui.applyBackendUiConfig(uiConfig)
+
+    const shouldKeepSchematicOnly = !!uiConfig?.worldState?.schematicOnlyMode
+    if (this.chunkManager && !shouldKeepSchematicOnly && this.chunkManager.schematicOnlyMode) {
+      this.chunkManager.setSchematicOnlyMode(false)
+    }
   }
 
   async _applyBackendSettings(settingsConfig = {}) {
