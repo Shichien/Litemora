@@ -27,20 +27,6 @@ Litemora 已经彻底演进，放弃了初期的“魂类战斗”杂项演示�
 4. **创作者空间 (Creator Spaces)**  
    一键创建专属链接（如 `litemora.art/your-space`），将其作为你个人的建筑展览册。
 
----
-
-## 核心技术栈
-
-本项目由前沿前端技术驱动，追求极致性能与设计感：
-
-- **3D 引擎**: [Three.js](https://threejs.org/) (v0.172+)
-- **界面框架**: [Vue 3](https://vuejs.org/) + [Tailwind CSS](https://tailwindcss.com/)
-- **状态管理**: [Pinia](https://pinia.vuejs.org/)
-- **国际化**: [Vue-i18n](https://vue-i18n.intlify.dev/) (支持中英双语)
-- **多语言接入**: GitHub OAuth 鉴权，保护私人画廊空间
-
----
-
 ## 本地开发指南
 
 Litemora 采用现代化的包管理器和构建工具。
