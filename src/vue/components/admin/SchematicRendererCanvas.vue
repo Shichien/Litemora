@@ -10,6 +10,7 @@ let schematicRendererModulePromise = null
 
 const RENDERER_READY_TIMEOUT_MS = 20000
 const SCHEMATIC_ID = 'litemora-preview'
+const SCHEMATIC_RENDERER_CDN_URL = 'https://cdn.jsdelivr.net/npm/schematic-renderer@1.1.23/dist/schematic-renderer.es.js'
 
 const props = defineProps({
   schematic: {
@@ -293,7 +294,12 @@ function withTimeout(promise, timeoutMs, message) {
 
 async function loadRendererModule() {
   if (!schematicRendererModulePromise) {
-    schematicRendererModulePromise = import('schematic-renderer')
+    if (import.meta.env.DEV) {
+      schematicRendererModulePromise = import('schematic-renderer')
+    }
+    else {
+      schematicRendererModulePromise = import(/* @vite-ignore */ SCHEMATIC_RENDERER_CDN_URL)
+    }
   }
   return schematicRendererModulePromise
 }
