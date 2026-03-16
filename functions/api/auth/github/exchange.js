@@ -1,4 +1,5 @@
 import {
+  issueAccountSession,
   normalizeAccount,
   parseJsonBody,
   postForm,
@@ -92,7 +93,8 @@ export async function onRequestPost(context) {
     }
 
     const account = await fetchGithubUser(data.access_token)
-    return sendAccount(account)
+    const session = await issueAccountSession(context.env, account)
+    return sendAccount(account, session)
   }
   catch (error) {
     if (String(error?.message || '').startsWith('missing_env:')) {

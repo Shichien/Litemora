@@ -1,136 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
-    <!-- ESSENTIAL -->
     <meta charset="utf-8" />
-    <meta http-equiv="x-ua-compatible" content="ie=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <!-- GENERAL -->
-    <title>Vite ThreeJS — Template</title>
-    <meta name="title" content="Vite ThreeJS — Template" />
-    <meta name="application-name" content="Vite ThreeJS — Template" />
+    <title>Litemora | Playable Schematic Worlds</title>
+    <meta name="title" content="Litemora | Playable Schematic Worlds" />
+    <meta name="application-name" content="Litemora" />
     <meta
       name="description"
-      content="Boilerplate template designed to quickly bootstrapping a 3D Web App, SPA, website or landing page with Three.JS, GLSL, Vite, TailwindCSS, ESLint, Husky and much more in just 30 seconds."
+      content="Litemora turns Minecraft schematics into playable online worlds with native resource-pack rendering, true collision, first-person exploration, and shareable gallery spaces."
     />
     <meta
       name="keywords"
-      content="
-        three, three js, threejs, three.js, three-js,
-        three template, three js template, threejs template, three.js template, three-js template,
-        three vite, three js vite, threejs vite, three.js vite, three-js vite,
-        three vite template, three js vite templante, threejs vite templante, three.js vite templante, three-js vite templante,
-        webgl, 3D, GLSL, GLSL shaders, shaders, web3D,
-        javascript, js, vanilla-javascript, vanilla-js,
-        development, template, boilerplate, template-boilerplate, boilerplate-frontend, starter-kit,
-        vite, vite template, swc, husky, eslint, commitlint, prettier,
-        postcss, tailwind, tailwindcss, sass, scss, css,
-        github, web app, web-app, webapp, spa
-      "
+      content="Litemora, Minecraft, litematic, schematic, schem, three.js, Cubane, resource pack, playable worlds, voxel gallery"
     />
     <link rel="manifest" href="/app.webmanifest" />
     <link rel="icon" sizes="192x192" href="/favicon/favicon-192.webp" />
     <link rel="icon" sizes="512x512" href="/favicon/favicon-512.webp" />
-
-    <!-- GOOGLE -->
     <meta name="rating" content="General" />
     <meta name="robots" content="index,follow" />
-    <link
-      rel="sitemap"
-      type="application/xml"
-      title="Sitemap"
-      href="/sitemap.xml"
-    />
-    <meta
-      name="google-site-verification"
-      content="43hCqye5FYTS4SnBMPKNFP-wBhfLHwRBykWJF1WJawo"
-    />
-
-    <!-- FACEBOOK -->
-    <meta property="og:url" content="https://webpack-three-js.d1a.app" />
+    <meta property="og:url" content="https://litemora.art/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Webpack ThreeJS — Template" />
+    <meta property="og:title" content="Litemora | Playable Schematic Worlds" />
     <meta
       property="og:description"
-      content="Boilerplate template designed to quickly bootstrapping a 3D Web App, SPA, website or landing page with Three.JS, GLSL, Vite, TailwindCSS, ESLint, Husky and much more in just 30 seconds."
+      content="Import Minecraft schematics, render true block appearance from resource packs, and walk through them in first person."
     />
     <meta property="og:image" content="/og.jpg" />
-
-    <!-- TWITTER -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta property="twitter:domain" content="webpack-three-js.d1a.app" />
-    <meta property="twitter:url" content="https://webpack-three-js.d1a.app" />
-    <meta name="twitter:title" content="Webpack ThreeJS — Template" />
+    <meta property="twitter:domain" content="litemora.art" />
+    <meta property="twitter:url" content="https://litemora.art/" />
+    <meta name="twitter:title" content="Litemora | Playable Schematic Worlds" />
     <meta
       name="twitter:description"
-      content="Boilerplate template designed to quickly bootstrapping a 3D Web App, SPA, website or landing page with Three.JS, GLSL, Vite, TailwindCSS, ESLint, Husky and much more in just 30 seconds."
+      content="A cinematic web front end for Minecraft schematic worlds, gallery spaces, and first-person exploration."
     />
     <meta name="twitter:image" content="/og.jpg" />
-
-    <!-- iOS -->
     <link rel="apple-touch-icon" href="/favicon/favicon-512.webp" />
     <link rel="mask-icon" href="/favicon/favicon-512.webp" color="black" />
-    <meta name="apple-mobile-web-app-title" content="Vite ThreeJS — Template" />
+    <meta name="apple-mobile-web-app-title" content="Litemora" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-
-    <!-- ANDROID -->
-    <meta name="theme-color" content="#000" />
+    <meta name="theme-color" content="#08121b" />
     <meta name="mobile-web-app-capable" content="yes" />
-
-    <style>
-      #loading-screen {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #111827;
-      }
-
-      #loading-screen .loading-panel {
-        width: 16rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-      }
-
-      #loading-screen .loading-text {
-        text-align: center;
-      }
-
-      #loading-screen .loading-title {
-        margin: 0 0 0.5rem;
-        color: #fff;
-        font-size: 1.25rem;
-        font-weight: 600;
-      }
-
-      #loading-screen .loading-percentage {
-        margin: 0;
-        color: #9ca3af;
-      }
-
-      #loading-screen .loading-track {
-        position: relative;
-        height: 0.5rem;
-        background: #374151;
-        border-radius: 9999px;
-        overflow: hidden;
-      }
-
-      #loading-bar {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 0;
-        height: 100%;
-        background: #3b82f6;
-        transition: width 0.3s ease-out;
-      }
-    </style>
+    <link rel="stylesheet" href="/loading-screen.css" />
 
     <script>
       if (location.hostname.endsWith('vercel.app')) {
@@ -147,7 +60,7 @@
     <div id="loading-screen">
       <div class="loading-panel">
         <div class="loading-text">
-          <h2 class="loading-title">Loading Resources</h2>
+          <h2 class="loading-title">Loading Litemora</h2>
           <p id="loading-percentage" class="loading-percentage">0%</p>
         </div>
         <div class="loading-track">
@@ -156,7 +69,7 @@
       </div>
     </div>
     <noscript class="text-center text-lg text-red-500">
-      Enable JavaScript to enjoy all the features of this app.
+      请启用 JavaScript 以加载 Litemora 的交互内容。
     </noscript>
     <script type="module" src="/src/main.js"></script>
   </body>

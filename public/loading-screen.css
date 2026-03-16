@@ -1,0 +1,50 @@
+#loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111827;
+}
+
+#loading-screen .loading-panel {
+  width: 16rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+#loading-screen .loading-text {
+  text-align: center;
+}
+
+#loading-screen .loading-title {
+  margin: 0 0 0.5rem;
+  color: #FFF;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+#loading-screen .loading-percentage {
+  margin: 0;
+  color: #9CA3AF;
+}
+
+#loading-screen .loading-track {
+  position: relative;
+  height: 0.5rem;
+  background: #374151;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+#loading-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 100%;
+  background: #3B82F6;
+  transition: width 0.3s ease-out;
+}

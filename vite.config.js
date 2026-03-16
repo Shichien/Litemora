@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -45,6 +46,103 @@ function resolveSpaceJsonPath(fileName, spaceName = '') {
   return path.resolve(__dirname, 'public', 'spaces', spaceName, fileName)
 }
 
+function resolveGallerySpaceDir(spaceName = '') {
+  return path.resolve(__dirname, 'public', '.dev-gallery', spaceName || 'default')
+}
+
+function resolveGalleryProfilePath(spaceName = '') {
+  return path.resolve(resolveGallerySpaceDir(spaceName), 'profile.json')
+}
+
+function resolveGalleryManifestPath(spaceName = '') {
+  return path.resolve(resolveGallerySpaceDir(spaceName), 'manifest.json')
+}
+
+function resolveGalleryItemPath(spaceName = '', itemId = '') {
+  return path.resolve(resolveGallerySpaceDir(spaceName), 'items', `${encodeURIComponent(itemId)}.json`)
+}
+
+async function readJsonFileOr(filePath, fallbackValue) {
+  try {
+    const content = await fs.readFile(filePath, 'utf-8')
+    return JSON.parse(content)
+  }
+  catch {
+    return fallbackValue
+  }
+}
+
+async function writeJsonFile(filePath, payload) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8')
+}
+
+async function deleteFileIfExists(filePath) {
+  try {
+    await fs.unlink(filePath)
+  }
+  catch {
+    // ignore missing file in local mock mode
+  }
+}
+
+function toBase64UrlText(value) {
+  return Buffer.from(String(value || ''), 'utf-8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+}
+
+function fromBase64UrlText(value) {
+  const normalized = String(value || '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+  const padded = normalized + '==='.slice((normalized.length + 3) % 4)
+  return Buffer.from(padded, 'base64').toString('utf-8')
+}
+
+function createMockSession(account) {
+  return {
+    token: `mock.${toBase64UrlText(JSON.stringify(account))}`,
+    expiresAt: Date.now() + (1000 * 60 * 60 * 24 * 14),
+  }
+}
+
+function readMockAccount(req) {
+  const authorization = String(req.headers.authorization || '')
+  if (!authorization.startsWith('Bearer mock.')) {
+    return null
+  }
+
+  try {
+    const encoded = authorization.slice('Bearer mock.'.length)
+    return JSON.parse(fromBase64UrlText(encoded))
+  }
+  catch {
+    return null
+  }
+}
+
+function getGallerySpaceFromBody(body = {}) {
+  return sanitizeSpaceName(body?.space)
+}
+
+function getItemIdFromRequest(req) {
+  try {
+    const requestUrl = new URL(req.url || '/', 'http://localhost')
+    return String(requestUrl.searchParams.get('item') || '').trim()
+  }
+  catch {
+    return ''
+  }
+}
+
+function filterVisibleGalleryItems(items = [], viewerAccount = null, profile = null) {
+  const canManage = !!viewerAccount?.id && viewerAccount.id === profile?.ownerAccountId
+  return items.filter(item => canManage || item?.visibility !== 'private')
+}
+
 function summarizeWorldState(payload = {}, key = 'world-state') {
   const format = payload?.format || 'classic'
   const isChunkV2 = format === 'chunk-v2'
@@ -79,7 +177,7 @@ function summarizeWorldState(payload = {}, key = 'world-state') {
 }
 
 function registerMockApi(middlewares) {
-  middlewares.use(/^\/api\/auth\/github\/exchange$/, async (req, res) => {
+  middlewares.use(/^\/api\/auth\/(github|google)\/exchange$/, async (req, res) => {
     if (req.method !== 'POST') {
       res.statusCode = 405
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -109,16 +207,353 @@ function registerMockApi(middlewares) {
         email: `${provider}-${shortCode || 'local'}@mock.local`,
         avatar: '',
       }
+      const session = createMockSession(account)
 
       res.statusCode = 200
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
-      res.end(JSON.stringify({ account }))
+      res.end(JSON.stringify({ account, session }))
     }
     catch {
       res.statusCode = 400
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
       res.end(JSON.stringify({ error: 'invalid_auth_payload' }))
     }
+  })
+
+  middlewares.use(/^\/api\/gallery\/item(?:\?.*)?$/, async (req, res) => {
+    const spaceName = getSpaceNameFromRequest(req)
+    const itemId = getItemIdFromRequest(req)
+
+    if (!spaceName) {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'invalid_space_name' }))
+      return
+    }
+
+    if (!itemId) {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'missing_item_id' }))
+      return
+    }
+
+    const profile = await readJsonFileOr(resolveGalleryProfilePath(spaceName), null)
+    const item = await readJsonFileOr(resolveGalleryItemPath(spaceName, itemId), null)
+    const viewer = readMockAccount(req)
+    const canManage = !!viewer?.id && viewer.id === profile?.ownerAccountId
+
+    if (req.method === 'GET') {
+      if (!item || (item.visibility === 'private' && !canManage)) {
+        res.statusCode = 404
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'gallery_item_not_found' }))
+        return
+      }
+
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({
+        item: {
+          ...item,
+          sourceFile: item.visibility === 'public' || canManage ? item.sourceFile : undefined,
+        },
+        viewer: {
+          authenticated: !!viewer,
+          account: viewer,
+          canManage,
+        },
+      }))
+      return
+    }
+
+    if (req.method === 'DELETE') {
+      if (!canManage) {
+        res.statusCode = 403
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'gallery_delete_forbidden' }))
+        return
+      }
+
+      const manifest = await readJsonFileOr(resolveGalleryManifestPath(spaceName), {
+        items: [],
+      })
+      const nextItems = Array.isArray(manifest?.items)
+        ? manifest.items.filter(entry => entry?.id !== itemId)
+        : []
+      const nextManifest = {
+        ...(manifest || {}),
+        updatedAt: Date.now(),
+        items: nextItems,
+      }
+      const nextProfile = profile
+        ? {
+            ...profile,
+            itemCount: nextItems.length,
+            updatedAt: Date.now(),
+          }
+        : null
+
+      await deleteFileIfExists(resolveGalleryItemPath(spaceName, itemId))
+      await writeJsonFile(resolveGalleryManifestPath(spaceName), nextManifest)
+      if (nextProfile) {
+        await writeJsonFile(resolveGalleryProfilePath(spaceName), nextProfile)
+      }
+
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({
+        ok: true,
+        items: filterVisibleGalleryItems(nextItems, viewer, nextProfile),
+        profile: nextProfile,
+      }))
+      return
+    }
+
+    res.statusCode = 405
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.end(JSON.stringify({ error: 'method_not_allowed' }))
+  })
+
+  middlewares.use(/^\/api\/gallery\/items(?:\?.*)?$/, async (req, res) => {
+    if (req.method !== 'POST') {
+      res.statusCode = 405
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'method_not_allowed' }))
+      return
+    }
+
+    const viewer = readMockAccount(req)
+    if (!viewer) {
+      res.statusCode = 401
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'authentication_required' }))
+      return
+    }
+
+    try {
+      const rawBody = await readRequestBody(req)
+      const payload = rawBody ? JSON.parse(rawBody) : {}
+      const spaceName = getGallerySpaceFromBody(payload)
+      if (!spaceName) {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'invalid_space_name' }))
+        return
+      }
+
+      const itemId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+      const profilePath = resolveGalleryProfilePath(spaceName)
+      const manifestPath = resolveGalleryManifestPath(spaceName)
+      const existingProfile = await readJsonFileOr(profilePath, null)
+      const existingManifest = await readJsonFileOr(manifestPath, {
+        space: spaceName,
+        ownerAccountId: viewer.id,
+        updatedAt: Date.now(),
+        items: [],
+      })
+
+      if (existingProfile && existingProfile.ownerAccountId !== viewer.id) {
+        res.statusCode = 403
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'gallery_write_forbidden' }))
+        return
+      }
+
+      const profile = existingProfile || {
+        space: spaceName,
+        ownerAccountId: viewer.id,
+        ownerProvider: viewer.provider,
+        ownerName: viewer.name || viewer.email || spaceName,
+        ownerAvatar: viewer.avatar || '',
+        bio: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        itemCount: 0,
+      }
+
+      const item = {
+        id: itemId,
+        space: spaceName,
+        title: String(payload?.title || payload?.schematic?.name || payload?.fileName || 'Untitled build').slice(0, 160),
+        description: String(payload?.description || '').slice(0, 4000),
+        visibility: payload?.visibility === 'private' ? 'private' : 'public',
+        fileName: String(payload?.fileName || 'uploaded.litematic').slice(0, 240),
+        mimeType: String(payload?.mimeType || 'application/octet-stream').slice(0, 120),
+        sourceFile: {
+          fileName: String(payload?.fileName || 'uploaded.litematic').slice(0, 240),
+          mimeType: String(payload?.mimeType || 'application/octet-stream').slice(0, 120),
+          fileBase64: String(payload?.fileBase64 || ''),
+        },
+        schematic: payload?.schematic || null,
+        previewModel: payload?.previewModel || null,
+        owner: {
+          id: viewer.id,
+          name: viewer.name || viewer.email || spaceName,
+          avatar: viewer.avatar || '',
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+
+      const summary = {
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        visibility: item.visibility,
+        fileName: item.fileName,
+        schematic: item.schematic,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        preview: {
+          totalSolidBlocks: Number(item?.previewModel?.totalSolidBlocks || 0),
+          sampled: !!item?.previewModel?.sampled,
+          bounds: item?.previewModel?.bounds || null,
+        },
+      }
+
+      const nextItems = [
+        summary,
+        ...(Array.isArray(existingManifest?.items) ? existingManifest.items : []).filter(entry => entry?.id !== item.id),
+      ].sort((left, right) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
+
+      const nextProfile = {
+        ...profile,
+        updatedAt: Date.now(),
+        itemCount: nextItems.length,
+      }
+      const nextManifest = {
+        ...existingManifest,
+        space: spaceName,
+        ownerAccountId: viewer.id,
+        updatedAt: Date.now(),
+        items: nextItems,
+      }
+
+      await writeJsonFile(resolveGalleryItemPath(spaceName, itemId), item)
+      await writeJsonFile(profilePath, nextProfile)
+      await writeJsonFile(manifestPath, nextManifest)
+
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({
+        ok: true,
+        item: summary,
+        profile: nextProfile,
+      }))
+    }
+    catch {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'gallery_item_create_failed' }))
+    }
+  })
+
+  middlewares.use(/^\/api\/gallery\/claim(?:\?.*)?$/, async (req, res) => {
+    if (req.method !== 'POST') {
+      res.statusCode = 405
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'method_not_allowed' }))
+      return
+    }
+
+    const viewer = readMockAccount(req)
+    if (!viewer) {
+      res.statusCode = 401
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'authentication_required' }))
+      return
+    }
+
+    try {
+      const rawBody = await readRequestBody(req)
+      const payload = rawBody ? JSON.parse(rawBody) : {}
+      const spaceName = getGallerySpaceFromBody(payload)
+      if (!spaceName) {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'invalid_space_name' }))
+        return
+      }
+
+      const profilePath = resolveGalleryProfilePath(spaceName)
+      const manifestPath = resolveGalleryManifestPath(spaceName)
+      const existingProfile = await readJsonFileOr(profilePath, null)
+
+      if (existingProfile && existingProfile.ownerAccountId !== viewer.id) {
+        res.statusCode = 409
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'gallery_already_claimed' }))
+        return
+      }
+
+      const profile = {
+        space: spaceName,
+        ownerAccountId: viewer.id,
+        ownerProvider: viewer.provider,
+        ownerName: String(payload?.displayName || existingProfile?.ownerName || viewer.name || viewer.email || spaceName).slice(0, 120),
+        ownerAvatar: viewer.avatar || '',
+        bio: String(payload?.bio || existingProfile?.bio || '').slice(0, 4000),
+        createdAt: existingProfile?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        itemCount: Number(existingProfile?.itemCount || 0),
+      }
+      const manifest = await readJsonFileOr(manifestPath, {
+        space: spaceName,
+        ownerAccountId: viewer.id,
+        updatedAt: Date.now(),
+        items: [],
+      })
+
+      await writeJsonFile(profilePath, profile)
+      await writeJsonFile(manifestPath, manifest)
+
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ ok: true, profile }))
+    }
+    catch {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'gallery_claim_failed' }))
+    }
+  })
+
+  middlewares.use(/^\/api\/gallery(?:\?.*)?$/, async (req, res) => {
+    if (req.method !== 'GET') {
+      res.statusCode = 405
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'method_not_allowed' }))
+      return
+    }
+
+    const spaceName = getSpaceNameFromRequest(req)
+    if (!spaceName) {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'invalid_space_name' }))
+      return
+    }
+
+    const viewer = readMockAccount(req)
+    const profile = await readJsonFileOr(resolveGalleryProfilePath(spaceName), null)
+    const manifest = await readJsonFileOr(resolveGalleryManifestPath(spaceName), {
+      items: [],
+    })
+    const items = filterVisibleGalleryItems(Array.isArray(manifest?.items) ? manifest.items : [], viewer, profile)
+
+    res.statusCode = 200
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.end(JSON.stringify({
+      space: spaceName,
+      profile,
+      items,
+      viewer: {
+        authenticated: !!viewer,
+        account: viewer,
+        canManage: !!viewer?.id && viewer.id === profile?.ownerAccountId,
+      },
+    }))
   })
 
   middlewares.use('/api/world-config', async (req, res) => {
@@ -273,12 +708,17 @@ export default {
   },
   build: {
     target: 'es2022',
+    modulePreload: false,
     rollupOptions: {
       external: ['/_vercel/insights/script.js'],
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) {
             return undefined
+          }
+
+          if (id.includes('/schematic-renderer/') || id.includes('\\schematic-renderer\\')) {
+            return 'schematic-renderer-vendor'
           }
 
           if (id.includes('/three/') || id.includes('three-custom-shader-material')) {

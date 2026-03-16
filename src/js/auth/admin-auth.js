@@ -3,6 +3,19 @@ const OAUTH_POPUP_TIMEOUT_MS = 120000
 const ADMIN_AUTH_SESSION_TTL_MS = 1000 * 60 * 60 * 24
 const TEMP_ADMIN_PASSWORD = 'admin123'
 const ROOT_OAUTH_ORIGIN = 'https://litemora.art'
+const LOCAL_DEV_ADMIN_SESSION = {
+  account: {
+    id: 'local-dev',
+    provider: 'local-dev',
+    name: 'Local Dev',
+    email: 'local@litemora.dev',
+    avatar: '',
+  },
+  token: 'local-dev-session',
+  expiresAt: 0,
+  updatedAt: 0,
+  localOnly: true,
+}
 
 const PROVIDER_CONFIG = {
   github: {
@@ -11,6 +24,30 @@ const PROVIDER_CONFIG = {
     scope: 'read:user user:email',
     clientIdEnv: 'VITE_OAUTH_GITHUB_CLIENT_ID',
   },
+}
+
+function isLocalDevHost() {
+  const host = String(window.location.hostname || '').toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1'
+}
+
+export function isLocalDevAuthEnabled() {
+  return import.meta.env.DEV && isLocalDevHost()
+}
+
+function buildLocalDevSession() {
+  return {
+    ...LOCAL_DEV_ADMIN_SESSION,
+    account: {
+      ...LOCAL_DEV_ADMIN_SESSION.account,
+    },
+    updatedAt: Date.now(),
+  }
+}
+
+export function isLocalDevAuthSession(session = null) {
+  const account = session?.account || null
+  return account?.provider === 'local-dev' && account?.id === 'local-dev'
 }
 
 function toBase64Url(bytes) {
@@ -167,31 +204,74 @@ async function exchangeCode({ provider, code, codeVerifier, redirectUri }) {
     throw new Error('登录成功但账户信息无效')
   }
 
-  return payload.account
+  return payload
+}
+
+function emitAdminAuthChanged(session = null) {
+  window.dispatchEvent(new CustomEvent('admin-auth-changed', {
+    detail: {
+      session,
+    },
+  }))
+}
+
+function normalizeAccountPayload(account) {
+  return {
+    id: String(account?.id || ''),
+    provider: String(account?.provider || ''),
+    name: account?.name ? String(account.name) : '',
+    email: account?.email ? String(account.email) : '',
+    avatar: account?.avatar ? String(account.avatar) : '',
+  }
+}
+
+function normalizeSessionPayload(input) {
+  const account = input?.account ? input.account : input
+  const session = input?.session || input || null
+
+  return {
+    account: normalizeAccountPayload(account),
+    token: session?.token ? String(session.token) : '',
+    expiresAt: Number(session?.expiresAt || 0),
+    updatedAt: Date.now(),
+    localOnly: !!session?.localOnly,
+  }
 }
 
 export function getAuthProviders() {
+  if (isLocalDevAuthEnabled()) {
+    return [
+      { id: 'local-dev', label: 'Local Dev' },
+    ]
+  }
+
   return [
     { id: 'github', label: PROVIDER_CONFIG.github.label },
   ]
 }
 
 export function loadAdminAuthSession() {
+  const fallbackLocalSession = isLocalDevAuthEnabled() ? buildLocalDevSession() : null
+
   try {
     const raw = localStorage.getItem(ADMIN_AUTH_SESSION_KEY)
     if (!raw) {
-      return null
+      return fallbackLocalSession
     }
     const session = JSON.parse(raw)
     if (!session?.account?.id || !session?.account?.provider) {
-      return null
+      return fallbackLocalSession
     }
 
     const updatedAt = Number(session.updatedAt || 0)
-    const isExpired = !updatedAt || (Date.now() - updatedAt) > ADMIN_AUTH_SESSION_TTL_MS
+    const expiresAt = Number(session.expiresAt || 0)
+    const tokenExpired = expiresAt > 0 && Date.now() > expiresAt
+    const ttlExpired = !updatedAt || (Date.now() - updatedAt) > ADMIN_AUTH_SESSION_TTL_MS
+    const isExpired = tokenExpired || ttlExpired
     if (isExpired) {
       localStorage.removeItem(ADMIN_AUTH_SESSION_KEY)
-      return null
+      emitAdminAuthChanged(null)
+      return fallbackLocalSession
     }
 
     const touchedSession = {
@@ -203,27 +283,20 @@ export function loadAdminAuthSession() {
     return touchedSession
   }
   catch {
-    return null
+    return fallbackLocalSession
   }
 }
 
 export function saveAdminAuthSession(account) {
-  const normalized = {
-    account: {
-      id: String(account.id),
-      provider: String(account.provider),
-      name: account.name ? String(account.name) : '',
-      email: account.email ? String(account.email) : '',
-      avatar: account.avatar ? String(account.avatar) : '',
-    },
-    updatedAt: Date.now(),
-  }
+  const normalized = normalizeSessionPayload(account)
   localStorage.setItem(ADMIN_AUTH_SESSION_KEY, JSON.stringify(normalized))
+  emitAdminAuthChanged(normalized)
   return normalized
 }
 
 export function clearAdminAuthSession() {
   localStorage.removeItem(ADMIN_AUTH_SESSION_KEY)
+  emitAdminAuthChanged(null)
 }
 
 export async function signInWithPassword(password) {
@@ -239,6 +312,10 @@ export async function signInWithPassword(password) {
 }
 
 export async function signInWithProvider(provider) {
+  if (provider === 'local-dev' || isLocalDevAuthEnabled()) {
+    return saveAdminAuthSession(buildLocalDevSession())
+  }
+
   const runtime = getProviderRuntimeConfig(provider)
   const state = randomString(24)
   const codeVerifier = randomString(64)
@@ -263,12 +340,18 @@ export async function signInWithProvider(provider) {
 
   popup.close()
 
-  const account = await exchangeCode({
+  const payload = await exchangeCode({
     provider,
     code,
     codeVerifier,
     redirectUri: runtime.redirectUri,
   })
 
-  return saveAdminAuthSession(account)
+  return saveAdminAuthSession(payload)
+}
+
+export function getAdminAuthToken(session = null) {
+  const resolvedSession = session || loadAdminAuthSession()
+  const token = resolvedSession?.token ? String(resolvedSession.token) : ''
+  return token || ''
 }

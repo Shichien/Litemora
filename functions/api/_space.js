@@ -1,4 +1,5 @@
 const SPACE_REGEX = /^[a-z0-9-]{3,63}$/
+const PROJECTION_REGEX = /^[a-z0-9-]{4,128}$/i
 
 export const DEFAULT_WORLD_CONFIG = {
   player: {
@@ -79,16 +80,31 @@ export function getSpaceName(request) {
   }
 }
 
+export function getProjectionId(request) {
+  try {
+    const url = new URL(request.url)
+    const candidate = String(url.searchParams.get('projection') || '').trim()
+    return PROJECTION_REGEX.test(candidate) ? candidate : ''
+  }
+  catch {
+    return ''
+  }
+}
+
 export function getKv(env) {
   return env?.LITEMORA_SPACE_KV || null
 }
 
-export function getScopedKey(type, spaceName = '') {
+export function getScopedKey(type, spaceName = '', projectionId = '') {
   const scope = spaceName || 'default'
+  const projection = String(projectionId || '').trim()
+  if (projection) {
+    return `space:${scope}:projection:${encodeURIComponent(projection)}:${type}`
+  }
   return `space:${scope}:${type}`
 }
 
-export function normalizeWorldStatePayload(payload, spaceName = '') {
+export function normalizeWorldStatePayload(payload, spaceName = '', projectionId = '') {
   const modifications = payload?.modifications && typeof payload.modifications === 'object'
     ? payload.modifications
     : {}
@@ -109,7 +125,7 @@ export function normalizeWorldStatePayload(payload, spaceName = '') {
       version: Number(payload?.version) || 1,
       chunkWidth: Number.isFinite(compactChunkWidth) ? compactChunkWidth : 64,
       worldState: {
-        schematicOnlyMode: payload?.worldState?.schematicOnlyMode ?? !!spaceName,
+        schematicOnlyMode: payload?.worldState?.schematicOnlyMode ?? !!(spaceName || projectionId),
       },
       ...(dynamicPalette ? { dynamicPalette } : {}),
       chunks: compactChunks,
@@ -118,7 +134,7 @@ export function normalizeWorldStatePayload(payload, spaceName = '') {
 
   return {
     worldState: {
-      schematicOnlyMode: payload?.worldState?.schematicOnlyMode ?? !!spaceName,
+      schematicOnlyMode: payload?.worldState?.schematicOnlyMode ?? !!(spaceName || projectionId),
     },
     modifications,
   }

@@ -1,18 +1,38 @@
 <script setup>
 import Experience from '@three/experience.js'
+import { loadAdminAuthSession } from '@three/auth/admin-auth.js'
+import { navigateToUrl } from '@three/utils/navigation.js'
+import {
+  buildSpaceWorldsUrl,
+  getActiveProjectionId,
+  getActiveSpaceName,
+  isGalleryRoute,
+  isSpaceWorldsRoute,
+  shouldUseRootPortalView,
+} from '@three/utils/space-context.js'
 import AdminConfigPage from '@ui-components/admin/AdminConfigPage.vue'
 import Crosshair from '@ui-components/Crosshair.vue'
 import EventMonitorPanel from '@ui-components/debug/EventMonitorPanel.vue'
 import GameHud from '@ui-components/hud/GameHud.vue'
 import PortalHome from '@ui-components/landing/PortalHome.vue'
 import UiRoot from '@ui-components/menu/UiRoot.vue'
-import { shouldUseRootPortalView } from '@three/utils/space-context.js'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
+import SpaceProjectionAccessPage from '@ui-components/space/SpaceProjectionAccessPage.vue'
+import SpaceWorldsPage from '@ui-components/space/SpaceWorldsPage.vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const threeCanvas = ref(null)
+const authSession = ref(loadAdminAuthSession())
+const routeKind = ref('portal')
+const activeSpaceName = ref('')
+const activeProjectionId = ref('')
 const isAdminMode = ref(window.location.hash === '#admin')
-const isRootPortal = ref(shouldUseRootPortalView())
+const isDebugMode = ref(window.location.hash === '#debug')
+const currentWorldRouteKey = ref('')
 let experience = null
+const handleHashChange = () => { void syncRouteState() }
+const handlePopState = () => { void syncRouteState() }
+const handleAdminAuthChanged = () => { void syncRouteState() }
 
 function hideStaticBootLoadingScreen() {
   const loadingScreen = document.getElementById('loading-screen')
@@ -24,8 +44,14 @@ function hideStaticBootLoadingScreen() {
   loadingScreen.style.display = 'none'
 }
 
+function syncScrollableRouteClass() {
+  const shouldAllowPageScroll = routeKind.value !== 'projection' || !authSession.value
+  document.documentElement.classList.toggle('app-scrollable', shouldAllowPageScroll)
+  document.body.classList.toggle('app-scrollable', shouldAllowPageScroll)
+}
+
 function createExperienceIfNeeded() {
-  if (isRootPortal.value) {
+  if (routeKind.value !== 'projection' || !authSession.value) {
     return
   }
 
@@ -41,38 +67,96 @@ function destroyExperienceIfNeeded() {
   }
 }
 
-function handleHashChange() {
-  const nextAdminMode = window.location.hash === '#admin'
-  if (nextAdminMode === isAdminMode.value) {
+async function syncRouteState() {
+  authSession.value = loadAdminAuthSession()
+
+  const nextSpaceName = getActiveSpaceName()
+  const nextProjectionId = getActiveProjectionId()
+  const nextIsGalleryView = isGalleryRoute()
+  const nextIsWorldsView = isSpaceWorldsRoute()
+  const nextIsRootPortal = !nextIsGalleryView && shouldUseRootPortalView()
+  const shouldRedirectSpaceRoot = !nextIsGalleryView && !!nextSpaceName && !nextIsWorldsView && !nextProjectionId
+
+  if (shouldRedirectSpaceRoot) {
+    navigateToUrl(buildSpaceWorldsUrl(nextSpaceName), { replace: true })
     return
   }
 
-  isAdminMode.value = nextAdminMode
+  activeSpaceName.value = nextSpaceName
+  activeProjectionId.value = nextProjectionId
+
+  if (nextIsRootPortal) {
+    routeKind.value = 'portal'
+  }
+  else if (nextIsGalleryView) {
+    routeKind.value = 'gallery'
+  }
+  else if (nextIsWorldsView) {
+    routeKind.value = 'worlds'
+  }
+  else if (nextProjectionId) {
+    routeKind.value = 'projection'
+  }
+  else {
+    routeKind.value = nextSpaceName ? 'worlds' : 'portal'
+  }
+
+  isAdminMode.value = window.location.hash === '#admin'
+  isDebugMode.value = window.location.hash === '#debug'
+  syncScrollableRouteClass()
+
+  const nextWorldRouteKey = routeKind.value === 'projection' && authSession.value
+    ? `${activeSpaceName.value}:${activeProjectionId.value}`
+    : ''
+
+  if (currentWorldRouteKey.value && currentWorldRouteKey.value !== nextWorldRouteKey) {
+    destroyExperienceIfNeeded()
+  }
+  currentWorldRouteKey.value = nextWorldRouteKey
+
+  if (routeKind.value !== 'projection' || !authSession.value) {
+    destroyExperienceIfNeeded()
+    hideStaticBootLoadingScreen()
+    return
+  }
+
+  await nextTick()
+  createExperienceIfNeeded()
 }
 
 onMounted(() => {
   window.addEventListener('hashchange', handleHashChange)
-  if (isRootPortal.value) {
-    hideStaticBootLoadingScreen()
-  }
-  createExperienceIfNeeded()
+  window.addEventListener('popstate', handlePopState)
+  window.addEventListener('admin-auth-changed', handleAdminAuthChanged)
+  void syncRouteState()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('hashchange', handleHashChange)
+  window.removeEventListener('popstate', handlePopState)
+  window.removeEventListener('admin-auth-changed', handleAdminAuthChanged)
+  document.documentElement.classList.remove('app-scrollable')
+  document.body.classList.remove('app-scrollable')
   destroyExperienceIfNeeded()
 })
-
-// 检查是否为 debug 模式
-const isDebugMode = window.location.hash === '#debug'
 </script>
 
 <template>
   <!-- 主容器：相对定位 -->
-  <PortalHome v-if="isRootPortal" />
+  <PortalHome v-if="routeKind === 'portal'" />
+  <SpaceWorldsPage v-else-if="routeKind === 'worlds'" :space-name="activeSpaceName" />
+  <SpaceProjectionAccessPage
+    v-else-if="routeKind === 'projection' && !authSession"
+    :space-name="activeSpaceName"
+    :projection-id="activeProjectionId"
+  />
   <div v-else class="relative w-screen h-screen overflow-hidden">
     <!-- Three.js Canvas -->
     <canvas ref="threeCanvas" class="three-canvas absolute inset-0 z-0" />
+
+    <div class="world-breadcrumbs">
+      <SpaceBreadcrumbs :space-name="activeSpaceName" :projection-id="activeProjectionId" />
+    </div>
 
     <!-- Overlay System (Loading/Pause/Settings) -->
     <UiRoot />
@@ -92,6 +176,14 @@ const isDebugMode = window.location.hash === '#debug'
 </template>
 
 <style scoped>
+:global(html.app-scrollable),
+:global(body.app-scrollable) {
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .three-canvas {
   width: 100%;
   height: 100%;
@@ -111,5 +203,17 @@ const isDebugMode = window.location.hash === '#debug'
   position: absolute;
   inset: 0;
   z-index: 300;
+}
+
+.world-breadcrumbs {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 120;
+  padding: 0.75rem 1rem;
+  border-radius: 999px;
+  background: rgba(6, 13, 18, 0.58);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 </style>

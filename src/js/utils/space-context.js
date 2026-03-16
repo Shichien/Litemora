@@ -1,5 +1,10 @@
 const ROOT_DOMAIN = 'litemora.art'
 const SPACE_NAME_REGEX = /^[a-z0-9-]{3,63}$/
+const RESERVED_PATH_SEGMENTS = new Set(['gallery', 'api'])
+
+function getPathSegments(pathname = window.location.pathname) {
+  return String(pathname || '/').trim().split('/').filter(Boolean)
+}
 
 function normalizeHost(hostname = window.location.hostname) {
   return String(hostname || '').trim().toLowerCase()
@@ -41,14 +46,68 @@ export function getSpaceNameFromHost(hostname = window.location.hostname) {
 }
 
 export function getSpaceNameFromPathname(pathname = window.location.pathname) {
-  const rawPath = String(pathname || '/').trim()
-  const segments = rawPath.split('/').filter(Boolean)
+  const segments = getPathSegments(pathname)
   if (!segments.length) {
     return ''
   }
 
   const firstSegment = decodeURIComponent(segments[0] || '').toLowerCase()
+  if (RESERVED_PATH_SEGMENTS.has(firstSegment)) {
+    return ''
+  }
   return isValidSpaceName(firstSegment) ? firstSegment : ''
+}
+
+export function isSpaceWorldsRoute(pathname = window.location.pathname) {
+  const spaceName = getSpaceNameFromPathname(pathname)
+  if (!spaceName) {
+    return false
+  }
+
+  const segments = getPathSegments(pathname)
+  if (segments.length !== 2) {
+    return false
+  }
+
+  return decodeURIComponent(segments[1] || '').toLowerCase() === 'worlds'
+}
+
+export function isGalleryRoute(pathname = window.location.pathname) {
+  const segments = getPathSegments(pathname)
+  if (segments.length < 2) {
+    return false
+  }
+
+  const section = decodeURIComponent(segments[0] || '').toLowerCase()
+  const gallerySpaceName = decodeURIComponent(segments[1] || '').toLowerCase()
+  return section === 'gallery' && isValidSpaceName(gallerySpaceName)
+}
+
+export function getSpaceProjectionIdFromPathname(pathname = window.location.pathname) {
+  const spaceName = getSpaceNameFromPathname(pathname)
+  if (!spaceName) {
+    return ''
+  }
+
+  const segments = getPathSegments(pathname)
+  if (segments.length < 3) {
+    return ''
+  }
+
+  const section = decodeURIComponent(segments[1] || '').toLowerCase()
+  if (section !== 'worlds') {
+    return ''
+  }
+
+  return String(decodeURIComponent(segments[2] || '')).trim()
+}
+
+export function isSpaceProjectionRoute(pathname = window.location.pathname) {
+  return !!getSpaceProjectionIdFromPathname(pathname)
+}
+
+export function getActiveProjectionId() {
+  return getSpaceProjectionIdFromPathname()
 }
 
 export function getActiveSpaceName() {
@@ -78,20 +137,67 @@ export function buildSpaceUrl(spaceName) {
   return url.toString()
 }
 
+export function buildSpaceWorldsUrl(spaceName) {
+  const normalized = normalizeSpaceName(spaceName)
+  if (!isValidSpaceName(normalized)) {
+    throw new Error('invalid_space_name')
+  }
+
+  const url = new URL(window.location.origin)
+  url.pathname = `/${normalized}/worlds`
+  url.search = ''
+  return url.toString()
+}
+
+export function buildGalleryUrl(spaceName) {
+  const normalized = normalizeSpaceName(spaceName)
+  if (!isValidSpaceName(normalized)) {
+    throw new Error('invalid_space_name')
+  }
+
+  const url = new URL(window.location.origin)
+  url.pathname = `/gallery/${normalized}`
+  url.search = ''
+  return url.toString()
+}
+
+export function buildSpaceProjectionUrl(spaceName, projectionId) {
+  const normalized = normalizeSpaceName(spaceName)
+  const normalizedProjectionId = String(projectionId || '').trim()
+  if (!isValidSpaceName(normalized)) {
+    throw new Error('invalid_space_name')
+  }
+  if (!normalizedProjectionId) {
+    throw new Error('invalid_projection_id')
+  }
+
+  const url = new URL(window.location.origin)
+  url.pathname = `/${normalized}/worlds/${encodeURIComponent(normalizedProjectionId)}`
+  url.search = ''
+  return url.toString()
+}
+
 export function shouldUseRootPortalView() {
   return !getActiveSpaceName()
 }
 
-export function buildSpaceScopedKey(baseKey, scope = '') {
+export function buildSpaceScopedKey(baseKey, scope = '', projectionId = '') {
   const key = String(baseKey || '').trim()
   if (!key) {
     return ''
   }
 
   const activeScope = normalizeSpaceName(scope || getActiveSpaceName())
-  if (!activeScope) {
-    return key
+  const activeProjectionId = String(projectionId || getActiveProjectionId() || '').trim()
+
+  let scopedKey = key
+  if (activeScope) {
+    scopedKey = `${scopedKey}:space:${encodeURIComponent(activeScope)}`
   }
 
-  return `${key}:space:${encodeURIComponent(activeScope)}`
+  if (activeProjectionId) {
+    scopedKey = `${scopedKey}:projection:${encodeURIComponent(activeProjectionId)}`
+  }
+
+  return scopedKey
 }
