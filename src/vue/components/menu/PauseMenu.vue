@@ -2,13 +2,28 @@
 /**
  * PauseMenu - ESC menu when game is paused
  */
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useUiStore } from '@pinia/uiStore.js'
 
 const ui = useUiStore()
+const canManageProjection = ref(false)
 
 function enterAdmin() {
   window.location.hash = '#admin'
 }
+
+function handleSpaceAccessChanged(event) {
+  canManageProjection.value = !!event?.detail?.canManage
+}
+
+onMounted(() => {
+  canManageProjection.value = !!window.__LITEMORA_SPACE_ACCESS__?.canManage
+  window.addEventListener('space-access-changed', handleSpaceAccessChanged)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('space-access-changed', handleSpaceAccessChanged)
+})
 </script>
 
 <template>
@@ -27,7 +42,7 @@ function enterAdmin() {
       <button v-if="ui.pauseMenuConfig.showSkins" class="mc-button" @click="ui.toSkinSelector()">
         <span class="title">{{ $t('menu.skins') }}</span>
       </button>
-      <button class="mc-button" @click="enterAdmin">
+      <button v-if="canManageProjection" class="mc-button" @click="enterAdmin">
         <span class="title">Admin Console</span>
       </button>
     </div>

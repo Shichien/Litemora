@@ -24,8 +24,12 @@
         errorDescription,
       }
 
+      try {
+        window.localStorage.setItem('mc-admin-oauth-result', JSON.stringify(payload))
+      } catch (_) {}
+
       if (window.opener && typeof window.opener.postMessage === 'function') {
-        window.opener.postMessage(payload, window.location.origin)
+        window.opener.postMessage(payload, '*')
       }
 
       window.close()

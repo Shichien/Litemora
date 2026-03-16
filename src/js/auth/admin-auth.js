@@ -1,8 +1,12 @@
 const ADMIN_AUTH_SESSION_KEY = 'mc-admin-auth-session'
+const ADMIN_AUTH_OAUTH_RESULT_KEY = 'mc-admin-oauth-result'
 const OAUTH_POPUP_TIMEOUT_MS = 120000
 const ADMIN_AUTH_SESSION_TTL_MS = 1000 * 60 * 60 * 24
 const TEMP_ADMIN_PASSWORD = 'admin123'
-const ROOT_OAUTH_ORIGIN = 'https://litemora.art'
+const OAUTH_POPUP_CLOSE_GRACE_MS = 1500
+const CONFIGURED_OAUTH_CALLBACK_ORIGIN = typeof import.meta !== 'undefined'
+  ? String(import.meta.env.VITE_OAUTH_CALLBACK_ORIGIN || '').trim()
+  : ''
 const LOCAL_DEV_ADMIN_SESSION = {
   account: {
     id: 'local-dev',
@@ -79,7 +83,9 @@ async function sha256Base64Url(input) {
 function getRedirectUri(provider) {
   const host = String(window.location.hostname || '').toLowerCase()
   const isLocal = host === 'localhost' || host === '127.0.0.1'
-  const callbackOrigin = isLocal ? window.location.origin : ROOT_OAUTH_ORIGIN
+  const callbackOrigin = isLocal
+    ? window.location.origin
+    : (CONFIGURED_OAUTH_CALLBACK_ORIGIN || window.location.origin)
   const url = new URL('/auth-callback.html', callbackOrigin)
   url.searchParams.set('provider', provider)
   return url.toString()
@@ -125,13 +131,13 @@ function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
   return new Promise((resolve, reject) => {
     let timeoutId = null
     let closedCheckId = null
+    let closedAt = 0
 
-    const onMessage = (event) => {
-      if (event.origin !== expectedOrigin) {
-        return
-      }
+    const acceptedOrigins = new Set(
+      [expectedOrigin, window.location.origin].filter(Boolean),
+    )
 
-      const payload = event.data
+    const finalizePayload = (payload) => {
       if (!payload || payload.type !== 'mc-admin-oauth-code') {
         return
       }
@@ -154,8 +160,32 @@ function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
       resolve({ code: payload.code })
     }
 
+    const onMessage = (event) => {
+      if (!acceptedOrigins.has(event.origin)) {
+        return
+      }
+
+      finalizePayload(event.data)
+    }
+
+    const onStorage = (event) => {
+      if (event.key !== ADMIN_AUTH_OAUTH_RESULT_KEY || !event.newValue) {
+        return
+      }
+
+      try {
+        const payload = JSON.parse(event.newValue)
+        localStorage.removeItem(ADMIN_AUTH_OAUTH_RESULT_KEY)
+        finalizePayload(payload)
+      }
+      catch {
+        // ignore malformed payloads
+      }
+    }
+
     function cleanup() {
       window.removeEventListener('message', onMessage)
+      window.removeEventListener('storage', onStorage)
       if (timeoutId) {
         clearTimeout(timeoutId)
       }
@@ -175,11 +205,22 @@ function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
 
     closedCheckId = setInterval(() => {
       if (popup.closed) {
-        fail(new Error('登录窗口已关闭'))
+        if (!closedAt) {
+          closedAt = Date.now()
+          return
+        }
+
+        if ((Date.now() - closedAt) >= OAUTH_POPUP_CLOSE_GRACE_MS) {
+          fail(new Error('登录窗口已关闭'))
+        }
+      }
+      else {
+        closedAt = 0
       }
     }, 500)
 
     window.addEventListener('message', onMessage)
+    window.addEventListener('storage', onStorage)
   })
 }
 

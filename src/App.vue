@@ -1,6 +1,7 @@
 <script setup>
 import Experience from '@three/experience.js'
 import { loadAdminAuthSession } from '@three/auth/admin-auth.js'
+import { fetchGallery } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
 import {
   buildSpaceWorldsUrl,
@@ -17,7 +18,6 @@ import GameHud from '@ui-components/hud/GameHud.vue'
 import PortalHome from '@ui-components/landing/PortalHome.vue'
 import UiRoot from '@ui-components/menu/UiRoot.vue'
 import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
-import SpaceProjectionAccessPage from '@ui-components/space/SpaceProjectionAccessPage.vue'
 import SpaceWorldsPage from '@ui-components/space/SpaceWorldsPage.vue'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -28,6 +28,7 @@ const activeSpaceName = ref('')
 const activeProjectionId = ref('')
 const isAdminMode = ref(window.location.hash === '#admin')
 const isDebugMode = ref(window.location.hash === '#debug')
+const canManageActiveSpace = ref(false)
 const currentWorldRouteKey = ref('')
 let experience = null
 const handleHashChange = () => { void syncRouteState() }
@@ -45,13 +46,13 @@ function hideStaticBootLoadingScreen() {
 }
 
 function syncScrollableRouteClass() {
-  const shouldAllowPageScroll = routeKind.value !== 'projection' || !authSession.value
+  const shouldAllowPageScroll = routeKind.value !== 'projection'
   document.documentElement.classList.toggle('app-scrollable', shouldAllowPageScroll)
   document.body.classList.toggle('app-scrollable', shouldAllowPageScroll)
 }
 
 function createExperienceIfNeeded() {
-  if (routeKind.value !== 'projection' || !authSession.value) {
+  if (routeKind.value !== 'projection') {
     return
   }
 
@@ -65,6 +66,36 @@ function destroyExperienceIfNeeded() {
     experience.destroy()
     experience = null
   }
+}
+
+function syncManageAccessBroadcast() {
+  window.__LITEMORA_SPACE_ACCESS__ = {
+    canManage: canManageActiveSpace.value,
+    spaceName: activeSpaceName.value,
+    projectionId: activeProjectionId.value,
+  }
+
+  window.dispatchEvent(new CustomEvent('space-access-changed', {
+    detail: window.__LITEMORA_SPACE_ACCESS__,
+  }))
+}
+
+async function resolveActiveSpaceManageAccess(spaceName) {
+  if (!spaceName) {
+    canManageActiveSpace.value = false
+    syncManageAccessBroadcast()
+    return
+  }
+
+  try {
+    const payload = await fetchGallery(spaceName, authSession.value)
+    canManageActiveSpace.value = !!payload?.viewer?.canManage
+  }
+  catch {
+    canManageActiveSpace.value = false
+  }
+
+  syncManageAccessBroadcast()
 }
 
 async function syncRouteState() {
@@ -84,6 +115,7 @@ async function syncRouteState() {
 
   activeSpaceName.value = nextSpaceName
   activeProjectionId.value = nextProjectionId
+  await resolveActiveSpaceManageAccess(nextSpaceName)
 
   if (nextIsRootPortal) {
     routeKind.value = 'portal'
@@ -105,7 +137,7 @@ async function syncRouteState() {
   isDebugMode.value = window.location.hash === '#debug'
   syncScrollableRouteClass()
 
-  const nextWorldRouteKey = routeKind.value === 'projection' && authSession.value
+  const nextWorldRouteKey = routeKind.value === 'projection'
     ? `${activeSpaceName.value}:${activeProjectionId.value}`
     : ''
 
@@ -114,7 +146,7 @@ async function syncRouteState() {
   }
   currentWorldRouteKey.value = nextWorldRouteKey
 
-  if (routeKind.value !== 'projection' || !authSession.value) {
+  if (routeKind.value !== 'projection') {
     destroyExperienceIfNeeded()
     hideStaticBootLoadingScreen()
     return
@@ -145,11 +177,6 @@ onBeforeUnmount(() => {
   <!-- 主容器：相对定位 -->
   <PortalHome v-if="routeKind === 'portal'" />
   <SpaceWorldsPage v-else-if="routeKind === 'worlds'" :space-name="activeSpaceName" />
-  <SpaceProjectionAccessPage
-    v-else-if="routeKind === 'projection' && !authSession"
-    :space-name="activeSpaceName"
-    :projection-id="activeProjectionId"
-  />
   <div v-else class="relative w-screen h-screen overflow-hidden">
     <!-- Three.js Canvas -->
     <canvas ref="threeCanvas" class="three-canvas absolute inset-0 z-0" />
@@ -171,7 +198,7 @@ onBeforeUnmount(() => {
     <EventMonitorPanel v-if="isDebugMode" class="event-monitor-overlay overflow-visible" />
 
     <!-- Admin 覆盖层：不销毁游戏实例，确保进度保留 -->
-    <AdminConfigPage v-if="isAdminMode" class="admin-overlay" />
+    <AdminConfigPage v-if="isAdminMode && canManageActiveSpace" class="admin-overlay" />
   </div>
 </template>
 
