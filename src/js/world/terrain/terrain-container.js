@@ -3,9 +3,7 @@
  * 以三维矩阵存储方块信息：data[x][y][z] = { id, instanceId }
  * 提供查询/写入/遍历/遮挡判断等工具方法
  */
-
-const EMPTY_BLOCK_ID = 0
-const DIRT_BLOCK_ID = 2
+import { blocks } from './blocks-config.js'
 
 let instance = null
 
@@ -50,7 +48,7 @@ export default class TerrainContainer {
         const row = []
         for (let z = 0; z < this.size.width; z++) {
           row.push({
-            id: EMPTY_BLOCK_ID,
+            id: blocks.empty.id,
             instanceId: null,
             ao: null, // Uint8Array(6) for visible blocks, null otherwise
           })
@@ -76,7 +74,7 @@ export default class TerrainContainer {
   getBlock(x, y, z) {
     if (!this._inBounds(x, y, z)) {
       return {
-        id: EMPTY_BLOCK_ID,
+        id: blocks.empty.id,
         instanceId: null,
       }
     }
@@ -109,7 +107,7 @@ export default class TerrainContainer {
     if (clampedHeight < 0)
       return
 
-    const bodyId = opts.bodyId ?? DIRT_BLOCK_ID
+    const bodyId = opts.bodyId ?? blocks.dirt.id
     const topId = opts.topId ?? bodyId
 
     for (let y = 0; y <= clampedHeight; y++) {
@@ -149,20 +147,20 @@ export default class TerrainContainer {
    * 遮挡判定：六个方向都非空气则视为被遮挡
    */
   isBlockObscured(x, y, z) {
-    const up = this.getBlock(x, y + 1, z)?.id ?? EMPTY_BLOCK_ID
-    const down = this.getBlock(x, y - 1, z)?.id ?? EMPTY_BLOCK_ID
-    const left = this.getBlock(x + 1, y, z)?.id ?? EMPTY_BLOCK_ID
-    const right = this.getBlock(x - 1, y, z)?.id ?? EMPTY_BLOCK_ID
-    const forward = this.getBlock(x, y, z + 1)?.id ?? EMPTY_BLOCK_ID
-    const back = this.getBlock(x, y, z - 1)?.id ?? EMPTY_BLOCK_ID
+    const up = this.getBlock(x, y + 1, z)?.id ?? blocks.empty.id
+    const down = this.getBlock(x, y - 1, z)?.id ?? blocks.empty.id
+    const left = this.getBlock(x + 1, y, z)?.id ?? blocks.empty.id
+    const right = this.getBlock(x - 1, y, z)?.id ?? blocks.empty.id
+    const forward = this.getBlock(x, y, z + 1)?.id ?? blocks.empty.id
+    const back = this.getBlock(x, y, z - 1)?.id ?? blocks.empty.id
 
     if (
-      up === EMPTY_BLOCK_ID
-      || down === EMPTY_BLOCK_ID
-      || left === EMPTY_BLOCK_ID
-      || right === EMPTY_BLOCK_ID
-      || forward === EMPTY_BLOCK_ID
-      || back === EMPTY_BLOCK_ID
+      up === blocks.empty.id
+      || down === blocks.empty.id
+      || left === blocks.empty.id
+      || right === blocks.empty.id
+      || forward === blocks.empty.id
+      || back === blocks.empty.id
     ) {
       return false
     }
@@ -178,7 +176,7 @@ export default class TerrainContainer {
       for (let y = 0; y < this.size.height; y++) {
         for (let z = 0; z < this.size.width; z++) {
           const block = this.data[x][y][z]
-          if (block.id !== EMPTY_BLOCK_ID) {
+          if (block.id !== blocks.empty.id) {
             fn(block, x, y, z)
           }
         }
@@ -197,7 +195,7 @@ export default class TerrainContainer {
       for (let x = 0; x < this.size.width; x++) {
         let top = -1
         for (let y = this.size.height - 1; y >= 0; y--) {
-          if (this.getBlock(x, y, z).id !== EMPTY_BLOCK_ID) {
+          if (this.getBlock(x, y, z).id !== blocks.empty.id) {
             top = y
             break
           }

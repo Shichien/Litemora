@@ -2,7 +2,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
-import { getOverlayGeometryForTarget } from '../world/terrain/block-overlay-geometry.js'
+import { getBlockTypeById, getGeometryForBlockType } from '../world/terrain/blocks-config.js'
 
 /**
  * BlockSelectionHelper
@@ -97,8 +97,9 @@ export default class BlockSelectionHelper {
       return
     }
 
-    const targetScale = this._applyGeometryForTarget(info)
-    const s = targetScale ?? info.renderScale ?? 1
+    this._applyGeometryForTarget(info)
+
+    const s = info.renderScale ?? 1
     this.object.scale.set(s, s, s)
 
     // add 模式：基于 face.normal 预览相邻格子
@@ -127,17 +128,29 @@ export default class BlockSelectionHelper {
       if (this.object.geometry !== this.geometry) {
         this.object.geometry = this.geometry
       }
-      return info?.renderScale ?? 1
+      return
     }
 
-    const geometry = getOverlayGeometryForTarget(info, this._geometryCache, {
-      scale: 1.01,
-      world: this.experience.world,
-    }) || this.geometry
+    const blockType = getBlockTypeById(info?.blockId)
+    if (!blockType) {
+      if (this.object.geometry !== this.geometry) {
+        this.object.geometry = this.geometry
+      }
+      return
+    }
+
+    const cacheKey = `${blockType.id}:${blockType.geometryType || 'cube'}`
+    if (!this._geometryCache.has(cacheKey)) {
+      const baseGeometry = getGeometryForBlockType(blockType)
+      const highlightGeometry = baseGeometry.clone()
+      highlightGeometry.scale(1.01, 1.01, 1.01)
+      this._geometryCache.set(cacheKey, highlightGeometry)
+    }
+
+    const geometry = this._geometryCache.get(cacheKey) || this.geometry
     if (this.object.geometry !== geometry) {
       this.object.geometry = geometry
     }
-    return 1
   }
 
   /**

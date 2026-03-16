@@ -3,8 +3,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
-import { buildInventoryItemDescriptor } from '../world/terrain/minecraft-item-catalog.js'
-import { getMinecraftItemVisualDescriptor } from '../world/terrain/minecraft-item-visuals.js'
+import { blocks as blocksConfig } from '../world/terrain/blocks-config.js'
 
 /**
  * ItemPickupAnimator
@@ -43,35 +42,31 @@ export default class ItemPickupAnimator {
 
   /**
    * Handle block break complete event
-   * @param {{ blockId?: number, minecraftBlock?: { name?: string }, worldPos: { x, y, z } }} data
+   * @param {{ blockId: number, worldPos: { x, y, z } }} data
    */
-  _onBlockBreakComplete({ blockId, minecraftBlock, worldPos }) {
-    const itemDescriptor = buildInventoryItemDescriptor({
-      blockId,
-      itemKey: minecraftBlock?.name,
-    })
-    if (!itemDescriptor) {
+  _onBlockBreakComplete({ blockId, worldPos }) {
+    // Get block config
+    const blockConfig = this._getBlockConfigById(blockId)
+    if (!blockConfig) {
+      // Still add item even if we can't show animation
+      emitter.emit('hud:add-item', { blockId, amount: 1 })
       return
     }
 
     // Create temporary mini-block
-    const mesh = this._createMiniBlock(itemDescriptor, worldPos)
+    const mesh = this._createMiniBlock(blockConfig, worldPos)
     if (!mesh) {
-      emitter.emit('hud:add-item', {
-        blockId: itemDescriptor.blockId,
-        itemKey: itemDescriptor.itemKey,
-        amount: 1,
-      })
+      emitter.emit('hud:add-item', { blockId, amount: 1 })
       return
     }
 
     this.scene.add(mesh)
-    this.activeItems.push({ mesh, itemDescriptor })
+    this.activeItems.push({ mesh, blockId })
 
     // Get player position for target
     const player = this.experience.world?.player
     if (!player) {
-      this._cleanupItem(mesh, itemDescriptor)
+      this._cleanupItem(mesh, blockId)
       return
     }
 
@@ -98,18 +93,35 @@ export default class ItemPickupAnimator {
       duration: this.params.duration,
       ease: this.params.ease,
       onComplete: () => {
-        this._cleanupItem(mesh, itemDescriptor)
+        this._cleanupItem(mesh, blockId)
       },
     })
   }
 
   /**
-   * Create a temporary mini BoxGeometry mesh with block texture
+   * Get block config by ID
    */
-  _createMiniBlock(itemDescriptor, worldPos) {
+  _getBlockConfigById(blockId) {
+    for (const key of Object.keys(blocksConfig)) {
+      if (blocksConfig[key].id === blockId) {
+        return blocksConfig[key]
+      }
+    }
+    return null
+  }
+
+  /**
+   * Create a temporary mini BoxGeometry mesh with block texture
+   * Following blocks-config.js material creation pattern
+   */
+  _createMiniBlock(blockConfig, worldPos) {
     const geometry = new THREE.BoxGeometry(1, 1, 1)
-    const visual = getMinecraftItemVisualDescriptor(itemDescriptor)
-    const textureKeys = visual.textureKeys
+    const textureKeys = blockConfig.textureKeys
+
+    if (!textureKeys) {
+      geometry.dispose()
+      return null
+    }
 
     // Helper to get texture with pixelated filtering
     const getTexture = (key) => {
@@ -131,10 +143,10 @@ export default class ItemPickupAnimator {
       })
     }
 
-    let materials = null
+    let materials
 
     // Six-face texture block (has side, top, bottom)
-    if (textureKeys?.side && textureKeys?.top && textureKeys?.bottom) {
+    if (textureKeys.side && textureKeys.top && textureKeys.bottom) {
       const sideTex = getTexture(textureKeys.side)
       const topTex = getTexture(textureKeys.top)
       const bottomTex = getTexture(textureKeys.bottom)
@@ -154,7 +166,7 @@ export default class ItemPickupAnimator {
         makeMaterial(sideTex), // back
       ]
     }
-    else if (textureKeys?.all) {
+    else {
       // Single texture for all faces
       const allTex = getTexture(textureKeys.all)
       if (!allTex) {
@@ -162,12 +174,6 @@ export default class ItemPickupAnimator {
         return null
       }
       materials = makeMaterial(allTex)
-    }
-    else {
-      materials = new THREE.MeshBasicMaterial({
-        color: visual.color,
-        transparent: false,
-      })
     }
 
     const mesh = new THREE.Mesh(geometry, materials)
@@ -188,7 +194,7 @@ export default class ItemPickupAnimator {
   /**
    * Cleanup animated item and emit add event
    */
-  _cleanupItem(mesh, itemDescriptor) {
+  _cleanupItem(mesh, blockId) {
     // Remove from scene
     this.scene.remove(mesh)
 
@@ -210,11 +216,7 @@ export default class ItemPickupAnimator {
     }
 
     // Emit add item event
-    emitter.emit('hud:add-item', {
-      blockId: itemDescriptor?.blockId ?? null,
-      itemKey: itemDescriptor?.itemKey || '',
-      amount: 1,
-    })
+    emitter.emit('hud:add-item', { blockId, amount: 1 })
   }
 
   /**

@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
-import { getOverlayGeometryForTarget } from '../world/terrain/block-overlay-geometry.js'
+import { getBlockTypeById, getGeometryForBlockType } from '../world/terrain/blocks-config.js'
 
 /**
  * BlockMiningOverlay
@@ -87,10 +87,30 @@ export default class BlockMiningOverlay {
   }
 
   _applyOverlayGeometry(target) {
-    const geometry = getOverlayGeometryForTarget(target, this._geometryCache, {
-      scale: 1.002,
-      world: this.experience.world,
-    }) || this._defaultGeometry
+    const blockId = Number(target?.blockId)
+    if (!Number.isFinite(blockId)) {
+      if (this._mesh.geometry !== this._defaultGeometry) {
+        this._mesh.geometry = this._defaultGeometry
+      }
+      return
+    }
+
+    const blockType = getBlockTypeById(blockId)
+    if (!blockType) {
+      if (this._mesh.geometry !== this._defaultGeometry) {
+        this._mesh.geometry = this._defaultGeometry
+      }
+      return
+    }
+
+    const cacheKey = `${blockType.id}:${blockType.geometryType || 'cube'}`
+    if (!this._geometryCache.has(cacheKey)) {
+      const geometry = getGeometryForBlockType(blockType).clone()
+      geometry.scale(1.002, 1.002, 1.002)
+      this._geometryCache.set(cacheKey, geometry)
+    }
+
+    const geometry = this._geometryCache.get(cacheKey) || this._defaultGeometry
     if (this._mesh.geometry !== geometry) {
       this._mesh.geometry = geometry
     }

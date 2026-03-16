@@ -2,8 +2,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
-
-const EMPTY_BLOCK_ID = 0
+import { blocks } from '../world/terrain/blocks-config.js'
 
 // 默认使用屏幕中心作为射线发射点（适配 PointerLock/FPS 交互）
 const CENTER_SCREEN = new THREE.Vector2(0, 0)
@@ -44,11 +43,6 @@ export default class BlockRaycaster {
 
     this._currentKey = null
     this.current = null
-    this.metrics = {
-      lastTargetCount: 0,
-      lastHitCount: 0,
-      lastRaycastMs: 0,
-    }
 
     // 用于调试面板监控
     this.debugInfo = {
@@ -104,22 +98,16 @@ export default class BlockRaycaster {
     }
 
     const ndc = this.params.useMouse ? this.iMouse.normalizedMouse : CENTER_SCREEN
-    const raycastStart = performance.now()
     this.raycaster.far = this.params.maxDistance
     this.raycaster.setFromCamera(ndc, this.camera)
 
     const targets = this._collectTargets()
-    this.metrics.lastTargetCount = targets.length
     if (targets.length === 0) {
-      this.metrics.lastHitCount = 0
-      this.metrics.lastRaycastMs = Number((performance.now() - raycastStart).toFixed(2))
       this._clear()
       return
     }
 
     const hits = this.raycaster.intersectObjects(targets, true)
-    this.metrics.lastHitCount = hits.length
-    this.metrics.lastRaycastMs = Number((performance.now() - raycastStart).toFixed(2))
     const first = hits.find(hit =>
       hit?.object?.isInstancedMesh
       && hit.instanceId !== undefined
@@ -164,72 +152,12 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
    */
   _collectTargets() {
     const groups = []
-    const rayOrigin = this.raycaster.ray.origin
-    const maxDistance = this.params.maxDistance + 2
-    const chunkWidth = this.chunkManager?.chunkWidth ?? 64
-    const chunkHeight = this.chunkManager?.chunkHeight ?? 256
-
     for (const chunk of this.chunkManager.chunks.values()) {
       const g = chunk?.renderer?.group
-      if (!g) {
-        continue
-      }
-
-      const originX = g.userData?.originX ?? ((g.userData?.chunkX ?? 0) * chunkWidth)
-      const originZ = g.userData?.originZ ?? ((g.userData?.chunkZ ?? 0) * chunkWidth)
-      const bounds = {
-        minX: originX - 0.5,
-        minY: -0.5,
-        minZ: originZ - 0.5,
-        maxX: originX + chunkWidth - 0.5,
-        maxY: chunkHeight - 0.5,
-        maxZ: originZ + chunkWidth - 0.5,
-      }
-
-      if (!this._isBoundsWithinDistance(bounds, rayOrigin, maxDistance)) {
-        continue
-      }
-
-      groups.push(g)
+      if (g)
+        groups.push(g)
     }
-    const minecraftSchematicTargets = this.experience.world?.minecraftSchematicRenderLayer?.getRaycastTargets?.(
-      rayOrigin,
-      maxDistance,
-    ) || []
-    groups.push(...minecraftSchematicTargets)
     return groups
-  }
-
-  _isBoundsWithinDistance(bounds, origin, maxDistance) {
-    if (!bounds || !origin || !Number.isFinite(maxDistance)) {
-      return true
-    }
-
-    const maxDistanceSq = maxDistance * maxDistance
-    const dx = origin.x < bounds.minX
-      ? bounds.minX - origin.x
-      : origin.x > bounds.maxX
-        ? origin.x - bounds.maxX
-        : 0
-    const dy = origin.y < bounds.minY
-      ? bounds.minY - origin.y
-      : origin.y > bounds.maxY
-        ? origin.y - bounds.maxY
-        : 0
-    const dz = origin.z < bounds.minZ
-      ? bounds.minZ - origin.z
-      : origin.z > bounds.maxZ
-        ? origin.z - bounds.maxZ
-        : 0
-
-    return ((dx * dx) + (dy * dy) + (dz * dz)) <= maxDistanceSq
-  }
-
-  getStats() {
-    return {
-      ...this.metrics,
-      hasCurrent: !!this.current,
-    }
   }
 
   /**
@@ -244,10 +172,6 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     const instanceId = hit.instanceId
     if (instanceId === undefined || instanceId === null)
       return null
-
-    if (mesh.userData?.minecraftSchematicLayer) {
-      return this._buildMinecraftSchematicHitInfo(hit, mesh, instanceId)
-    }
 
     // chunk 信息：由 TerrainChunk 写入 group.userData
     const group = mesh.parent
@@ -281,12 +205,10 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
 
     // 4) 方块数据：优先用容器查询（避免 mesh.userData 在未来变化时失真）
     const block = this.chunkManager.getBlockWorld(worldBlockX, worldBlockY, worldBlockZ)
-    const blockId = block?.id ?? mesh.userData?.blockId ?? EMPTY_BLOCK_ID
-    const blockName = block?.minecraftBlock?.name || mesh.userData?.blockName
-    const collisionBoxes = this.chunkManager.getCollisionBoxesWorld(worldBlockX, worldBlockY, worldBlockZ)
+    const blockId = block?.id ?? mesh.userData?.blockId ?? blocks.empty.id
+    const blockName = mesh.userData?.blockName
 
     return {
-      source: 'legacy',
       // chunk 信息
       chunkX,
       chunkZ,
@@ -296,10 +218,6 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       instanceId,
       blockId,
       blockName,
-      blockString: mesh.userData?.blockString || null,
-      minecraftBlock: block?.minecraftBlock || null,
-      stateId: block?.stateId ?? null,
-      collisionBoxes,
 
       // 坐标信息
       local: { x: localX, y: worldBlockY, z: localZ },
@@ -311,77 +229,6 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       heightScale,
 
       // 命中点（可能不是方块中心，但对“放置/破坏朝向”有用）
-      point: hit.point?.clone?.() ?? null,
-      face: hit.face ?? null,
-      distance: hit.distance ?? null,
-    }
-  }
-
-  _buildMinecraftSchematicHitInfo(hit, mesh, instanceId) {
-    const storage = mesh.userData?.instanceToWorldBlock
-    let worldBlock = null
-
-    if (storage instanceof Int32Array) {
-      const offset = instanceId * 3
-      if (offset + 2 >= storage.length) {
-        return null
-      }
-
-      worldBlock = {
-        x: storage[offset],
-        y: storage[offset + 1],
-        z: storage[offset + 2],
-      }
-    }
-    else if (Array.isArray(storage)) {
-      const entry = storage[instanceId]
-      if (!entry) {
-        return null
-      }
-
-      worldBlock = {
-        x: entry.x,
-        y: entry.y,
-        z: entry.z,
-      }
-    }
-
-    if (!worldBlock) {
-      return null
-    }
-
-    const chunkWidth = this.chunkManager?.chunkWidth ?? 64
-    const chunkX = Math.floor(worldBlock.x / chunkWidth)
-    const chunkZ = Math.floor(worldBlock.z / chunkWidth)
-    const localX = Math.floor(worldBlock.x - chunkX * chunkWidth)
-    const localZ = Math.floor(worldBlock.z - chunkZ * chunkWidth)
-    const localY = Math.floor(worldBlock.y)
-
-    const block = this.chunkManager.getBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
-    const blockId = block?.id ?? EMPTY_BLOCK_ID
-    const blockName = block?.minecraftBlock?.name || mesh.userData?.blockName
-    const collisionBoxes = this.chunkManager.getCollisionBoxesWorld(worldBlock.x, worldBlock.y, worldBlock.z)
-
-    return {
-      source: 'minecraft-schematic',
-      chunkX,
-      chunkZ,
-      origin: {
-        x: chunkX * chunkWidth,
-        z: chunkZ * chunkWidth,
-      },
-      instanceId,
-      blockId,
-      blockName,
-      blockString: mesh.userData?.blockString || null,
-      minecraftBlock: block?.minecraftBlock || null,
-      stateId: block?.stateId ?? null,
-      collisionBoxes,
-      local: { x: localX, y: localY, z: localZ },
-      worldBlock: { x: worldBlock.x, y: worldBlock.y, z: worldBlock.z },
-      worldPosition: new THREE.Vector3(worldBlock.x, worldBlock.y, worldBlock.z),
-      renderScale: 1,
-      heightScale: 1,
       point: hit.point?.clone?.() ?? null,
       face: hit.face ?? null,
       distance: hit.distance ?? null,

@@ -37,9 +37,6 @@ export default class TerrainRenderer {
     this._debugEnabled = options.debugEnabled ?? false
     this._debugTitle = options.debugTitle || `地形渲染器 ${options.chunkName || ''}`.trim()
     this._listenDataReady = options.listenDataReady ?? true
-    this._visibilityFilter = typeof options.visibilityFilter === 'function'
-      ? options.visibilityFilter
-      : null
 
     this.group = new THREE.Group()
     if (options.chunkName) {
@@ -210,10 +207,6 @@ export default class TerrainRenderer {
 
     // 收集可见方块的位置
     this.container.forEachFilled((block, x, y, z) => {
-      if (this._visibilityFilter && !this._visibilityFilter(x, y, z)) {
-        return
-      }
-
       if (this.container.isBlockObscured(x, y, z))
         return
 
@@ -305,10 +298,6 @@ export default class TerrainRenderer {
     this._applyShadowSettings()
 
     this._updateStatsPanel()
-  }
-
-  setVisibilityFilter(filter = null) {
-    this._visibilityFilter = typeof filter === 'function' ? filter : null
   }
 
   _getMissingTextureNames(blockType) {
