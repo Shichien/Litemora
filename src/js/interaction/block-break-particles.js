@@ -7,41 +7,8 @@
 import * as THREE from 'three'
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
-import { BLOCK_IDS } from '../world/terrain/blocks-config.js'
-
-// 方块 ID -> 粒子颜色映射（简化方案）
-const BLOCK_COLORS = {
-  [BLOCK_IDS.GRASS]: 0x341C0E,
-  [BLOCK_IDS.DIRT]: 0x8B5A2B,
-  [BLOCK_IDS.STONE]: 0x7F7F7F,
-  [BLOCK_IDS.COAL_ORE]: 0x2A2A2A,
-  [BLOCK_IDS.IRON_ORE]: 0xD4A574,
-  [BLOCK_IDS.TREE_TRUNK]: 0x6B4423,
-  [BLOCK_IDS.TREE_LEAVES]: 0x228B22,
-  [BLOCK_IDS.SAND]: 0xC2B280,
-  [BLOCK_IDS.BIRCH_TRUNK]: 0xE8E4D9,
-  [BLOCK_IDS.BIRCH_LEAVES]: 0x5D8A3E,
-  [BLOCK_IDS.CHERRY_TRUNK]: 0x8B4513,
-  [BLOCK_IDS.CHERRY_LEAVES]: 0xFFB6C1,
-  [BLOCK_IDS.CACTUS]: 0x2E8B57,
-  [BLOCK_IDS.TERRACOTTA]: 0xD2691E,
-  [BLOCK_IDS.RED_SAND]: 0xCD853F,
-  [BLOCK_IDS.ICE]: 0xADD8E6,
-  [BLOCK_IDS.PACKED_ICE]: 0x87CEEB,
-  [BLOCK_IDS.SNOW]: 0xFFFAFA,
-  [BLOCK_IDS.GRAVEL]: 0x808080,
-  [BLOCK_IDS.DIORITE]: 0xD8D8D8,
-  [BLOCK_IDS.POLISHED_DIORITE]: 0xECECEC,
-  [BLOCK_IDS.ANDESITE]: 0x8F8F94,
-  [BLOCK_IDS.POLISHED_ANDESITE]: 0xA3A3A8,
-  [BLOCK_IDS.POLISHED_BLACKSTONE]: 0x3B3B44,
-  [BLOCK_IDS.POLISHED_BLACKSTONE_BRICKS]: 0x464650,
-  [BLOCK_IDS.CRACKED_POLISHED_BLACKSTONE_BRICKS]: 0x373740,
-  [BLOCK_IDS.OCHRE_FROGLIGHT]: 0xD7B465,
-  [BLOCK_IDS.PEARLESCENT_FROGLIGHT]: 0xCFBF92,
-}
-
-const DEFAULT_COLOR = 0x888888
+import { buildInventoryItemDescriptor } from '../world/terrain/minecraft-item-catalog.js'
+import { getMinecraftItemVisualDescriptor } from '../world/terrain/minecraft-item-visuals.js'
 
 export default class BlockBreakParticles {
   constructor() {
@@ -136,11 +103,15 @@ export default class BlockBreakParticles {
    * 生成一批粒子
    */
   _spawnParticles(raycastInfo) {
-    const { worldPosition, face, blockId } = raycastInfo
+    const { worldPosition, face, blockId, minecraftBlock } = raycastInfo
     if (!worldPosition || !face?.normal)
       return
 
-    const color = BLOCK_COLORS[blockId] ?? DEFAULT_COLOR
+    const itemDescriptor = buildInventoryItemDescriptor({
+      blockId,
+      itemKey: minecraftBlock?.name,
+    })
+    const color = getMinecraftItemVisualDescriptor(itemDescriptor).color
 
     // 计算面中心点：命中面稍微外移
     const faceCenter = worldPosition.clone()

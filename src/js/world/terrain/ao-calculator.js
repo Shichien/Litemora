@@ -7,7 +7,9 @@
  * - If occlusion < 3, check 4 corner neighbors
  * - AO value: 0 (bright) to 3 (darkest)
  */
-import { blocks } from './blocks-config.js'
+
+const EMPTY_BLOCK_ID = 0
+const LEGACY_TRANSPARENT_BLOCK_IDS = new Set([7, 10, 12])
 
 /**
  * Check if a block at the given position is solid (causes occlusion)
@@ -20,11 +22,10 @@ import { blocks } from './blocks-config.js'
 function isSolid(container, x, y, z) {
   const block = container.getBlock(x, y, z)
   // Empty blocks are not solid
-  if (block.id === blocks.empty.id)
+  if (block.id === EMPTY_BLOCK_ID)
     return false
   // Transparent blocks (leaves, etc.) don't occlude
-  const blockConfig = Object.values(blocks).find(b => b.id === block.id)
-  if (blockConfig?.transparent)
+  if (LEGACY_TRANSPARENT_BLOCK_IDS.has(block.id))
     return false
   return true
 }
@@ -79,8 +80,7 @@ export function computeAllBlocksAO(container) {
     }
 
     // Skip transparent blocks (leaves, plants, etc.)
-    const blockConfig = Object.values(blocks).find(b => b.id === block.id)
-    if (blockConfig?.transparent) {
+    if (LEGACY_TRANSPARENT_BLOCK_IDS.has(block.id)) {
       block.ao = null
       return
     }

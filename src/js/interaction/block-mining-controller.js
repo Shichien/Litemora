@@ -81,11 +81,19 @@ export default class BlockMiningController {
    */
   _captureTarget(raycastInfo) {
     return {
+      source: raycastInfo.source || 'legacy',
       chunkX: raycastInfo.chunkX,
       chunkZ: raycastInfo.chunkZ,
       worldBlock: { ...raycastInfo.worldBlock },
       instanceId: raycastInfo.instanceId,
       blockId: raycastInfo.blockId,
+      blockName: raycastInfo.blockName || raycastInfo.minecraftBlock?.name || null,
+      blockString: raycastInfo.blockString || null,
+      minecraftBlock: raycastInfo.minecraftBlock || null,
+      stateId: raycastInfo.stateId ?? null,
+      collisionBoxes: Array.isArray(raycastInfo.collisionBoxes)
+        ? raycastInfo.collisionBoxes.map(box => ({ ...box }))
+        : [],
     }
   }
 
@@ -124,14 +132,24 @@ export default class BlockMiningController {
     const { worldBlock, blockId } = this.currentTarget
     const chunkManager = this.experience.terrainDataManager
 
+    let removalResult = false
     if (chunkManager) {
-      chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
+      removalResult = chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
+    }
+
+    if (!removalResult) {
+      this._resetMining()
+      emitter.emit('game:mining-cancel')
+      return
     }
 
     // Emit complete event with blockId and position for pickup animator
     emitter.emit('game:block-break-complete', {
       blockId,
       worldPos: { x: worldBlock.x, y: worldBlock.y, z: worldBlock.z },
+      blockName: this.currentTarget.blockName,
+      minecraftBlock: this.currentTarget.minecraftBlock,
+      source: this.currentTarget.source,
     })
 
     emitter.emit('game:mining-complete', {

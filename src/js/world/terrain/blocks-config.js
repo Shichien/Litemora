@@ -436,17 +436,28 @@ export function getBlockTypeById(id) {
   return blockByIdCache[id]
 }
 
-export function getBlockSignatureById(id) {
-  const blockType = getBlockTypeById(id)
-  if (!blockType) {
-    return null
+function normalizeTextureKeys(textureName, textureKeys = null) {
+  const normalized = {}
+
+  if (textureKeys && typeof textureKeys === 'object') {
+    for (const [key, value] of Object.entries(textureKeys)) {
+      const normalizedValue = String(value || '').trim()
+      if (normalizedValue) {
+        normalized[key] = normalizedValue
+      }
+    }
   }
 
-  const textureKeys = blockType.textureKeys && typeof blockType.textureKeys === 'object'
-    ? { ...blockType.textureKeys }
-    : {}
+  const primaryTexture = String(textureName || '').trim()
+  if (!Object.keys(normalized).length && primaryTexture) {
+    normalized.all = primaryTexture
+  }
 
-  const textureName = textureKeys.all
+  return normalized
+}
+
+function pickPrimaryTextureName(textureKeys = {}) {
+  return textureKeys.all
     || textureKeys.top
     || textureKeys.side
     || textureKeys.bottom
@@ -457,6 +468,23 @@ export function getBlockSignatureById(id) {
     || textureKeys.front
     || textureKeys.back
     || ''
+}
+
+function textureKeySignature(textureKeys = {}) {
+  return Object.entries(textureKeys)
+    .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('|')
+}
+
+export function getBlockSignatureById(id) {
+  const blockType = getBlockTypeById(id)
+  if (!blockType) {
+    return null
+  }
+
+  const textureKeys = normalizeTextureKeys('', blockType.textureKeys)
+  const textureName = pickPrimaryTextureName(textureKeys)
 
   return {
     id: Number(blockType.id),
@@ -468,12 +496,15 @@ export function getBlockSignatureById(id) {
 }
 
 export function ensureDynamicBlockType(textureName, options = {}) {
-  if (!textureName) {
+  const textureKeys = normalizeTextureKeys(textureName, options.textureKeys)
+  const primaryTextureName = pickPrimaryTextureName(textureKeys)
+  if (!primaryTextureName) {
     return null
   }
 
   const geometryType = options.geometryType || 'cube'
-  const signature = `${textureName}::${geometryType}`
+  const blockName = String(options.blockName || primaryTextureName)
+  const signature = `${geometryType}::${blockName}::${textureKeySignature(textureKeys)}`
 
   if (dynamicBlockBySignature.has(signature)) {
     return dynamicBlockBySignature.get(signature)
@@ -487,15 +518,13 @@ export function ensureDynamicBlockType(textureName, options = {}) {
   const dynamicIndex = dynamicBlockBySignature.size
   const blockType = {
     id: canUsePreferredId ? preferredId : (DYNAMIC_BLOCK_ID_START + dynamicIndex),
-    name: options.blockName || textureName,
+    name: blockName,
     visible: true,
-    textureKeys: {
-      all: textureName,
-    },
+    textureKeys,
     geometryType,
   }
 
-  const hintSource = `${options.blockName || ''} ${textureName}`.toLowerCase()
+  const hintSource = `${blockName} ${Object.values(textureKeys).join(' ')}`.toLowerCase()
   if (hintSource.includes('glass') || hintSource.includes('ice')) {
     blockType.transparent = true
     blockType.opacity = 0.45
@@ -507,7 +536,7 @@ export function ensureDynamicBlockType(textureName, options = {}) {
     blockType.depthWrite = false
   }
 
-  if (hintSource.includes('vine') || hintSource.includes('torch')) {
+  if (hintSource.includes('vine') || hintSource.includes('torch') || hintSource.includes('lever')) {
     blockType.transparent = true
     blockType.alphaTest = blockType.alphaTest ?? 0.5
     blockType.depthWrite = false
@@ -528,6 +557,26 @@ export function ensureDynamicBlockType(textureName, options = {}) {
   }
 
   if (geometryType === 'fire_cross' || geometryType.startsWith('rail_')) {
+    blockType.transparent = true
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.depthWrite = false
+  }
+
+  if (geometryType.startsWith('redstone_device_')) {
+    blockType.transparent = true
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.depthWrite = false
+    blockType.side = THREE.DoubleSide
+  }
+
+  if (geometryType.startsWith('wire_') || geometryType === 'tripwire') {
+    blockType.transparent = true
+    blockType.alphaTest = blockType.alphaTest ?? 0.5
+    blockType.depthWrite = false
+    blockType.side = THREE.DoubleSide
+  }
+
+  if (geometryType.startsWith('ladder_')) {
     blockType.transparent = true
     blockType.alphaTest = blockType.alphaTest ?? 0.5
     blockType.depthWrite = false
@@ -908,12 +957,98 @@ const lanternGeometryCache = new Map()
 const doorGeometryCache = new Map()
 const torchGeometryCache = new Map()
 const vineGeometryCache = new Map()
+const redstoneDeviceGeometryCache = new Map()
+const leverGeometryCache = new Map()
+const hopperGeometryCache = new Map()
+const buttonGeometryCache = new Map()
+const ladderGeometryCache = new Map()
+const signGeometryCache = new Map()
+const hangingSignGeometryCache = new Map()
+const bannerGeometryCache = new Map()
+const chainGeometryCache = new Map()
+const rodGeometryCache = new Map()
+const candleGeometryCache = new Map()
+const wireGeometryCache = new Map()
+const tripwireHookGeometryCache = new Map()
+const cocoaGeometryCache = new Map()
+const amethystBudGeometryCache = new Map()
+const fenceGateGeometryCache = new Map()
 
 const carpetGeometry = (() => {
   const geometry = new THREE.BoxGeometry(1, 0.0625, 1)
   geometry.translate(0, -0.46875, 0)
   return geometry
 })()
+
+const pressurePlateGeometry = (() => {
+  const geometry = new THREE.BoxGeometry(0.875, 0.0625, 0.875)
+  geometry.translate(0, -0.46875, 0)
+  return geometry
+})()
+
+function horizontalRotationForFacing(facing = 'north') {
+  return {
+    north: 0,
+    east: Math.PI / 2,
+    south: Math.PI,
+    west: -Math.PI / 2,
+  }[facing] ?? 0
+}
+
+function rotateGeometryToFacing(geometry, facing = 'north') {
+  const rotationY = horizontalRotationForFacing(facing)
+  if (rotationY !== 0) {
+    geometry.rotateY(rotationY)
+  }
+  return geometry
+}
+
+function translateWallMountedGeometry(geometry, facing = 'north', offset = 0.4375) {
+  if (facing === 'north') {
+    geometry.translate(0, 0, -offset)
+  }
+  else if (facing === 'south') {
+    geometry.translate(0, 0, offset)
+  }
+  else if (facing === 'east') {
+    geometry.translate(offset, 0, 0)
+  }
+  else {
+    geometry.translate(-offset, 0, 0)
+  }
+  return geometry
+}
+
+function rotateGeometryToAxis(geometry, axis = 'y') {
+  if (axis === 'x') {
+    geometry.rotateZ(Math.PI / 2)
+  }
+  else if (axis === 'z') {
+    geometry.rotateX(Math.PI / 2)
+  }
+  return geometry
+}
+
+function createRedstoneDeviceGeometry(facing = 'north') {
+  const geometry = new THREE.PlaneGeometry(1, 1)
+  geometry.rotateX(-Math.PI / 2)
+
+  const rotationY = {
+    north: 0,
+    east: Math.PI / 2,
+    south: Math.PI,
+    west: -Math.PI / 2,
+  }[facing] ?? 0
+
+  if (rotationY !== 0) {
+    geometry.rotateY(rotationY)
+  }
+
+  geometry.translate(0, -0.498, 0)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
 
 function createTrapdoorGeometry({ half = 'bottom', facing = 'north', open = false } = {}) {
   const thickness = 0.1875
@@ -1175,6 +1310,467 @@ function createTorchGeometry({ wall = false, facing = 'north' } = {}) {
   return merged
 }
 
+function createLeverGeometry({ face = 'wall', facing = 'north', powered = false } = {}) {
+  const pieces = []
+  const base = new THREE.BoxGeometry(0.375, 0.125, 0.25)
+  base.translate(0, -0.4375, 0)
+  pieces.push(base)
+
+  const handle = new THREE.BoxGeometry(0.125, 0.625, 0.125)
+  handle.rotateX(powered ? (Math.PI / 5) : (-Math.PI / 5))
+  handle.translate(0, -0.15625, 0)
+  pieces.push(handle)
+
+  const geometry = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+
+  if (face === 'ceiling') {
+    geometry.rotateX(Math.PI)
+  }
+  else if (face === 'wall') {
+    const wallRotation = {
+      north: { axis: 'x', angle: Math.PI / 2 },
+      south: { axis: 'x', angle: -Math.PI / 2 },
+      east: { axis: 'z', angle: Math.PI / 2 },
+      west: { axis: 'z', angle: -Math.PI / 2 },
+    }[facing] || { axis: 'x', angle: Math.PI / 2 }
+
+    if (wallRotation.axis === 'x') {
+      geometry.rotateX(wallRotation.angle)
+    }
+    else {
+      geometry.rotateZ(wallRotation.angle)
+    }
+  }
+  else {
+    const rotationY = {
+      north: 0,
+      east: Math.PI / 2,
+      south: Math.PI,
+      west: -Math.PI / 2,
+    }[facing] ?? 0
+
+    if (rotationY !== 0) {
+      geometry.rotateY(rotationY)
+    }
+  }
+
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function createButtonGeometry({ face = 'wall', facing = 'north', powered = false } = {}) {
+  const depth = powered ? 0.0625 : 0.125
+
+  if (face === 'wall') {
+    const geometry = new THREE.BoxGeometry(0.375, 0.125, depth)
+    geometry.translate(0, 0, -0.5 + depth / 2)
+    rotateGeometryToFacing(geometry, facing)
+    geometry.computeBoundingBox()
+    geometry.computeBoundingSphere()
+    return geometry
+  }
+
+  const geometry = new THREE.BoxGeometry(0.375, depth, 0.25)
+  const y = face === 'ceiling'
+    ? (0.5 - depth / 2)
+    : (-0.5 + depth / 2)
+  geometry.translate(0, y, 0)
+  rotateGeometryToFacing(geometry, facing)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function createLadderGeometry(facing = 'north') {
+  const geometry = new THREE.BoxGeometry(1, 1, 0.0625)
+  geometry.translate(0, 0, -0.46875)
+  rotateGeometryToFacing(geometry, facing)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function standingRotationToRadians(rotation = 0) {
+  return Math.PI + (rotation * Math.PI / 8)
+}
+
+function createStandingSignGeometry(rotation = 0) {
+  const pieces = []
+  const board = new THREE.BoxGeometry(0.875, 0.625, 0.125)
+  board.translate(0, 0.0625, 0)
+  pieces.push(board)
+
+  const post = new THREE.BoxGeometry(0.125, 0.5, 0.125)
+  post.translate(0, -0.25, 0)
+  pieces.push(post)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  merged.rotateY(standingRotationToRadians(rotation))
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createWallSignGeometry(facing = 'north') {
+  const geometry = new THREE.BoxGeometry(0.875, 0.625, 0.125)
+  geometry.translate(0, 0.0625, -0.4375)
+  rotateGeometryToFacing(geometry, facing)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function createStandingHangingSignGeometry(rotation = 0) {
+  const pieces = []
+  const board = new THREE.BoxGeometry(1, 0.625, 0.125)
+  board.translate(0, -0.03125, 0)
+  pieces.push(board)
+
+  const beam = new THREE.BoxGeometry(1.125, 0.125, 0.25)
+  beam.translate(0, 0.34375, 0)
+  pieces.push(beam)
+
+  for (const x of [-0.3125, 0.3125]) {
+    const hanger = new THREE.BoxGeometry(0.0625, 0.25, 0.0625)
+    hanger.translate(x, 0.1875, 0)
+    pieces.push(hanger)
+  }
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  merged.rotateY(standingRotationToRadians(rotation))
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createWallHangingSignGeometry(facing = 'north') {
+  const pieces = []
+  const board = new THREE.BoxGeometry(1, 0.625, 0.125)
+  board.translate(0, -0.03125, 0)
+  pieces.push(board)
+
+  const beam = new THREE.BoxGeometry(1.125, 0.125, 0.25)
+  beam.translate(0, 0.34375, 0)
+  pieces.push(beam)
+
+  for (const x of [-0.3125, 0.3125]) {
+    const hanger = new THREE.BoxGeometry(0.0625, 0.25, 0.0625)
+    hanger.translate(x, 0.1875, 0)
+    pieces.push(hanger)
+  }
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  translateWallMountedGeometry(merged, 'north', 0.40625)
+  rotateGeometryToFacing(merged, facing)
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createStandingBannerGeometry(rotation = 0) {
+  const pieces = []
+  const cloth = new THREE.BoxGeometry(0.75, 0.875, 0.0625)
+  cloth.translate(0, -0.03125, 0)
+  pieces.push(cloth)
+
+  const post = new THREE.BoxGeometry(0.125, 1, 0.125)
+  post.translate(0, 0, 0)
+  pieces.push(post)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  merged.rotateY(standingRotationToRadians(rotation))
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createWallBannerGeometry(facing = 'north') {
+  const geometry = new THREE.BoxGeometry(0.75, 0.875, 0.0625)
+  geometry.translate(0, -0.03125, -0.46875)
+  rotateGeometryToFacing(geometry, facing)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function createChainGeometry(axis = 'y') {
+  const geometry = new THREE.BoxGeometry(0.125, 1, 0.125)
+  rotateGeometryToAxis(geometry, axis)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function createRodGeometry(facing = 'up') {
+  const geometry = new THREE.BoxGeometry(0.1875, 1, 0.1875)
+
+  if (facing === 'north' || facing === 'south') {
+    geometry.rotateX(Math.PI / 2)
+  }
+  else if (facing === 'east' || facing === 'west') {
+    geometry.rotateZ(Math.PI / 2)
+  }
+
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function createCandleGeometry(count = 1) {
+  const pieces = []
+  const normalizedCount = Math.max(1, Math.min(4, count))
+  const positions = {
+    1: [[0, 0]],
+    2: [[-0.125, 0], [0.125, 0]],
+    3: [[0, -0.125], [-0.15625, 0.125], [0.15625, 0.125]],
+    4: [[-0.15625, -0.15625], [0.15625, -0.15625], [-0.15625, 0.15625], [0.15625, 0.15625]],
+  }[normalizedCount]
+
+  positions.forEach(([x, z], index) => {
+    const height = 0.375 + ((index % 2) * 0.0625)
+    const candle = new THREE.BoxGeometry(0.125, height, 0.125)
+    candle.translate(x, -0.5 + height / 2, z)
+    pieces.push(candle)
+  })
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
+function createWireGeometry({ north = false, east = false, south = false, west = false } = {}) {
+  const planes = []
+  const y = -0.498
+
+  const center = new THREE.PlaneGeometry(0.375, 0.375)
+  center.rotateX(-Math.PI / 2)
+  center.translate(0, y, 0)
+  planes.push(center)
+
+  const addArm = (width, height, x, z) => {
+    const arm = new THREE.PlaneGeometry(width, height)
+    arm.rotateX(-Math.PI / 2)
+    arm.translate(x, y, z)
+    planes.push(arm)
+  }
+
+  if (north) {
+    addArm(0.25, 0.5, 0, -0.25)
+  }
+  if (south) {
+    addArm(0.25, 0.5, 0, 0.25)
+  }
+  if (east) {
+    addArm(0.5, 0.25, 0.25, 0)
+  }
+  if (west) {
+    addArm(0.5, 0.25, -0.25, 0)
+  }
+
+  const merged = mergeToSingleGeometry(planes)
+  planes.forEach(plane => plane.dispose())
+  return merged
+}
+
+function createTripwireGeometry() {
+  const planes = []
+  const y = -0.498
+
+  const lineX = new THREE.PlaneGeometry(1, 0.0625)
+  lineX.rotateX(-Math.PI / 2)
+  lineX.translate(0, y, 0)
+  planes.push(lineX)
+
+  const lineZ = new THREE.PlaneGeometry(0.0625, 1)
+  lineZ.rotateX(-Math.PI / 2)
+  lineZ.translate(0, y, 0)
+  planes.push(lineZ)
+
+  const merged = mergeToSingleGeometry(planes)
+  planes.forEach(plane => plane.dispose())
+  return merged
+}
+
+function createTripwireHookGeometry({ facing = 'north', powered = false } = {}) {
+  const pieces = []
+  const base = new THREE.BoxGeometry(0.25, 0.375, 0.125)
+  base.translate(0, 0, -0.4375)
+  pieces.push(base)
+
+  const arm = new THREE.BoxGeometry(0.0625, 0.1875, powered ? 0.3125 : 0.25)
+  arm.rotateX(powered ? -0.35 : -0.65)
+  arm.translate(0, 0.0625, -0.25)
+  pieces.push(arm)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  rotateGeometryToFacing(merged, facing)
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createCocoaGeometry({ age = 0, facing = 'north' } = {}) {
+  const sizes = [
+    { width: 0.25, height: 0.3125, depth: 0.25 },
+    { width: 0.375, height: 0.4375, depth: 0.375 },
+    { width: 0.5, height: 0.5625, depth: 0.5 },
+  ]
+  const size = sizes[Math.max(0, Math.min(2, age))]
+  const pieces = []
+
+  const fruit = new THREE.BoxGeometry(size.width, size.height, size.depth)
+  fruit.translate(0, -0.125 + size.height / 4, -0.5 + size.depth / 2)
+  pieces.push(fruit)
+
+  const stem = new THREE.BoxGeometry(0.0625, 0.125, 0.125)
+  stem.translate(0, 0.0625, -0.4375)
+  pieces.push(stem)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  rotateGeometryToFacing(merged, facing)
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createAmethystBudGeometry({ size = 'cluster', facing = 'up' } = {}) {
+  const sizeMap = {
+    small: { stem: 0.125, width: 0.25, height: 0.25 },
+    medium: { stem: 0.125, width: 0.3125, height: 0.375 },
+    large: { stem: 0.125, width: 0.375, height: 0.5 },
+    cluster: { stem: 0.1875, width: 0.5, height: 0.625 },
+  }
+  const config = sizeMap[size] || sizeMap.cluster
+  const pieces = []
+
+  const stem = new THREE.BoxGeometry(config.stem, 0.1875, config.stem)
+  stem.translate(0, -0.40625, 0)
+  pieces.push(stem)
+
+  const crystal = new THREE.BoxGeometry(config.width, config.height, config.width)
+  crystal.translate(0, -0.5 + 0.1875 + config.height / 2, 0)
+  pieces.push(crystal)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+
+  if (facing === 'down') {
+    merged.rotateX(Math.PI)
+  }
+  else if (facing === 'north') {
+    merged.rotateX(-Math.PI / 2)
+  }
+  else if (facing === 'south') {
+    merged.rotateX(Math.PI / 2)
+  }
+  else if (facing === 'east') {
+    merged.rotateZ(-Math.PI / 2)
+  }
+  else if (facing === 'west') {
+    merged.rotateZ(Math.PI / 2)
+  }
+
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createFenceGateGeometry({ facing = 'north', open = false, inWall = false } = {}) {
+  const pieces = []
+  const postHeight = inWall ? 0.8125 : 1
+  const postY = inWall ? -0.09375 : 0
+
+  for (const x of [-0.375, 0.375]) {
+    const post = new THREE.BoxGeometry(0.25, postHeight, 0.25)
+    post.translate(x, postY, 0)
+    pieces.push(post)
+  }
+
+  if (open) {
+    for (const x of [-0.25, 0.25]) {
+      const leaf = new THREE.BoxGeometry(0.125, 0.75, 0.75)
+      leaf.translate(x === -0.25 ? -0.3125 : 0.3125, -0.0625, 0)
+      pieces.push(leaf)
+    }
+  }
+  else {
+    for (const y of [0.1875, -0.1875]) {
+      const bar = new THREE.BoxGeometry(0.75, 0.125, 0.125)
+      bar.translate(0, y, 0)
+      pieces.push(bar)
+    }
+  }
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  rotateGeometryToFacing(merged, facing)
+  merged.computeBoundingBox()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function createCampfireGeometry() {
+  const pieces = []
+
+  const logA = new THREE.BoxGeometry(1, 0.25, 0.25)
+  logA.translate(0, -0.375, 0)
+  pieces.push(logA)
+
+  const logB = new THREE.BoxGeometry(0.25, 0.25, 1)
+  logB.translate(0, -0.375, 0)
+  pieces.push(logB)
+
+  const center = new THREE.BoxGeometry(0.5, 0.125, 0.5)
+  center.translate(0, -0.1875, 0)
+  pieces.push(center)
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
+function createHopperGeometry({ facing = 'down' } = {}) {
+  const pieces = []
+
+  const rim = new THREE.BoxGeometry(1, 0.125, 1)
+  rim.translate(0, 0.1875, 0)
+  pieces.push(rim)
+
+  const body = new THREE.BoxGeometry(0.875, 0.5, 0.875)
+  body.translate(0, -0.125, 0)
+  pieces.push(body)
+
+  let spout = null
+  if (facing === 'down') {
+    spout = new THREE.BoxGeometry(0.375, 0.25, 0.375)
+    spout.translate(0, -0.375, 0)
+  }
+  else if (facing === 'north' || facing === 'south') {
+    spout = new THREE.BoxGeometry(0.375, 0.25, 0.5)
+    spout.translate(0, -0.3125, facing === 'north' ? -0.25 : 0.25)
+  }
+  else {
+    spout = new THREE.BoxGeometry(0.5, 0.25, 0.375)
+    spout.translate(facing === 'east' ? 0.25 : -0.25, -0.3125, 0)
+  }
+
+  if (spout) {
+    pieces.push(spout)
+  }
+
+  const merged = mergeToSingleGeometry(pieces)
+  pieces.forEach(piece => piece.dispose())
+  return merged
+}
+
 function createVineGeometry({ up = false, north = false, east = false, south = false, west = false } = {}) {
   const planes = []
   const offset = 0.499
@@ -1325,6 +1921,8 @@ const pottedPlantGeometry = (() => {
 })()
 
 const fireGeometry = createFireGeometry()
+const tripwireGeometry = createTripwireGeometry()
+const campfireGeometry = createCampfireGeometry()
 const railGeometryCache = new Map()
 
 export function getGeometryForBlockType(blockType) {
@@ -1350,6 +1948,34 @@ export function getGeometryForBlockType(blockType) {
   }
   if (geometryType === 'carpet') {
     return carpetGeometry
+  }
+  if (geometryType === 'pressure_plate') {
+    return pressurePlateGeometry
+  }
+  if (geometryType === 'tripwire') {
+    return tripwireGeometry
+  }
+  if (geometryType === 'campfire') {
+    return campfireGeometry
+  }
+  const redstoneDeviceMatch = geometryType.match(/^redstone_device_(north|south|east|west)$/u)
+  if (redstoneDeviceMatch) {
+    if (!redstoneDeviceGeometryCache.has(geometryType)) {
+      redstoneDeviceGeometryCache.set(geometryType, createRedstoneDeviceGeometry(redstoneDeviceMatch[1]))
+    }
+    return redstoneDeviceGeometryCache.get(geometryType)
+  }
+  const wireMatch = geometryType.match(/^wire_([01])([01])([01])([01])$/u)
+  if (wireMatch) {
+    if (!wireGeometryCache.has(geometryType)) {
+      wireGeometryCache.set(geometryType, createWireGeometry({
+        north: wireMatch[1] === '1',
+        east: wireMatch[2] === '1',
+        south: wireMatch[3] === '1',
+        west: wireMatch[4] === '1',
+      }))
+    }
+    return wireGeometryCache.get(geometryType)
   }
   if (geometryType === 'slab_bottom') {
     return slabBottomGeometry
@@ -1444,6 +2070,156 @@ export function getGeometryForBlockType(blockType) {
       }))
     }
     return torchGeometryCache.get(geometryType)
+  }
+
+  const buttonMatch = geometryType.match(/^button_(floor|wall|ceiling)_(north|south|east|west)_(on|off)$/u)
+  if (buttonMatch) {
+    if (!buttonGeometryCache.has(geometryType)) {
+      buttonGeometryCache.set(geometryType, createButtonGeometry({
+        face: buttonMatch[1],
+        facing: buttonMatch[2],
+        powered: buttonMatch[3] === 'on',
+      }))
+    }
+    return buttonGeometryCache.get(geometryType)
+  }
+
+  const leverMatch = geometryType.match(/^lever_(floor|wall|ceiling)_(north|south|east|west)_(on|off)$/u)
+  if (leverMatch) {
+    if (!leverGeometryCache.has(geometryType)) {
+      leverGeometryCache.set(geometryType, createLeverGeometry({
+        face: leverMatch[1],
+        facing: leverMatch[2],
+        powered: leverMatch[3] === 'on',
+      }))
+    }
+    return leverGeometryCache.get(geometryType)
+  }
+
+  const ladderMatch = geometryType.match(/^ladder_(north|south|east|west)$/u)
+  if (ladderMatch) {
+    if (!ladderGeometryCache.has(geometryType)) {
+      ladderGeometryCache.set(geometryType, createLadderGeometry(ladderMatch[1]))
+    }
+    return ladderGeometryCache.get(geometryType)
+  }
+
+  const signMatch = geometryType.match(/^sign_(standing_(\d+)|wall_(north|south|east|west))$/u)
+  if (signMatch) {
+    if (!signGeometryCache.has(geometryType)) {
+      if (signMatch[2] !== undefined) {
+        signGeometryCache.set(geometryType, createStandingSignGeometry(Number(signMatch[2])))
+      }
+      else {
+        signGeometryCache.set(geometryType, createWallSignGeometry(signMatch[3] || 'north'))
+      }
+    }
+    return signGeometryCache.get(geometryType)
+  }
+
+  const hangingSignMatch = geometryType.match(/^hanging_sign_(standing_(\d+)|wall_(north|south|east|west))$/u)
+  if (hangingSignMatch) {
+    if (!hangingSignGeometryCache.has(geometryType)) {
+      if (hangingSignMatch[2] !== undefined) {
+        hangingSignGeometryCache.set(geometryType, createStandingHangingSignGeometry(Number(hangingSignMatch[2])))
+      }
+      else {
+        hangingSignGeometryCache.set(geometryType, createWallHangingSignGeometry(hangingSignMatch[3] || 'north'))
+      }
+    }
+    return hangingSignGeometryCache.get(geometryType)
+  }
+
+  const bannerMatch = geometryType.match(/^banner_(standing_(\d+)|wall_(north|south|east|west))$/u)
+  if (bannerMatch) {
+    if (!bannerGeometryCache.has(geometryType)) {
+      if (bannerMatch[2] !== undefined) {
+        bannerGeometryCache.set(geometryType, createStandingBannerGeometry(Number(bannerMatch[2])))
+      }
+      else {
+        bannerGeometryCache.set(geometryType, createWallBannerGeometry(bannerMatch[3] || 'north'))
+      }
+    }
+    return bannerGeometryCache.get(geometryType)
+  }
+
+  const chainMatch = geometryType.match(/^chain_([xyz])$/u)
+  if (chainMatch) {
+    if (!chainGeometryCache.has(geometryType)) {
+      chainGeometryCache.set(geometryType, createChainGeometry(chainMatch[1]))
+    }
+    return chainGeometryCache.get(geometryType)
+  }
+
+  const rodMatch = geometryType.match(/^rod_(up|down|north|south|east|west)$/u)
+  if (rodMatch) {
+    if (!rodGeometryCache.has(geometryType)) {
+      rodGeometryCache.set(geometryType, createRodGeometry(rodMatch[1]))
+    }
+    return rodGeometryCache.get(geometryType)
+  }
+
+  const candleMatch = geometryType.match(/^candle_([1-4])$/u)
+  if (candleMatch) {
+    if (!candleGeometryCache.has(geometryType)) {
+      candleGeometryCache.set(geometryType, createCandleGeometry(Number(candleMatch[1])))
+    }
+    return candleGeometryCache.get(geometryType)
+  }
+
+  const tripwireHookMatch = geometryType.match(/^tripwire_hook_(north|south|east|west)_(on|off)$/u)
+  if (tripwireHookMatch) {
+    if (!tripwireHookGeometryCache.has(geometryType)) {
+      tripwireHookGeometryCache.set(geometryType, createTripwireHookGeometry({
+        facing: tripwireHookMatch[1],
+        powered: tripwireHookMatch[2] === 'on',
+      }))
+    }
+    return tripwireHookGeometryCache.get(geometryType)
+  }
+
+  const cocoaMatch = geometryType.match(/^cocoa_([0-2])_(north|south|east|west)$/u)
+  if (cocoaMatch) {
+    if (!cocoaGeometryCache.has(geometryType)) {
+      cocoaGeometryCache.set(geometryType, createCocoaGeometry({
+        age: Number(cocoaMatch[1]),
+        facing: cocoaMatch[2],
+      }))
+    }
+    return cocoaGeometryCache.get(geometryType)
+  }
+
+  const amethystBudMatch = geometryType.match(/^amethyst_bud_(small|medium|large|cluster)_(up|down|north|south|east|west)$/u)
+  if (amethystBudMatch) {
+    if (!amethystBudGeometryCache.has(geometryType)) {
+      amethystBudGeometryCache.set(geometryType, createAmethystBudGeometry({
+        size: amethystBudMatch[1],
+        facing: amethystBudMatch[2],
+      }))
+    }
+    return amethystBudGeometryCache.get(geometryType)
+  }
+
+  const fenceGateMatch = geometryType.match(/^fence_gate_(north|south|east|west)_(open|closed)_(wall|free)$/u)
+  if (fenceGateMatch) {
+    if (!fenceGateGeometryCache.has(geometryType)) {
+      fenceGateGeometryCache.set(geometryType, createFenceGateGeometry({
+        facing: fenceGateMatch[1],
+        open: fenceGateMatch[2] === 'open',
+        inWall: fenceGateMatch[3] === 'wall',
+      }))
+    }
+    return fenceGateGeometryCache.get(geometryType)
+  }
+
+  const hopperMatch = geometryType.match(/^hopper_(down|north|south|east|west)$/u)
+  if (hopperMatch) {
+    if (!hopperGeometryCache.has(geometryType)) {
+      hopperGeometryCache.set(geometryType, createHopperGeometry({
+        facing: hopperMatch[1],
+      }))
+    }
+    return hopperGeometryCache.get(geometryType)
   }
 
   const vineMatch = geometryType.match(/^vine_([01])([01])([01])([01])([01])$/u)

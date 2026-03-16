@@ -5,8 +5,45 @@ import emitter from '@three/utils/event/event-bus.js'
  */
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
+import {
+  buildInventoryItemDescriptor,
+  resolveInventoryItemKey,
+} from '@three/world/terrain/minecraft-item-catalog.js'
 
 export const useHudStore = defineStore('hud', () => {
+  function toStackCount(value, fallback = 1) {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) && numeric > 0 ? Math.trunc(numeric) : fallback
+  }
+
+  function normalizeHotbarItemInput(input, amount = 1) {
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+      return buildInventoryItemDescriptor(input, input.count ?? input.amount ?? amount)
+    }
+    return buildInventoryItemDescriptor({ blockId: input }, amount)
+  }
+
+  function getHotbarItemStackKey(item) {
+    const itemKey = resolveInventoryItemKey(item)
+    if (itemKey) {
+      return `minecraft:${itemKey}`
+    }
+
+    const numericBlockId = Number(item?.blockId)
+    if (Number.isFinite(numericBlockId) && numericBlockId > 0) {
+      return `legacy:${Math.trunc(numericBlockId)}`
+    }
+
+    return ''
+  }
+
+  function emitSelectedBlockUpdate() {
+    emitter.emit('hud:selected-block-update', {
+      blockId: getSelectedBlockId(),
+      itemKey: getSelectedItemKey(),
+    })
+  }
+
   // ========================================
   // Player Stats (Mock Data)
   // ========================================
@@ -36,12 +73,12 @@ export const useHudStore = defineStore('hud', () => {
 
   /**
    * Hotbar items (9 slots)
-   * Each slot: { blockId: number, count: number } | null
+   * Each slot: { itemKey: string, blockId: number | null, count: number } | null
    */
   const hotbarItems = ref([
-    { blockId: 2, count: 30 }, // Initial: 30 dirt blocks
-    { blockId: 31, count: 30 }, // Initial: 30 stone slab blocks
-    { blockId: 32, count: 30 }, // Initial: 30 stone stairs blocks
+    buildInventoryItemDescriptor({ blockId: 2 }, 30), // Initial: 30 dirt blocks
+    buildInventoryItemDescriptor({ blockId: 31 }, 30), // Initial: 30 stone slab blocks
+    buildInventoryItemDescriptor({ blockId: 32 }, 30), // Initial: 30 stone stairs blocks
     null,
     null,
     null,
@@ -213,7 +250,7 @@ export const useHudStore = defineStore('hud', () => {
     if (slot >= 0 && slot <= 8) {
       selectedSlot.value = slot
       // Notify Three.js interaction manager of the new selected block
-      emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+      emitSelectedBlockUpdate()
     }
   }
 
@@ -229,32 +266,43 @@ export const useHudStore = defineStore('hud', () => {
       newSlot = 0
     selectedSlot.value = newSlot
     // Notify Three.js interaction manager of the new selected block
-    emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+    emitSelectedBlockUpdate()
   }
 
   /**
    * Add item to hotbar (prioritize stacking same type)
-   * @param {number} blockId - Block type ID
+   * @param {number|{blockId?: number, itemKey?: string, amount?: number, count?: number}} blockIdOrItem
    * @param {number} amount - Amount to add (default: 1)
    * @returns {boolean} - True if successfully added
    */
-  function addItemToHotbar(blockId, amount = 1) {
+  function addItemToHotbar(blockIdOrItem, amount = 1) {
+    const normalizedItem = normalizeHotbarItemInput(blockIdOrItem, amount)
+    if (!normalizedItem) {
+      return false
+    }
+
+    const stackKey = getHotbarItemStackKey(normalizedItem)
+    let remaining = toStackCount(normalizedItem.count ?? amount, 1)
+
     // 1. Prioritize stacking on existing same-type slots
     for (const slot of hotbarItems.value) {
-      if (slot?.blockId === blockId && slot.count < MAX_STACK) {
-        const canAdd = Math.min(amount, MAX_STACK - slot.count)
+      if (getHotbarItemStackKey(slot) === stackKey && slot.count < MAX_STACK) {
+        const canAdd = Math.min(remaining, MAX_STACK - slot.count)
         slot.count += canAdd
-        amount -= canAdd
-        if (amount <= 0)
+        remaining -= canAdd
+        if (remaining <= 0)
           return true
       }
     }
     // 2. Find empty slots for remaining
     for (let i = 0; i < 9; i++) {
-      if (!hotbarItems.value[i] && amount > 0) {
-        hotbarItems.value[i] = { blockId, count: Math.min(amount, MAX_STACK) }
-        amount -= MAX_STACK
-        if (amount <= 0)
+      if (!hotbarItems.value[i] && remaining > 0) {
+        hotbarItems.value[i] = {
+          ...normalizedItem,
+          count: Math.min(remaining, MAX_STACK),
+        }
+        remaining -= MAX_STACK
+        if (remaining <= 0)
           return true
       }
     }
@@ -285,6 +333,10 @@ export const useHudStore = defineStore('hud', () => {
     return hotbarItems.value[selectedSlot.value]?.blockId ?? null
   }
 
+  function getSelectedItemKey() {
+    return resolveInventoryItemKey(hotbarItems.value[selectedSlot.value]) || null
+  }
+
   /**
    * Add a chat message
    * @param {string} text
@@ -311,16 +363,16 @@ export const useHudStore = defineStore('hud', () => {
     emitter.on('hud:update', updatePlayerInfo)
     emitter.on('hud:select-slot', selectSlot)
     emitter.on('hud:cycle-slot', cycleSlot)
-    emitter.on('hud:add-item', ({ blockId, amount }) => addItemToHotbar(blockId, amount))
+    emitter.on('hud:add-item', payload => addItemToHotbar(payload, payload?.amount ?? payload?.count ?? 1))
 
     // Hotbar communication with Three.js interaction manager
     emitter.on('hud:request-selected-block', () => {
-      emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+      emitSelectedBlockUpdate()
     })
     emitter.on('hud:consume-selected-item', () => {
       consumeSelectedItem()
       // Notify interaction manager of the updated selected block
-      emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+      emitSelectedBlockUpdate()
     })
   }
 
@@ -382,6 +434,7 @@ export const useHudStore = defineStore('hud', () => {
     addItemToHotbar,
     consumeSelectedItem,
     getSelectedBlockId,
+    getSelectedItemKey,
 
     // Lifecycle
     setupListeners,

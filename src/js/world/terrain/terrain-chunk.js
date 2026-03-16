@@ -38,7 +38,21 @@ export default class TerrainChunk {
       biomeSource,
       forcedBiome,
       schematicOnlyMode = false,
+      blockVisibilityFilter = null,
     } = options
+
+    this._legacyOptions = {
+      seed,
+      terrain,
+      sharedTerrainParams,
+      sharedRenderParams,
+      sharedTreeParams,
+      sharedWaterParams,
+      sharedBiomeGenerator,
+      biomeSource,
+      forcedBiome,
+      blockVisibilityFilter,
+    }
 
     this._sharedRenderParams = sharedRenderParams
     this._sharedWaterParams = sharedWaterParams
@@ -63,8 +77,34 @@ export default class TerrainChunk {
       { useSingleton: false },
     )
 
+    this.generator = null
+    this.renderer = null
+    this.plantRenderer = null
+
+    this.waterMesh = null
+    if (!this._schematicOnlyMode) {
+      this._ensureLegacySystems()
+    }
+  }
+
+  _ensureGenerator() {
+    if (this.generator) {
+      return this.generator
+    }
+
+    const {
+      seed,
+      terrain,
+      sharedTerrainParams,
+      sharedTreeParams,
+      sharedWaterParams,
+      sharedBiomeGenerator,
+      biomeSource,
+      forcedBiome,
+    } = this._legacyOptions
+
     this.generator = new TerrainGenerator({
-      size: { width: chunkWidth, height: chunkHeight },
+      size: { width: this._chunkWidth, height: this._chunkHeight },
       container: this.container,
       seed,
       terrain,
@@ -81,35 +121,42 @@ export default class TerrainChunk {
       debugEnabled: false,
     })
 
-    this.renderer = new TerrainRenderer(this.container, {
-      sharedParams: sharedRenderParams,
-      debugEnabled: false,
-      listenDataReady: false,
-      chunkName: `${this.chunkX}, ${this.chunkZ}`,
-    })
-    this.renderer.group.position.set(this.originX, 0, this.originZ)
-    this.renderer.group.userData.chunkX = this.chunkX
-    this.renderer.group.userData.chunkZ = this.chunkZ
-    this.renderer.group.userData.originX = this.originX
-    this.renderer.group.userData.originZ = this.originZ
+    return this.generator
+  }
 
-    this.renderer.group.scale.setScalar(sharedRenderParams?.scale ?? 1)
+  _ensureLegacySystems() {
+    this._ensureGenerator()
 
-    this.plantRenderer = new PlantRenderer(this.container, {
-      sharedParams: sharedRenderParams,
-      chunkName: `${this.chunkX}, ${this.chunkZ}`,
-    })
-    this.plantRenderer.group.position.set(this.originX, 0, this.originZ)
-    this.plantRenderer.group.scale.setScalar(sharedRenderParams?.scale ?? 1)
-
-    this.waterMesh = null
-    if (!this._schematicOnlyMode) {
-      this._createWaterMesh()
+    if (!this.renderer) {
+      this.renderer = new TerrainRenderer(this.container, {
+        sharedParams: this._legacyOptions.sharedRenderParams,
+        debugEnabled: false,
+        listenDataReady: false,
+        chunkName: `${this.chunkX}, ${this.chunkZ}`,
+        visibilityFilter: this._legacyOptions.blockVisibilityFilter,
+      })
+      this.renderer.group.position.set(this.originX, 0, this.originZ)
+      this.renderer.group.userData.chunkX = this.chunkX
+      this.renderer.group.userData.chunkZ = this.chunkZ
+      this.renderer.group.userData.originX = this.originX
+      this.renderer.group.userData.originZ = this.originZ
+      this.renderer.group.scale.setScalar(this._sharedRenderParams?.scale ?? 1)
     }
+
+    if (!this.plantRenderer) {
+      this.plantRenderer = new PlantRenderer(this.container, {
+        sharedParams: this._legacyOptions.sharedRenderParams,
+        chunkName: `${this.chunkX}, ${this.chunkZ}`,
+      })
+      this.plantRenderer.group.position.set(this.originX, 0, this.originZ)
+      this.plantRenderer.group.scale.setScalar(this._sharedRenderParams?.scale ?? 1)
+    }
+
+    this._createWaterMesh()
   }
 
   _createWaterMesh() {
-    if (this._schematicOnlyMode) {
+    if (this._schematicOnlyMode || !this.renderer || this.waterMesh) {
       return
     }
 
@@ -170,10 +217,21 @@ export default class TerrainChunk {
 
     if (this._schematicOnlyMode) {
       this._disposeWaterMesh()
+      if (this.plantRenderer) {
+        this.plantRenderer.dispose()
+        this.plantRenderer = null
+      }
+      if (this.renderer) {
+        this.renderer.dispose()
+        this.renderer = null
+      }
       return
     }
 
-    this._createWaterMesh()
+    this._ensureLegacySystems()
+    if (this.state === 'dataReady' || this.state === 'meshReady') {
+      this.buildMesh()
+    }
   }
 
   _disposeWaterMesh() {
@@ -192,7 +250,12 @@ export default class TerrainChunk {
     if (this.state !== 'init')
       return false
 
-    this.generator.generate()
+    if (this.generator) {
+      this.generator.generate()
+    }
+    else {
+      this.container.clear()
+    }
     this.state = 'dataReady'
     return true
   }
@@ -201,9 +264,13 @@ export default class TerrainChunk {
     if (this.state === 'disposed')
       return
 
-    this.generator.updateParams(params)
-
-    this.generator.generate()
+    if (this.generator) {
+      this.generator.updateParams(params)
+      this.generator.generate()
+    }
+    else {
+      this.container.clear()
+    }
     this.state = 'dataReady'
 
     this.buildMesh()
@@ -220,9 +287,14 @@ export default class TerrainChunk {
     if (this.state !== 'dataReady')
       return false
 
+    if (this._schematicOnlyMode || !this.renderer) {
+      this.state = 'meshReady'
+      return true
+    }
+
     this.renderer._rebuildFromContainer()
     // 构建植物 mesh
-    this.plantRenderer.build(this.generator.plantData)
+    this.plantRenderer?.build?.(this.generator?.plantData || [])
     this.state = 'meshReady'
     return true
   }

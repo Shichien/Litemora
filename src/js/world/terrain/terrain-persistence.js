@@ -8,9 +8,7 @@ export default class TerrainPersistence {
   constructor(options = {}) {
     this.worldName = options.worldName || 'default'
     this.useIndexedDB = options.useIndexedDB ?? false
-    this.worldState = {
-      schematicOnlyMode: false,
-    }
+    this.worldState = this._normalizeWorldState()
 
     // 每个 chunk 的修改记录：Map<chunkKey, Map<blockKey, blockId>>
     // chunkKey: "x,z"
@@ -20,6 +18,17 @@ export default class TerrainPersistence {
 
     // 加载已保存的修改
     this.load()
+  }
+
+  _normalizeWorldState(worldState = {}) {
+    return {
+      ...(worldState && typeof worldState === 'object' ? worldState : {}),
+      schematicOnlyMode: !!worldState?.schematicOnlyMode,
+      minecraftSchematicLayer:
+        worldState?.minecraftSchematicLayer && typeof worldState.minecraftSchematicLayer === 'object'
+          ? worldState.minecraftSchematicLayer
+          : null,
+    }
   }
 
   _modsStorageKey() {
@@ -113,10 +122,10 @@ export default class TerrainPersistence {
   }
 
   setWorldState(patch = {}) {
-    this.worldState = {
+    this.worldState = this._normalizeWorldState({
       ...this.worldState,
       ...patch,
-    }
+    })
   }
 
   getWorldState() {
@@ -155,12 +164,10 @@ export default class TerrainPersistence {
   }
 
   applySnapshot(snapshot = {}, { persist = true } = {}) {
-    const worldState = snapshot?.worldState || {}
+    const worldState = this._normalizeWorldState(snapshot?.worldState || {})
     const modifications = snapshot?.modifications || {}
 
-    this.worldState = {
-      schematicOnlyMode: !!worldState.schematicOnlyMode,
-    }
+    this.worldState = worldState
     this.deserialize(modifications)
 
     if (persist) {
@@ -216,9 +223,7 @@ export default class TerrainPersistence {
       const worldStateRaw = localStorage.getItem(this._stateStorageKey())
       if (worldStateRaw) {
         const parsedState = JSON.parse(worldStateRaw)
-        this.worldState = {
-          schematicOnlyMode: !!parsedState?.schematicOnlyMode,
-        }
+        this.worldState = this._normalizeWorldState(parsedState)
       }
     }
     catch (error) {
@@ -228,9 +233,7 @@ export default class TerrainPersistence {
 
   clearAllPersistedData() {
     this.modifications.clear()
-    this.worldState = {
-      schematicOnlyMode: false,
-    }
+    this.worldState = this._normalizeWorldState()
 
     try {
       localStorage.removeItem(this._modsStorageKey())
