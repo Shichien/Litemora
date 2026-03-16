@@ -5,6 +5,13 @@ import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
 
+const SETTINGS_MOUSE_SENSITIVITY_BASE = 0.03
+const FIRST_PERSON_MOUSE_SENSITIVITY_RATIO = 0.002 / SETTINGS_MOUSE_SENSITIVITY_BASE
+
+function dampScalar(current, target, lambda, dt) {
+  return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt))
+}
+
 export default class Camera {
   constructor() {
     this.experience = new Experience()
@@ -15,17 +22,14 @@ export default class Camera {
     this.debugActive = this.experience.debug.active
     this.time = this.experience.time
 
-    // Rig Reference
     this.rig = null
-
-    // 相机可视化助手
     this.cameraHelper = null
     this.cameraHelperVisible = false
 
-    // 视角模式枚举（仅保留第三人称与鸟瞰）
     this.cameraModes = {
       FIRST_PERSON: 'first-person',
-      THIRD_PERSON: 'third-person',
+      THIRD_PERSON_BACK: 'third-person-back',
+      THIRD_PERSON_FRONT: 'third-person-front',
       BIRD_PERSPECTIVE: 'bird-perspective',
     }
     this.currentMode = null
@@ -34,33 +38,38 @@ export default class Camera {
 
     this.position = new THREE.Vector3(0, 0, 0)
     this.target = new THREE.Vector3(0, 0, 0)
-
-    // 内部状态
-    this._adaptiveY = null
     this._terrainInfo = this._getTerrainInfo()
     this._topViewConfig = {
-      birdDistanceRatio: 1.6, // 鸟瞰距离 = 半径 * ratio
-      birdHeightRatio: 1.2, // 鸟瞰高度 = 半径 * ratio
+      birdDistanceRatio: 1.6,
+      birdHeightRatio: 1.2,
     }
-    this._modeLabel = { current: '第三人称' }
+    this._modeLabel = { current: '第一人称' }
 
-    // 地形自适应配置
-    this.terrainAdapt = {
-      enabled: true,
-      clearance: 1.5, // 期望离地净空
-      smoothSpeed: 0.09, // 纵向平滑
-      maxRaise: 6.0, // 单帧相对基础位置最大抬升
-    }
+    this.gameplayFov = 55
+    this.baseGameplayFov = 55
+    this.currentGameplayFov = 55
+    this.sprintFovMultiplier = 1.1
+    this.sprintFovSmoothing = 10
+    this.gameplayPitch = 0
+    this.gameplayPitchTarget = 0
+    this.gameplayPitchMin = -Math.PI * 0.48
+    this.gameplayPitchMax = Math.PI * 0.48
+    this.gameplayPitchSmoothing = 24
+    this.gameplayMouseSensitivity = 0.002
+    this.thirdPersonDistance = 4
+    this.thirdPersonFocusDistance = 16
+    this._lookDirection = new THREE.Vector3(0, 0, -1)
+    this._lookTarget = new THREE.Vector3()
+    this._headPosition = new THREE.Vector3()
+    this._desiredCameraPosition = new THREE.Vector3()
+    this._clippedCameraPosition = new THREE.Vector3()
+    this._segmentDirection = new THREE.Vector3()
+    this._samplePoint = new THREE.Vector3()
 
-    // 内部缓存
-    // this._raycaster = new THREE.Raycaster() // 已移除遮挡避让
-
-    // 初始化相机与控制器
     this.setInstances()
     this._createCameraHelper()
     this.setControls()
-    // 默认进入第三人称，保证跟随逻辑与镜头震动生效
-    this.switchMode(this.cameraModes.THIRD_PERSON)
+    this.switchMode(this.cameraModes.FIRST_PERSON)
     this.setDebug()
 
     emitter.on('input:toggle_camera_side', () => {
@@ -70,12 +79,7 @@ export default class Camera {
       if (!this.allowPerspectiveToggle) {
         return
       }
-      if (this.currentMode === this.cameraModes.FIRST_PERSON) {
-        this.switchMode(this.cameraModes.THIRD_PERSON)
-      }
-      else {
-        this.switchMode(this.cameraModes.FIRST_PERSON)
-      }
+      this._cycleGameplayPerspective()
     })
     emitter.on('ui:control-permissions-changed', (payload = {}) => {
       if (payload.allowPerspectiveToggle !== undefined) {
@@ -88,28 +92,62 @@ export default class Camera {
         this._applyTopViewPlacement()
       }
     })
+    emitter.on('input:mouse_move', ({ movementY }) => {
+      if (this.currentMode === this.cameraModes.BIRD_PERSPECTIVE) {
+        return
+      }
+
+      this.gameplayPitchTarget = THREE.MathUtils.clamp(
+        this.gameplayPitchTarget - movementY * this.gameplayMouseSensitivity,
+        this.gameplayPitchMin,
+        this.gameplayPitchMax,
+      )
+    })
+    emitter.on('settings:mouse-sensitivity-changed', (value) => {
+      const numericValue = Number(value)
+      if (!Number.isFinite(numericValue)) {
+        return
+      }
+
+      this.gameplayMouseSensitivity = Math.max(
+        0.0001,
+        numericValue * FIRST_PERSON_MOUSE_SENSITIVITY_RATIO,
+      )
+    })
+    emitter.on('settings:camera-rig-changed', ({ fov } = {}) => {
+      if (fov?.baseFov !== undefined) {
+        const nextFov = Number(fov.baseFov)
+        if (Number.isFinite(nextFov)) {
+          this.baseGameplayFov = THREE.MathUtils.clamp(nextFov, 30, 120)
+          this.gameplayFov = this.baseGameplayFov
+          this.currentGameplayFov = this.baseGameplayFov
+        }
+      }
+    })
+    emitter.on('pointer:unlocked', () => {
+      this.gameplayPitchTarget = this.gameplayPitch
+    })
   }
 
   attachRig(rig) {
     this.rig = rig
-    if (this.debugActive && this.debugFolder && this.rig) {
+    if (this.debugActive && this.debugFolder && this.rig?.setDebug) {
       this.rig.setDebug(this.debugFolder)
     }
   }
 
   toggleSide() {
-    // 仅在第三人称模式下切换左右
-    if (this.currentMode !== this.cameraModes.THIRD_PERSON || !this.rig)
-      return
-
-    this.rig.toggleSide()
+    if (this.currentMode === this.cameraModes.THIRD_PERSON_BACK) {
+      this.switchMode(this.cameraModes.THIRD_PERSON_FRONT)
+    }
+    else if (this.currentMode === this.cameraModes.THIRD_PERSON_FRONT) {
+      this.switchMode(this.cameraModes.THIRD_PERSON_BACK)
+    }
   }
 
   setInstances() {
-    // 透视相机（用于第三人称与鸟瞰透视）
-    // Initial FOV (will be updated by Rig)
     this.perspectiveCamera = new THREE.PerspectiveCamera(
-      55,
+      this.gameplayFov,
       this.sizes.width / this.sizes.height,
       0.1,
       512,
@@ -117,7 +155,6 @@ export default class Camera {
     this.perspectiveCamera.position.copy(this.position)
     this.perspectiveCamera.lookAt(this.target)
 
-    // 默认使用透视相机
     this.instance = this.perspectiveCamera
     this.scene.add(this.perspectiveCamera)
   }
@@ -130,60 +167,43 @@ export default class Camera {
       this.trackballControls.dispose()
     }
 
-    // OrbitControls 设置（默认绑定当前相机）
     this.orbitControls = new OrbitControls(this.instance, this.canvas)
     this.orbitControls.enableDamping = true
     this.orbitControls.enableZoom = true
     this.orbitControls.enablePan = false
-    this.orbitControls.enabled = false // 第三人称默认禁用
+    this.orbitControls.enabled = false
     this.orbitControls.target.copy(this.target)
-
-    // 约束
     this.orbitControls.maxPolarAngle = Math.PI / 2 - 0.05
     this.orbitControls.minDistance = 5
 
-    // TrackballControls 设置（仅用于缩放，不允许旋转）
     this.trackballControls = new TrackballControls(this.instance, this.canvas)
     this.trackballControls.noRotate = true
     this.trackballControls.noPan = true
     this.trackballControls.noZoom = false
     this.trackballControls.zoomSpeed = 1
-    this.trackballControls.enabled = false // 默认禁用
-
-    // 同步两个控制器的目标点
+    this.trackballControls.enabled = false
     this.trackballControls.target.copy(this.target)
   }
 
-  /**
-   * 切换相机模式
-   * @param {string} mode - 视角模式
-   */
   switchMode(mode) {
-    if (!Object.values(this.cameraModes).includes(mode) || mode === this.currentMode)
+    if (!Object.values(this.cameraModes).includes(mode) || mode === this.currentMode) {
       return
+    }
 
     this.previousMode = this.currentMode
     this.currentMode = mode
-
-    // 根据模式选择相机实例（仅透视相机）
     this.instance = this.perspectiveCamera
-    // FOV 重置将由 Rig Update 处理（第三人称模式）
-    // 鸟瞰模式没有动态 FOV，切换回第三人称时 Rig 会继续更新 FOV
-
+    this.instance.fov = this.currentGameplayFov
     this.instance.updateProjectionMatrix()
-
-    // 重新挂载控制器到当前相机
     this.setControls()
 
-    if (mode === this.cameraModes.FIRST_PERSON || mode === this.cameraModes.THIRD_PERSON) {
-      // 第三人称跟随：禁用 Orbit，使用自定义逻辑
-      this.orbitControls.enabled = false
-      this.trackballControls.enabled = false
-    }
-    else if (mode === this.cameraModes.BIRD_PERSPECTIVE) {
-      // 鸟瞰透视：启用 Orbit，允许旋转/缩放
+    if (mode === this.cameraModes.BIRD_PERSPECTIVE) {
       this._configureBirdViewOrbit()
       this._applyTopViewPlacement()
+    }
+    else {
+      this.orbitControls.enabled = false
+      this.trackballControls.enabled = false
     }
 
     this._modeLabel.current = this._translateMode(mode)
@@ -191,23 +211,34 @@ export default class Camera {
       this._modeBinding.refresh()
     }
 
-    // 切换相机后重建可视化助手
     this._createCameraHelper()
-
     this._notifyRenderer()
-    emitter.emit('camera:perspective-changed', {
+
+    const payload = {
       mode,
       firstPerson: mode === this.cameraModes.FIRST_PERSON,
-    })
-    emitter.emit('hud:camera-perspective-changed', {
-      mode,
-      firstPerson: mode === this.cameraModes.FIRST_PERSON,
-    })
+      thirdPerson: mode === this.cameraModes.THIRD_PERSON_BACK || mode === this.cameraModes.THIRD_PERSON_FRONT,
+      thirdPersonFront: mode === this.cameraModes.THIRD_PERSON_FRONT,
+      thirdPersonBack: mode === this.cameraModes.THIRD_PERSON_BACK,
+    }
+    emitter.emit('camera:perspective-changed', payload)
+    emitter.emit('hud:camera-perspective-changed', payload)
   }
 
-  /**
-   * 鸟瞰模式的 Orbit 配置
-   */
+  _cycleGameplayPerspective() {
+    if (this.currentMode === this.cameraModes.FIRST_PERSON) {
+      this.switchMode(this.cameraModes.THIRD_PERSON_BACK)
+      return
+    }
+
+    if (this.currentMode === this.cameraModes.THIRD_PERSON_BACK) {
+      this.switchMode(this.cameraModes.THIRD_PERSON_FRONT)
+      return
+    }
+
+    this.switchMode(this.cameraModes.FIRST_PERSON)
+  }
+
   _configureBirdViewOrbit() {
     const info = this._terrainInfo
     const radius = info?.radius || 80
@@ -225,9 +256,6 @@ export default class Camera {
     this.trackballControls.enabled = false
   }
 
-  /**
-   * 根据地形信息设置鸟瞰透视的位置
-   */
   _applyTopViewPlacement() {
     const info = this._terrainInfo
     const center = info?.center || new THREE.Vector3(0, 0, 0)
@@ -241,15 +269,12 @@ export default class Camera {
     this.orbitControls.target.copy(center)
   }
 
-  /**
-   * 获取地形信息：优先使用渲染器的真实包围信息
-   */
   _getTerrainInfo() {
     const terrainRenderer = this.experience.world?.terrainRenderer
     if (terrainRenderer?.getBoundingInfo) {
       return terrainRenderer.getBoundingInfo()
     }
-    // 兜底默认尺寸
+
     return {
       center: new THREE.Vector3(0, 0, 0),
       width: 128,
@@ -259,21 +284,18 @@ export default class Camera {
     }
   }
 
-  /**
-   * 绑定渲染器（用于切换相机时通知 RenderPass）
-   */
   attachRenderer(renderer) {
     this.rendererRef = renderer
     this._notifyRenderer()
   }
 
   _createCameraHelper() {
-    // 释放旧助手
     if (this.cameraHelper) {
       this.scene.remove(this.cameraHelper)
       this.cameraHelper.geometry?.dispose?.()
       this.cameraHelper.material?.dispose?.()
     }
+
     this.cameraHelper = new THREE.CameraHelper(this.instance)
     this.cameraHelper.visible = this.cameraHelperVisible
     this.scene.add(this.cameraHelper)
@@ -289,107 +311,68 @@ export default class Camera {
     if (mode === this.cameraModes.FIRST_PERSON) {
       return '第一人称'
     }
-    if (mode === this.cameraModes.BIRD_PERSPECTIVE) {
-      return '鸟瞰透视'
+    if (mode === this.cameraModes.THIRD_PERSON_BACK) {
+      return '第三人称后视'
     }
-    return '第三人称'
+    if (mode === this.cameraModes.THIRD_PERSON_FRONT) {
+      return '第三人称前视'
+    }
+    return '鸟瞰透视'
   }
 
-  // #region
   setDebug() {
-    if (this.debugActive) {
-      this.debugFolder = this.debug.ui.addFolder({
-        title: 'Camera',
-        expanded: false,
-      })
-
-      // ===== 视角切换 =====
-      const modeFolder = this.debugFolder.addFolder({
-        title: '视角切换',
-        expanded: true,
-      })
-
-      this._modeBinding = modeFolder.addBinding(this._modeLabel, 'current', {
-        label: '当前模式',
-        readonly: true,
-      })
-
-      modeFolder.addButton({
-        title: '第一人称',
-      }).on('click', () => {
-        this.switchMode(this.cameraModes.FIRST_PERSON)
-      })
-
-      modeFolder.addButton({
-        title: '第三人称',
-      }).on('click', () => {
-        this.switchMode(this.cameraModes.THIRD_PERSON)
-      })
-
-      modeFolder.addButton({
-        title: '鸟瞰透视',
-      }).on('click', () => {
-        this.switchMode(this.cameraModes.BIRD_PERSPECTIVE)
-      })
-
-      // ===== Rig Debug (Follow, Tracking) =====
-      // 这里的 Debug UI 将在 attachRig 中由 Rig 注入
-
-      // ===== 地形自适应高度 =====
-      const terrainFolder = this.debugFolder.addFolder({
-        title: '地形自适应',
-        expanded: true,
-      })
-
-      terrainFolder.addBinding(this.terrainAdapt, 'enabled', {
-        label: '启用自适应',
-      })
-
-      terrainFolder.addBinding(this.terrainAdapt, 'clearance', {
-        label: '离地净空',
-        min: 0.2,
-        max: 5,
-        step: 0.1,
-      })
-
-      terrainFolder.addBinding(this.terrainAdapt, 'smoothSpeed', {
-        label: '纵向平滑',
-        min: 0.05,
-        max: 0.6,
-        step: 0.01,
-      })
-
-      terrainFolder.addBinding(this.terrainAdapt, 'maxRaise', {
-        label: '单帧最大抬升',
-        min: 0.5,
-        max: 10,
-        step: 0.1,
-      })
-
-      // 切换控制器
-      const controlsToggle = {
-        useOrbitControls: false,
-      }
-      this.debugFolder.addBinding(controlsToggle, 'useOrbitControls', {
-        label: '使用 Orbit Controls',
-      }).on('change', (ev) => {
-        this.orbitControls.enabled = ev.value
-        this.trackballControls.enabled = false
-      })
-
-      // 相机视锥助手
-      this.debugFolder.addBinding(this, 'cameraHelperVisible', {
-        label: '显示相机助手',
-      }).on('change', (ev) => {
-        if (this.cameraHelper) {
-          this.cameraHelper.visible = ev.value
-          this.cameraHelper.update()
-        }
-      })
+    if (!this.debugActive) {
+      return
     }
-  }
 
-  // #endregion
+    this.debugFolder = this.debug.ui.addFolder({
+      title: 'Camera',
+      expanded: false,
+    })
+
+    const modeFolder = this.debugFolder.addFolder({
+      title: '视角切换',
+      expanded: true,
+    })
+
+    this._modeBinding = modeFolder.addBinding(this._modeLabel, 'current', {
+      label: '当前模式',
+      readonly: true,
+    })
+
+    modeFolder.addButton({
+      title: '第一人称',
+    }).on('click', () => {
+      this.switchMode(this.cameraModes.FIRST_PERSON)
+    })
+
+    modeFolder.addButton({
+      title: '第三人称后视',
+    }).on('click', () => {
+      this.switchMode(this.cameraModes.THIRD_PERSON_BACK)
+    })
+
+    modeFolder.addButton({
+      title: '第三人称前视',
+    }).on('click', () => {
+      this.switchMode(this.cameraModes.THIRD_PERSON_FRONT)
+    })
+
+    modeFolder.addButton({
+      title: '鸟瞰透视',
+    }).on('click', () => {
+      this.switchMode(this.cameraModes.BIRD_PERSPECTIVE)
+    })
+
+    this.debugFolder.addBinding(this, 'cameraHelperVisible', {
+      label: '显示相机助手',
+    }).on('change', (ev) => {
+      if (this.cameraHelper) {
+        this.cameraHelper.visible = ev.value
+        this.cameraHelper.update()
+      }
+    })
+  }
 
   updateCamera() {
     this.instance.position.copy(this.position)
@@ -410,175 +393,159 @@ export default class Camera {
   }
 
   update() {
-    if (this.currentMode === this.cameraModes.FIRST_PERSON) {
-      if (!this.rig || !this.rig.target) {
-        return
-      }
-
-      const output = this.rig.update()
-      if (!output) {
-        return
-      }
-
-      const playerPos = this.rig.target.getPosition()
-      this.instance.position.set(playerPos.x, playerPos.y + 1.62, playerPos.z)
-      this.instance.lookAt(output.targetPos)
-
-      if (this.instance.fov !== output.fov) {
-        this.instance.fov = output.fov
-        this.instance.updateProjectionMatrix()
-      }
-
-      this.orbitControls.target.copy(output.targetPos)
-      this.trackballControls.target.copy(output.targetPos)
-      this.trackballControls.update()
-      return
-    }
-
-    // 鸟瞰透视：Orbit 控制视角
     if (this.currentMode === this.cameraModes.BIRD_PERSPECTIVE) {
       this.orbitControls.update()
       this.trackballControls.update()
       return
     }
 
-    // 如果第三人称下主动开启 Orbit（调试时），优先使用 Orbit
-    if (this.orbitControls.enabled) {
-      this.orbitControls.update()
+    const player = this.rig?.target
+    if (!player) {
       return
     }
 
-    // 第三人称跟随逻辑 + Tracking Shot
-    if (this.rig) {
-      const output = this.rig.update()
-      if (!output) {
-        return
-      }
-
-      // ===== 位置处理 =====
-      // 1. 获取 Rig 计算的基础位置 (已包含位置平滑)
-      const basePos = output.cameraPos
-
-      // 2. 地形自适应 (在基础位置上做纵向调整)
-      const terrainAdjustedPos = this._applyTerrainAdaptation(basePos)
-
-      // 3. 叠加 Bobbing 偏移 (最后叠加)
-      this.instance.position.copy(terrainAdjustedPos).add(output.bobbingOffset)
-
-      // ===== 朝向处理 =====
-      // 更新相机朝向 (LookAt 已经由 Rig 平滑处理)
-      this.instance.lookAt(output.targetPos)
-
-      // 应用 Roll 倾斜（需要在 lookAt 之后）
-      if (output.bobbingRoll !== 0) {
-        this.instance.rotateZ(output.bobbingRoll)
-      }
-
-      // ===== FOV 处理 =====
-      if (this.instance.fov !== output.fov) {
-        this.instance.fov = output.fov
-        this.instance.updateProjectionMatrix()
-      }
-
-      // 更新控制器目标（如果需要切换到OrbitControls）
-      this.orbitControls.target.copy(output.targetPos)
-      this.trackballControls.target.copy(output.targetPos)
-    }
-
-    // 更新TrackballControls（即使禁用也要更新以保持同步）
-    this.trackballControls.update()
-  }
-
-  /**
-   * 地形自适应：根据地面高度抬升相机，保持净空
-   * 优化：50ms间隔采样 + 位置变化阈值，减少查询次数
-   * @param {THREE.Vector3} desiredCameraPos - 錨點計算出的理想相機位置
-   */
-  _applyTerrainAdaptation(desiredCameraPos) {
-    if (!this.terrainAdapt.enabled || (this.rig && this.rig.isInCave)) {
-      this._adaptiveY = desiredCameraPos.y
-      return desiredCameraPos
-    }
-
-    // 初始化缓存
-    if (this._terrainCache === undefined) {
-      this._terrainCache = {
-        ground: null,
-        lastSampleTime: 0,
-        lastSamplePos: new THREE.Vector3(),
-      }
-    }
-
-    // 检查是否可以使用缓存：50ms内且位置变化<0.5单位
-    const timeGap = this.experience.time.elapsed - this._terrainCache.lastSampleTime
-    const posDelta = desiredCameraPos.distanceTo(this._terrainCache.lastSamplePos)
-    const canUseCache = timeGap < 50 && posDelta < 0.5 && this._terrainCache.ground !== null
-
-    let ground
-    if (canUseCache) {
-      // 使用缓存的地面高度
-      ground = this._terrainCache.ground
-    }
-    else {
-      // 重新采样地面高度
-      ground = this._sampleGroundHeight(desiredCameraPos.x, desiredCameraPos.z)
-      this._terrainCache.ground = ground
-      this._terrainCache.lastSampleTime = this.experience.time.elapsed
-      this._terrainCache.lastSamplePos.copy(desiredCameraPos)
-    }
-
-    if (ground === null) {
-      this._adaptiveY = desiredCameraPos.y
-      return desiredCameraPos
-    }
-
-    if (this._adaptiveY === null) {
-      this._adaptiveY = desiredCameraPos.y
-    }
-
-    // 期望的最低高度：地面 + 净空
-    const minY = ground + this.terrainAdapt.clearance
-    // 不降低原有高度，只在需要时抬升，并限制单帧最大抬升
-    const targetY = Math.min(
-      Math.max(desiredCameraPos.y, minY),
-      desiredCameraPos.y + this.terrainAdapt.maxRaise,
+    const dt = this.time.delta / 1000
+    this.gameplayPitch = dampScalar(
+      this.gameplayPitch,
+      this.gameplayPitchTarget,
+      this.gameplayPitchSmoothing,
+      dt,
     )
 
-    this._adaptiveY += (targetY - this._adaptiveY) * this.terrainAdapt.smoothSpeed
+    const playerPos = player.getPosition()
+    const eyeHeight = player.getEyeHeight?.() ?? 1.62
+    const facingAngle = player.getFacingAngle()
+    const isGameplayPerspective = this.currentMode === this.cameraModes.FIRST_PERSON
+      || this.currentMode === this.cameraModes.THIRD_PERSON_BACK
+      || this.currentMode === this.cameraModes.THIRD_PERSON_FRONT
+    const shouldUseSprintFov = isGameplayPerspective
+      && (player.isSprinting?.() || player.getHorizontalSpeed?.() >= 5.55)
+    const targetGameplayFov = shouldUseSprintFov
+      ? this.baseGameplayFov * this.sprintFovMultiplier
+      : this.baseGameplayFov
 
-    const adjusted = desiredCameraPos.clone()
-    adjusted.y = this._adaptiveY
-    return adjusted
-  }
+    this.currentGameplayFov = dampScalar(
+      this.currentGameplayFov,
+      targetGameplayFov,
+      this.sprintFovSmoothing,
+      dt,
+    )
 
-  /**
-   * 采样地面高度：从容器数据中查找最高非空方块
-   */
-  _sampleGroundHeight(x, z) {
-    // 无限地形（chunk streaming）下，通过 ChunkManager（experience.terrainDataManager）采样
-    const provider = this.experience.terrainDataManager
+    this._headPosition.set(
+      playerPos.x,
+      playerPos.y + eyeHeight,
+      playerPos.z,
+    )
 
-    const scale = provider?.renderParams?.scale ?? 1
-    const heightScale = provider?.renderParams?.heightScale ?? 1
+    const horizontalFactor = Math.cos(this.gameplayPitch)
+    this._lookDirection.set(
+      -Math.sin(facingAngle) * horizontalFactor,
+      Math.sin(this.gameplayPitch),
+      -Math.cos(facingAngle) * horizontalFactor,
+    ).normalize()
 
-    // 将世界坐标映射到“方块索引空间”
-    const ix = Math.floor(x / scale)
-    const iz = Math.floor(z / scale)
+    this.instance.fov = this.currentGameplayFov
+    this.instance.updateProjectionMatrix()
 
-    if (provider?.getTopSolidYWorld) {
-      const topY = provider.getTopSolidYWorld(ix, iz)
-      if (topY === null) {
-        return null
-      }
-      // 方块顶部世界高度 = (y + 1) * heightScale * scale
-      return (topY + 1) * heightScale * scale
+    if (this.currentMode === this.cameraModes.FIRST_PERSON) {
+      this.instance.position.copy(this._headPosition)
+      this._lookTarget.copy(this._headPosition).add(this._lookDirection)
+      this.instance.lookAt(this._lookTarget)
+      this.orbitControls.target.copy(this._lookTarget)
+      this.trackballControls.target.copy(this._lookTarget)
+      return
     }
 
-    return null
+    const distanceSign = this.currentMode === this.cameraModes.THIRD_PERSON_FRONT ? 1 : -1
+    this._desiredCameraPosition.copy(this._headPosition).addScaledVector(
+      this._lookDirection,
+      this.thirdPersonDistance * distanceSign,
+    )
+
+    this._resolveThirdPersonCameraPosition(this._headPosition, this._desiredCameraPosition, this._clippedCameraPosition)
+    this.instance.position.copy(this._clippedCameraPosition)
+
+    if (this.currentMode === this.cameraModes.THIRD_PERSON_FRONT) {
+      this._lookTarget.copy(this._headPosition)
+    }
+    else {
+      this._lookTarget.copy(this._headPosition).addScaledVector(this._lookDirection, this.thirdPersonFocusDistance)
+    }
+
+    this.instance.lookAt(this._lookTarget)
+    this.orbitControls.target.copy(this._lookTarget)
+    this.trackballControls.target.copy(this._lookTarget)
+  }
+
+  _resolveThirdPersonCameraPosition(origin, desired, target) {
+    const provider = this.experience.terrainDataManager
+    if (!provider?.getCollisionBoxesWorld) {
+      target.copy(desired)
+      return target
+    }
+
+    this._segmentDirection.subVectors(desired, origin)
+    const distance = this._segmentDirection.length()
+
+    if (distance <= 1e-4) {
+      target.copy(origin)
+      return target
+    }
+
+    this._segmentDirection.normalize()
+
+    const stepLength = 0.15
+    let lastClearDistance = 0
+
+    for (let sampleDistance = stepLength; sampleDistance <= distance; sampleDistance += stepLength) {
+      this._samplePoint.copy(origin).addScaledVector(this._segmentDirection, sampleDistance)
+      if (this._isCameraPointBlocked(this._samplePoint)) {
+        const clippedDistance = Math.max(0, lastClearDistance - 0.08)
+        target.copy(origin).addScaledVector(this._segmentDirection, clippedDistance)
+        return target
+      }
+      lastClearDistance = sampleDistance
+    }
+
+    target.copy(desired)
+    return target
+  }
+
+  _isCameraPointBlocked(point) {
+    const provider = this.experience.terrainDataManager
+    if (!provider?.getCollisionBoxesWorld) {
+      return false
+    }
+
+    const centerX = Math.floor(point.x + 0.5)
+    const centerY = Math.floor(point.y + 0.5)
+    const centerZ = Math.floor(point.z + 0.5)
+
+    for (let worldX = centerX - 1; worldX <= centerX + 1; worldX++) {
+      for (let worldY = centerY - 1; worldY <= centerY + 1; worldY++) {
+        for (let worldZ = centerZ - 1; worldZ <= centerZ + 1; worldZ++) {
+          const boxes = provider.getCollisionBoxesWorld(worldX, worldY, worldZ)
+          if (!Array.isArray(boxes) || !boxes.length) {
+            continue
+          }
+
+          for (const box of boxes) {
+            if (
+              point.x >= box.minX && point.x <= box.maxX
+              && point.y >= box.minY && point.y <= box.maxY
+              && point.z >= box.minZ && point.z <= box.maxZ
+            ) {
+              return true
+            }
+          }
+        }
+      }
+    }
+
+    return false
   }
 
   destroy() {
-    // Dispose controls
     if (this.orbitControls) {
       this.orbitControls.dispose()
       this.orbitControls = null
@@ -588,7 +555,6 @@ export default class Camera {
       this.trackballControls = null
     }
 
-    // Dispose camera helper
     if (this.cameraHelper) {
       this.scene.remove(this.cameraHelper)
       this.cameraHelper.geometry?.dispose()
@@ -596,12 +562,10 @@ export default class Camera {
       this.cameraHelper = null
     }
 
-    // Remove camera from scene
     if (this.perspectiveCamera) {
       this.scene.remove(this.perspectiveCamera)
     }
 
-    // Clear references
     this.rig = null
     this.rendererRef = null
   }

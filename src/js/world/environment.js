@@ -216,15 +216,28 @@ export default class Environment {
   }
 
   update() {
+    // 先更新昼夜参数，再按玩家位置应用到真实光源，避免天空与光照错一帧。
+    if (this.dayCycle) {
+      this.dayCycle.update(this)
+    }
+
     const player = this.experience.world.player
+    const celestialOffsets = this.dayCycle?.getCelestialOffsets?.() || null
+    const sunOffset = celestialOffsets?.sun || new THREE.Vector3(
+      this.params.sunPos.x,
+      this.params.sunPos.y,
+      this.params.sunPos.z,
+    )
+    const moonOffset = celestialOffsets?.moon || null
+
     if (player) {
       const playerPos = player.getPosition()
 
       // 更新 sunLight 位置：玩家位置 + 偏移量
       this.sunLight.position.set(
-        playerPos.x + this.params.sunPos.x,
-        playerPos.y + this.params.sunPos.y,
-        playerPos.z + this.params.sunPos.z,
+        playerPos.x + sunOffset.x,
+        playerPos.y + sunOffset.y,
+        playerPos.z + sunOffset.z,
       )
 
       // 更新 sunLight 目标位置：玩家位置 + 目标偏移量
@@ -234,15 +247,29 @@ export default class Environment {
         playerPos.z + this.params.sunTarget.z,
       )
 
+      if (this.dayCycle?.moonLight && moonOffset) {
+        this.dayCycle.moonLight.position.set(
+          playerPos.x + moonOffset.x,
+          playerPos.y + moonOffset.y,
+          playerPos.z + moonOffset.z,
+        )
+      }
+
       // 实时更新 helper，方便调试观察跟随效果
       if (this.helper.visible) {
         this.helper.update()
       }
     }
-
-    // 更新昼夜循环系统
-    if (this.dayCycle) {
-      this.dayCycle.update(this)
+    else {
+      this.sunLight.position.copy(sunOffset)
+      this.sunLight.target.position.set(
+        this.params.sunTarget.x,
+        this.params.sunTarget.y,
+        this.params.sunTarget.z,
+      )
+      if (this.dayCycle?.moonLight && moonOffset) {
+        this.dayCycle.moonLight.position.copy(moonOffset)
+      }
     }
   }
 

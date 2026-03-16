@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import Experience from '../../experience.js'
-import { blocks } from '../terrain/blocks-config.js'
+
+const EMPTY_BLOCK_ID = 0
 
 /**
  * 玩家胶囊体与方块的碰撞检测/修正
@@ -79,8 +80,14 @@ export default class PlayerCollisionSystem {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
           const block = provider.getBlockWorld(x, y, z)
-          if (block?.id && block.id !== blocks.empty.id) {
-            candidates.push({ x, y, z })
+          const hasCollision = block?.hasCollision ?? (block?.id && block.id !== EMPTY_BLOCK_ID)
+          if (hasCollision) {
+            candidates.push({
+              x,
+              y,
+              z,
+              collisionBoxes: this._buildCollisionBoxesForCandidate(x, y, z, block?.collisionBoxes),
+            })
             if (this.debug.active && this.params.showCandidates) {
               this._addCandidateHelper(x, y, z)
             }
@@ -105,27 +112,35 @@ export default class PlayerCollisionSystem {
     const capsuleParams = { center, halfHeight, radius }
 
     for (const block of candidates) {
-      // 方块中心在整数坐标，边长 1，对应 [-0.5,0.5]
-      const closestPoint = new THREE.Vector3(
-        this._clamp(center.x, block.x - 0.5, block.x + 0.5),
-        this._clamp(center.y, block.y - 0.5, block.y + 0.5),
-        this._clamp(center.z, block.z - 0.5, block.z + 0.5),
-      )
+      const collisionBoxes = Array.isArray(block.collisionBoxes) && block.collisionBoxes.length
+        ? block.collisionBoxes
+        : this._buildCollisionBoxesForCandidate(block.x, block.y, block.z, null)
 
-      const collision = this._capsuleContainsPoint(closestPoint, capsuleParams)
-      if (!collision) {
-        continue
-      }
-      collisions.push({
-        block,
-        contactPoint: closestPoint,
-        normal: collision.normal,
-        overlap: collision.overlap,
-        ground: collision.ground,
-      })
+      for (const collisionBox of collisionBoxes) {
+        const closestPoint = new THREE.Vector3(
+          this._clamp(center.x, collisionBox.minX, collisionBox.maxX),
+          this._clamp(center.y, collisionBox.minY, collisionBox.maxY),
+          this._clamp(center.z, collisionBox.minZ, collisionBox.maxZ),
+        )
 
-      if (this.debug.active && this.params.showContacts) {
-        this._addContactHelper(closestPoint)
+        const collision = this._capsuleContainsPoint(closestPoint, capsuleParams)
+        if (!collision) {
+          continue
+        }
+
+        collisions.push({
+          block,
+          contactPoint: closestPoint,
+          normal: collision.normal,
+          overlap: collision.overlap,
+          ground: collision.ground,
+          collisionBox,
+          isTopEdgeContact: this._isTopEdgeContact(closestPoint, collisionBox),
+        })
+
+        if (this.debug.active && this.params.showContacts) {
+          this._addContactHelper(closestPoint)
+        }
       }
     }
 
@@ -144,13 +159,13 @@ export default class PlayerCollisionSystem {
    */
   resolveCollisions(collisions, playerState) {
     // 优化：限制最大处理碰撞数，优先处理重叠小的（浅层碰撞优先）
-    const MAX_COLLISIONS = 4
+    const MAX_COLLISIONS = 12
     const limitedCollisions = collisions
       .sort((a, b) => a.overlap - b.overlap)
       .slice(0, MAX_COLLISIONS)
 
     // 优化：限制迭代次数，防止复杂场景下的性能问题
-    const MAX_ITERATIONS = 3
+    const MAX_ITERATIONS = 4
     const capsuleParams = {
       center: playerState.center,
       halfHeight: playerState.halfHeight,
@@ -163,24 +178,63 @@ export default class PlayerCollisionSystem {
 
       for (const collision of limitedCollisions) {
         // 位置调整后需要重新确认是否仍在胶囊内
-        if (!this._capsuleContainsPoint(collision.contactPoint, capsuleParams)) {
+        const resolvedCollision = this._capsuleContainsPoint(collision.contactPoint, capsuleParams)
+        if (!resolvedCollision) {
           continue
         }
 
+        const responseNormal = resolvedCollision.normal.clone()
+        let treatAsGround = resolvedCollision.ground
+
+        if (collision.isTopEdgeContact) {
+          const topSurfaceY = collision.collisionBox?.maxY
+          const isBelowOrLevelWithTop = Number.isFinite(topSurfaceY)
+            ? playerState.basePosition.y <= topSurfaceY + 0.08
+            : false
+          const isAscendingIntoHigherLedge = Number.isFinite(topSurfaceY)
+            && playerState.worldVelocity.y > 0.12
+            && topSurfaceY > playerState.basePosition.y + 0.15
+
+          if (isBelowOrLevelWithTop && !isAscendingIntoHigherLedge) {
+            const horizontalLengthSq = (responseNormal.x * responseNormal.x) + (responseNormal.z * responseNormal.z)
+            if (horizontalLengthSq > 1e-6) {
+              const horizontalLength = Math.sqrt(horizontalLengthSq)
+              responseNormal.set(
+                responseNormal.x / horizontalLength,
+                0,
+                responseNormal.z / horizontalLength,
+              )
+              treatAsGround = false
+            }
+          }
+        }
+
+        if (!treatAsGround && Math.abs(responseNormal.y) < 0.35) {
+          const horizontalLengthSq = (responseNormal.x * responseNormal.x) + (responseNormal.z * responseNormal.z)
+          if (horizontalLengthSq > 1e-6) {
+            const horizontalLength = Math.sqrt(horizontalLengthSq)
+            responseNormal.set(
+              responseNormal.x / horizontalLength,
+              0,
+              responseNormal.z / horizontalLength,
+            )
+          }
+        }
+
         // 推离方块
-        deltaPosition.copy(collision.normal).multiplyScalar(collision.overlap)
+        deltaPosition.copy(responseNormal).multiplyScalar(resolvedCollision.overlap + 1e-4)
         playerState.basePosition.add(deltaPosition)
         playerState.center.add(deltaPosition)
         hasMoved = true
 
         // 速度去掉沿法线分量，避免继续穿透
-        const vn = playerState.worldVelocity.dot(collision.normal)
-        if (vn > 0) {
-          playerState.worldVelocity.addScaledVector(collision.normal, -vn)
+        const vn = playerState.worldVelocity.dot(responseNormal)
+        if (vn < 0) {
+          playerState.worldVelocity.addScaledVector(responseNormal, -vn)
         }
 
         // 地面判定：法线向上即可视为着地
-        if (collision.ground) {
+        if (treatAsGround) {
           playerState.isGrounded = true
           // 防止在地面上继续积累下落速度
           if (playerState.worldVelocity.y < 0) {
@@ -237,6 +291,51 @@ export default class PlayerCollisionSystem {
     const ground = normal.y > 0.5 && bottomProximity <= radius + 0.05
 
     return { normal, overlap, ground }
+  }
+
+  _isTopEdgeContact(point, collisionBox) {
+    if (!point || !collisionBox) {
+      return false
+    }
+
+    const epsilon = 1e-4
+    const touchesTop = Math.abs(point.y - collisionBox.maxY) <= epsilon
+    if (!touchesTop) {
+      return false
+    }
+
+    const touchesSideX = Math.abs(point.x - collisionBox.minX) <= epsilon || Math.abs(point.x - collisionBox.maxX) <= epsilon
+    const touchesSideZ = Math.abs(point.z - collisionBox.minZ) <= epsilon || Math.abs(point.z - collisionBox.maxZ) <= epsilon
+    return touchesSideX || touchesSideZ
+  }
+
+  _buildCollisionBoxesForCandidate(x, y, z, collisionBoxes = null) {
+    if (!Array.isArray(collisionBoxes) || !collisionBoxes.length) {
+      return [{
+        minX: x - 0.5,
+        minY: y - 0.5,
+        minZ: z - 0.5,
+        maxX: x + 0.5,
+        maxY: y + 0.5,
+        maxZ: z + 0.5,
+      }]
+    }
+
+    return collisionBoxes.map((box) => {
+      if (box && typeof box === 'object' && box.minX !== undefined) {
+        return box
+      }
+
+      const [minX, minY, minZ, maxX, maxY, maxZ] = Array.isArray(box) ? box : [0, 0, 0, 1, 1, 1]
+      return {
+        minX: x - 0.5 + Number(minX),
+        minY: y - 0.5 + Number(minY),
+        minZ: z - 0.5 + Number(minZ),
+        maxX: x - 0.5 + Number(maxX),
+        maxY: y - 0.5 + Number(maxY),
+        maxZ: z - 0.5 + Number(maxZ),
+      }
+    })
   }
 
   /**

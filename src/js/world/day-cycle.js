@@ -162,20 +162,17 @@ export default class DayCycle {
     this._lastTime = performance.now()
     this._currentPhase = 'noon'
     this._previousDayCount = 0
+    this._sunOffset = new THREE.Vector3(0, this.params.sunOrbitHeight, 0)
+    this._moonOffset = new THREE.Vector3(0, -this.params.sunOrbitHeight * 0.65, 0)
 
     // HUD 时间更新节流：每 5 分钟游戏时间更新一次 (timeOfDay 精度)
     // 5 分钟 = 5/(24*60) = 1/288 ≈ 0.00347 (timeOfDay 范围 0-1)
     this._hudUpdateInterval = 5 / (24 * 60) // 5 分钟对应 timeOfDay 增量
     this._lastHudTimeOfDay = this.params.timeOfDay // 上次更新 HUD 时的 timeOfDay
 
-    // 加载天空盒贴图
-    this._loadSkyTextures()
-
     // 创建天空球（替代 scene.background）
     this.skyDome = new SkyDome()
-
-    // 初始化天空球贴图
-    this._initSkyDome()
+    this._updateSkybox()
 
     // 创建月光光源
     this._createMoonLight()
@@ -191,34 +188,13 @@ export default class DayCycle {
    */
   _loadSkyTextures() {
     this.skyTextures = {}
-    const phases = ['sunrise', 'morning', 'noon', 'afternoon', 'sunset', 'dusk', 'midnight']
-
-    for (const phase of phases) {
-      const textureName = this.phaseConfig[phase].texture
-      const texture = this.resources.items[textureName]
-      if (texture) {
-        texture.colorSpace = THREE.SRGBColorSpace
-        texture.mapping = THREE.EquirectangularReflectionMapping
-        this.skyTextures[phase] = texture
-      }
-      else {
-        console.warn(`[DayCycle] 未找到天空盒贴图: ${textureName}`)
-      }
-    }
   }
 
   /**
    * 初始化天空球贴图
    */
   _initSkyDome() {
-    const { phase, nextPhase } = this._getPhaseInfo()
-    const currentTex = this.skyTextures[phase]
-    const nextTex = this.skyTextures[nextPhase]
-
-    if (currentTex && nextTex) {
-      this.skyDome.setTextures(currentTex, nextTex)
-      this.skyDome.setMixFactor(0)
-    }
+    this._updateSkybox()
   }
 
   /**
@@ -269,6 +245,26 @@ export default class DayCycle {
     return a + (b - a) * t
   }
 
+  _smoothstep(edge0, edge1, x) {
+    const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1)
+    return t * t * (3 - 2 * t)
+  }
+
+  _getCelestialState() {
+    const orbitAngle = (this.params.timeOfDay - 0.25) * Math.PI * 2
+    const sunHeight = Math.sin(orbitAngle)
+    const daylight = this._smoothstep(-0.14, 0.18, sunHeight)
+    const twilight = (1 - this._smoothstep(0.05, 0.42, Math.abs(sunHeight))) * (1 - daylight * 0.55)
+    const starsStrength = (1 - daylight) * (1 - twilight * 0.8)
+    return {
+      orbitAngle,
+      sunHeight,
+      daylight,
+      twilight,
+      starsStrength,
+    }
+  }
+
   /**
    * 更新太阳位置（弧形轨迹）
    */
@@ -276,92 +272,69 @@ export default class DayCycle {
     if (!environment || !environment.sunLight)
       return
 
-    // 太阳轨迹：从东边升起 (0.22-0.50) 到西边落下 (0.50-0.78)
-    // timeOfDay 0.22 = 日出, 0.50 = 正午, 0.78 = 日落后
-
-    const t = this.params.timeOfDay
     const { sunOrbitRadius, sunOrbitHeight } = this.params
+    const { orbitAngle } = this._getCelestialState()
 
-    // 计算太阳角度 (0.22-0.78 映射到 0-PI)
-    let sunAngle = 0
-    if (t >= 0.22 && t <= 0.78) {
-      // 白天：太阳从东到西
-      sunAngle = ((t - 0.22) / (0.78 - 0.22)) * Math.PI
-    }
-    else {
-      // 夜间：太阳在地平线以下（不渲染）
-      sunAngle = t < 0.22 ? 0 : Math.PI
-    }
+    const sunX = Math.cos(orbitAngle) * sunOrbitRadius
+    const sunY = Math.sin(orbitAngle) * sunOrbitHeight
+    const sunZ = Math.sin(orbitAngle * 0.35) * sunOrbitRadius * 0.2
 
-    // 计算太阳位置
-    const sunX = Math.cos(sunAngle) * sunOrbitRadius
-    const sunY = Math.sin(sunAngle) * sunOrbitHeight
-    const sunZ = 0 // 太阳沿 X-Y 平面移动
-
-    // 更新 Environment 的太阳偏移参数
+    this._sunOffset.set(sunX, sunY, sunZ)
     environment.params.sunPos.x = sunX
-    environment.params.sunPos.y = Math.max(sunY, -20) // 不让太阳完全消失
+    environment.params.sunPos.y = sunY
     environment.params.sunPos.z = sunZ
-
-    // 如果有玩家，位置会在 Environment.update() 中自动跟随
-    environment.updateSunLightPosition()
   }
 
   /**
    * 更新月光（平滑过渡）
    */
   _updateMoonLight() {
-    const t = this.params.timeOfDay
+    const { orbitAngle, daylight, twilight } = this._getCelestialState()
+    const moonFactor = THREE.MathUtils.clamp((1 - daylight) * (1 - twilight * 0.55), 0, 1)
+    const moonOrbitAngle = orbitAngle + Math.PI
+    const moonX = Math.cos(moonOrbitAngle) * this.params.sunOrbitRadius
+    const moonY = Math.sin(moonOrbitAngle) * this.params.sunOrbitHeight * 0.82
+    const moonZ = Math.sin(moonOrbitAngle * 0.35) * this.params.sunOrbitRadius * 0.2
 
-    // 月光强度曲线：
-    // - 白天 (0.28-0.70): 强度 = 0
-    // - 黄昏过渡 (0.70-0.85): 强度从 0 渐变到 max
-    // - 夜间 (0.85-0.22): 强度 = max
-    // - 黎明过渡 (0.22-0.28): 强度从 max 渐变到 0
-    let moonFactor = 0
-
-    if (t >= 0.28 && t <= 0.70) {
-      // 白天：无月光
-      moonFactor = 0
-    }
-    else if (t > 0.70 && t < 0.85) {
-      // 黄昏过渡：月光渐亮
-      const fadeIn = (t - 0.70) / 0.15
-      moonFactor = fadeIn * fadeIn * (3 - 2 * fadeIn) // smoothstep
-    }
-    else if (t >= 0.85 || t < 0.22) {
-      // 深夜：满月光
-      moonFactor = 1
-    }
-    else if (t >= 0.22 && t < 0.28) {
-      // 黎明过渡：月光渐暗
-      const fadeOut = 1 - (t - 0.22) / 0.06
-      moonFactor = fadeOut * fadeOut * (3 - 2 * fadeOut) // smoothstep
-    }
+    this._moonOffset.set(moonX, moonY, moonZ)
 
     this.moonLight.intensity = this.params.moonIntensity * moonFactor
     this.moonLight.color.set(this.params.moonColor)
   }
 
   /**
-   * 更新天空盒（使用 SkyDome 平滑过渡）
+   * 更新天空盒（使用程序化 SkyDome）
    */
   _updateSkybox() {
-    const { phase, progress, nextPhase } = this._getPhaseInfo()
-
-    const currentTex = this.skyTextures[phase]
-    const nextTex = this.skyTextures[nextPhase]
-
-    if (!currentTex || !nextTex || !this.skyDome)
+    if (!this.skyDome)
       return
 
-    // 设置贴图
-    this.skyDome.setTextures(currentTex, nextTex)
+    const { daylight, twilight, starsStrength } = this._getCelestialState()
+    const sunDirection = this._sunOffset.clone().normalize()
+    const moonDirection = this._moonOffset.clone().normalize()
 
-    // 全程 smoothstep 过渡：缓入缓出，更自然的天空变化
-    const mixFactor = progress * progress * (3 - 2 * progress)
+    const horizonDay = this._lerpColor('#dcecff', '#ffb56f', twilight * 0.82)
+    const zenithDay = this._lerpColor('#78b4ff', '#f3a067', twilight * 0.22)
+    const horizonNight = this._lerpColor('#182744', '#4a2f34', twilight * 0.22)
+    const zenithNight = this._lerpColor('#061120', '#0f1523', twilight * 0.08)
 
-    this.skyDome.setMixFactor(mixFactor)
+    this.skyDome.setSkyState({
+      zenithDayColor: `#${zenithDay.getHexString()}`,
+      horizonDayColor: `#${horizonDay.getHexString()}`,
+      zenithNightColor: `#${zenithNight.getHexString()}`,
+      horizonNightColor: `#${horizonNight.getHexString()}`,
+      sunDirection,
+      moonDirection,
+      sunColor: `#${this._lerpColor('#fff7d6', '#ff9f5c', twilight * 0.9).getHexString()}`,
+      moonColor: this.params.moonColor,
+      dayFactor: daylight,
+      twilightFactor: twilight,
+      starsStrength,
+      sunDiscSize: 0.028,
+      sunGlowSize: 0.16,
+      moonDiscSize: 0.022,
+      moonGlowSize: 0.09,
+    })
   }
 
   /**
@@ -371,41 +344,25 @@ export default class DayCycle {
     if (!environment)
       return
 
-    const { phase, progress, nextPhase } = this._getPhaseInfo()
-
-    const currentConfig = this.phaseConfig[phase]
-    const nextConfig = this.phaseConfig[nextPhase]
-
-    if (!currentConfig || !nextConfig)
-      return
-
-    // 延迟过渡曲线：前 70% 保持 current phase，后 30% 快速 smoothstep 过渡到 next phase
-    // 这样光照/雾气会在阶段末期才开始变化，更符合"以当前时段为准"的感觉
-    let smoothProgress = 0
-    if (progress > 0.7) {
-      smoothProgress = (progress - 0.7) / 0.3
-      smoothProgress = smoothProgress * smoothProgress * (3 - 2 * smoothProgress)
-    }
-
-    // 插值太阳光强度和颜色
-    const sunIntensity = this._lerp(currentConfig.sunIntensity, nextConfig.sunIntensity, smoothProgress)
-    const sunColor = this._lerpColor(currentConfig.sunColor, nextConfig.sunColor, smoothProgress)
+    const { daylight, twilight } = this._getCelestialState()
+    const warmTint = twilight * 0.88
+    const sunIntensity = this._lerp(0.04, 1.65, daylight) + (twilight * 0.18)
+    const sunColor = this._lerpColor('#ffffff', '#ffab6b', warmTint)
 
     environment.params.sunIntensity = sunIntensity
     environment.sunLight.intensity = sunIntensity
     environment.sunLight.color.copy(sunColor)
 
-    // 插值环境光
-    const ambientIntensity = this._lerp(currentConfig.ambientIntensity, nextConfig.ambientIntensity, smoothProgress)
-    const ambientColor = this._lerpColor(currentConfig.ambientColor, nextConfig.ambientColor, smoothProgress)
+    const ambientIntensity = this._lerp(0.16, 0.72, daylight) + (twilight * 0.08)
+    const ambientColor = this._lerpColor('#455a78', '#ffffff', daylight)
 
     environment.params.ambientIntensity = ambientIntensity
     environment.ambientLight.intensity = ambientIntensity
     environment.ambientLight.color.copy(ambientColor)
 
-    // 插值雾气
-    const fogDensity = this._lerp(currentConfig.fog.density, nextConfig.fog.density, smoothProgress)
-    const fogColor = this._lerpColor(currentConfig.fog.color, nextConfig.fog.color, smoothProgress)
+    const fogDensity = this._lerp(0.022, 0.008, daylight)
+    const baseFog = this._lerpColor('#141820', '#9fd0ff', daylight)
+    const fogColor = baseFog.lerp(new THREE.Color('#ffab6b'), twilight * 0.35)
 
     environment.params.fogDensity = fogDensity
     environment.params.fogColor = `#${fogColor.getHexString()}`
@@ -461,6 +418,13 @@ export default class DayCycle {
 
     // 更新光照和雾气
     this._updateLightingAndFog(environment)
+  }
+
+  getCelestialOffsets() {
+    return {
+      sun: this._sunOffset.clone(),
+      moon: this._moonOffset.clone(),
+    }
   }
 
   /**

@@ -20,6 +20,7 @@ const keys = reactive({
   r: false,
   f: false,
   y: false,
+  cameraMode: 'first-person',
   flyMode: false,
 })
 
@@ -35,6 +36,7 @@ function handleInputUpdate(inputKeys) {
   keys.c = inputKeys.c || false
   keys.v = inputKeys.v || false
   keys.r = inputKeys.r || false
+  keys.y = inputKeys.y || false
 }
 
 function handleFlightModeChanged(payload) {
@@ -43,7 +45,7 @@ function handleFlightModeChanged(payload) {
 }
 
 function handleCameraPerspectiveChanged(payload) {
-  keys.y = !!payload?.firstPerson
+  keys.cameraMode = payload?.mode || 'first-person'
   keys.q = payload?.mode === 'bird-perspective'
 }
 
@@ -112,7 +114,15 @@ onUnmounted(() => {
 
     <div class="lower-rows">
       <div class="key-row key-row-right">
-        <div class="key-cap" :class="{ pressed: keys.y }">
+        <div
+          class="key-cap camera-mode"
+          :class="{
+            pressed: keys.y,
+            'camera-mode-first': keys.cameraMode === 'first-person',
+            'camera-mode-back': keys.cameraMode === 'third-person-back',
+            'camera-mode-front': keys.cameraMode === 'third-person-front',
+          }"
+        >
           Y
         </div>
         <div class="key-cap" :class="{ pressed: keys.q }">
@@ -127,7 +137,7 @@ onUnmounted(() => {
       </div>
 
       <div class="key-row key-row-right">
-        <div class="key-cap" :class="{ pressed: keys.y, disabled: !ui.controlPermissions.allowPerspectiveToggle }">
+        <div class="key-cap" :class="{ pressed: keys.z, disabled: !ui.controlPermissions.allowPerspectiveToggle }">
           Z
         </div>
         <div class="key-cap" :class="{ pressed: keys.x }">
@@ -219,5 +229,26 @@ onUnmounted(() => {
 .key-cap.disabled {
   opacity: 0.35;
   filter: grayscale(1);
+}
+
+.key-cap.camera-mode-first {
+  background: rgba(88, 174, 102, 0.88);
+  border-color: rgba(192, 255, 203, 0.95);
+  color: #08120c;
+  text-shadow: none;
+}
+
+.key-cap.camera-mode-back {
+  background: rgba(232, 179, 64, 0.9);
+  border-color: rgba(255, 236, 181, 0.95);
+  color: #1f1300;
+  text-shadow: none;
+}
+
+.key-cap.camera-mode-front {
+  background: rgba(103, 184, 255, 0.9);
+  border-color: rgba(204, 235, 255, 0.95);
+  color: #03111d;
+  text-shadow: none;
 }
 </style>

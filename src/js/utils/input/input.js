@@ -17,6 +17,8 @@ export default class InputManager {
       backward: false,
       left: false,
       right: false,
+      control: false,
+      sprint: false,
       shift: false,
       v: false,
       space: false,
@@ -35,6 +37,9 @@ export default class InputManager {
       right: false,
       middle: false,
     }
+
+    this._forwardTapWindowMs = 250
+    this._lastForwardTapAt = 0
 
     // 绑定方法（用于移除监听器）
     this._onKeyDown = this.onKeyDown.bind(this)
@@ -125,7 +130,17 @@ export default class InputManager {
     switch (key) {
       case 'w':
       case 'arrowup':
+        if (isPressed && !this.keys.forward) {
+          const now = performance.now()
+          if (now - this._lastForwardTapAt <= this._forwardTapWindowMs) {
+            this.keys.sprint = true
+          }
+          this._lastForwardTapAt = now
+        }
         this.keys.forward = isPressed
+        if (!isPressed) {
+          this.keys.sprint = false
+        }
         break
       case 's':
       case 'arrowdown':
@@ -141,6 +156,9 @@ export default class InputManager {
         break
       case 'shift':
         this.keys.shift = isPressed
+        if (isPressed) {
+          this.keys.sprint = false
+        }
         break
       case 'v':
         this.keys.v = isPressed

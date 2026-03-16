@@ -117,8 +117,8 @@ export default class PointerLockManager {
 
     // 发送鼠标相对移动量
     emitter.emit('input:mouse_move', {
-      movementX: event.movementX || 0,
-      movementY: event.movementY || 0,
+      movementX: Number(event.movementX || 0),
+      movementY: Number(event.movementY || 0),
     })
   }
 

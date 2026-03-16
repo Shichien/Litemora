@@ -4,7 +4,7 @@
 
 export const MOVEMENT_DIRECTION_WEIGHTS = {
   FORWARD: 1.0,
-  BACKWARD: 0.8, // Slower backward / less influence in diagonals
+  BACKWARD: 1.0,
   LEFT: 1.0,
   RIGHT: 1.0,
 }
@@ -16,26 +16,58 @@ export const MOVEMENT_CONSTANTS = {
 // 玩家默认配置（数值集中管理，便于调优）
 export const PLAYER_CONFIG = {
   speed: {
-    crouch: 1.3,
-    walk: 3.00,
-    run: 5.00,
+    crouch: 1.295,
+    walk: 4.317,
+    run: 5.612,
   },
   // 方向速率倍率：区分档位以便精细调参
   directionMultiplier: {
     crouch: {
-      lateral: 1.0, // 蹲行左右倍率
-      backward: 1.0, // 蹲行后退倍率
+      lateral: 1.0,
+      backward: 1.0,
     },
     walk: {
-      lateral: 0.8, // 行走左右倍率
-      backward: 0.75, // 行走后退倍率
+      lateral: 1.0,
+      backward: 1.0,
     },
     run: {
-      lateral: 0.9, // 奔跑左右倍率
-      backward: 0.8, // 奔跑后退倍率
+      lateral: 1.0,
+      backward: 1.0,
     },
   },
-  jumpForce: 4.9,
+  jumpForce: 10.2,
+  physics: {
+    tickRate: 20,
+    maxTickDelta: 0.25,
+    verticalDrag: 0.98,
+    gravityPerTick: 1.6,
+    groundFriction: 0.546,
+    airDrag: 0.91,
+    response: {
+      crouch: 0.28,
+      walk: 0.34,
+      run: 0.4,
+      air: 0.08,
+    },
+    sneakSupportDrop: 0.55,
+    snapToGroundDistance: 0.14,
+    autoStepHeight: 0.6,
+    jumpClimbHeight: 1.2,
+    sprintJumpBoost: 4.0,
+    minWorldY: 0,
+  },
+  pose: {
+    standing: {
+      radius: 0.3,
+      height: 1.8,
+      eyeHeight: 1.62,
+    },
+    crouching: {
+      radius: 0.3,
+      height: 1.5,
+      eyeHeight: 1.445,
+    },
+  },
   facingAngle: Math.PI,
   mouseSensitivity: 0.002,
   turnSmoothing: 0.10,

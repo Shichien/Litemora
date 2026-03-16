@@ -15,6 +15,9 @@ import { resolveDirectionInput } from './input-resolver.js'
 import { PlayerAnimationController } from './player-animation-controller.js'
 import { PlayerMovementController } from './player-movement-controller.js'
 
+const SETTINGS_MOUSE_SENSITIVITY_BASE = 0.03
+const PLAYER_MOUSE_SENSITIVITY_RATIO = PLAYER_CONFIG.mouseSensitivity / SETTINGS_MOUSE_SENSITIVITY_BASE
+
 export default class Player {
   constructor() {
     this.experience = new Experience()
@@ -49,6 +52,8 @@ export default class Player {
       backward: false,
       left: false,
       right: false,
+      control: false,
+      sprint: false,
       shift: false,
       v: false,
       space: false,
@@ -60,6 +65,7 @@ export default class Player {
     // 挖掘状态
     this.isMining = false
     this._hideForFirstPerson = false
+    this.isFirstPersonView = false
 
     // Resource - 使用当前选中的皮肤
     const skinStore = useSkinStore()
@@ -103,6 +109,15 @@ export default class Player {
         child.castShadow = shouldCastShadow
       }
     })
+  }
+
+  _applySettingsMouseSensitivity(value) {
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) {
+      return
+    }
+
+    this.config.mouseSensitivity = Math.max(0.0001, numericValue * PLAYER_MOUSE_SENSITIVITY_RATIO)
   }
 
   /**
@@ -165,8 +180,10 @@ export default class Player {
         child.renderOrder = 2
       }
     })
+
     // Add model to movement controller's group
     this.movement.group.add(this.model)
+    this.setOpacity(1)
   }
 
   setOpacity(value) {
@@ -189,7 +206,11 @@ export default class Player {
    * @returns {THREE.Vector3}
    */
   getPosition() {
-    return this.movement.position.clone()
+    return this.movement.getRenderPosition()
+  }
+
+  getEyeHeight() {
+    return this.movement.getEyeHeight()
   }
 
   /**
@@ -206,6 +227,15 @@ export default class Player {
    */
   getVelocity() {
     return this.movement.worldVelocity.clone()
+  }
+
+  getHorizontalSpeed() {
+    const velocity = this.movement.worldVelocity
+    return Math.hypot(velocity.x, velocity.z)
+  }
+
+  isSprinting() {
+    return !!this.movement.isSprinting
   }
 
   /**
@@ -249,7 +279,8 @@ export default class Player {
         return
       }
       if (this.movement.isGrounded && this.animation.stateMachine.currentState.name !== AnimationStates.COMBAT) {
-        this.movement.jump()
+        const { resolvedInput } = resolveDirectionInput(this.inputState)
+        this.movement.jump(resolvedInput)
         this.animation.triggerJump()
       }
     })
@@ -265,7 +296,13 @@ export default class Player {
     })
 
     emitter.on('camera:perspective-changed', (payload = {}) => {
+      this.isFirstPersonView = !!payload.firstPerson
+      this.targetFacingAngle = this.config.facingAngle
       this.setFirstPersonHidden(!!payload.firstPerson)
+    })
+
+    emitter.on('settings:mouse-sensitivity-changed', (value) => {
+      this._applySettingsMouseSensitivity(value)
     })
 
     // ==================== 攻击输入 ====================
@@ -313,8 +350,9 @@ export default class Player {
 
     // ==================== 鼠标旋转（Pointer Lock 模式） ====================
     emitter.on('input:mouse_move', ({ movementX }) => {
-      // 更新目标朝向，而非直接设置
-      this.targetFacingAngle -= movementX * this.config.mouseSensitivity
+      const nextAngle = this.targetFacingAngle - movementX * this.config.mouseSensitivity
+      this.targetFacingAngle = nextAngle
+      this.setFacing(nextAngle)
     })
 
     // ==================== 重生 ====================
@@ -387,9 +425,12 @@ export default class Player {
           backward: false,
           left: false,
           right: false,
+          control: false,
+          sprint: false,
           shift: false,
           v: false,
           space: false,
+          sneak: false,
         }
       : resolvedInput
 
@@ -400,16 +441,6 @@ export default class Player {
 
     // Update Movement
     this.movement.update(effectiveInput, isCombat)
-
-    // ===== 平滑转向 =====
-    if (Math.abs(this.config.facingAngle - this.targetFacingAngle) > 0.0001) {
-      // 角度 lerp 平滑
-      let angle = this.config.facingAngle
-      // 简单的 lerp
-      angle += (this.targetFacingAngle - angle) * this.config.turnSmoothing
-
-      this.setFacing(angle)
-    }
 
     // Prepare state for animation
     const playerState = {
@@ -470,9 +501,9 @@ export default class Player {
    * @param {object} inputState - 输入状态
    */
   updateSpeedLines(inputState) {
-    // 检查是否处于冲刺状态：shift + 任意方向键
+    // 检查是否处于冲刺状态：Ctrl + 前进移动
     const isMoving = inputState.forward || inputState.backward || inputState.left || inputState.right
-    const isSprinting = inputState.shift && isMoving
+    const isSprinting = !!inputState.sprint && isMoving
 
     // 计算时间增量（秒）
     const deltaTime = this.time.delta * 0.001

@@ -30,6 +30,19 @@ function dampVec3(current, target, lambda, dt) {
   current.z = damp(current.z, target.z, lambda, dt)
 }
 
+const SETTINGS_MOUSE_SENSITIVITY_BASE = 0.03
+const THIRD_PERSON_MOUSE_SENSITIVITY_RATIO
+  = CAMERA_RIG_CONFIG.follow.mouseTargetY.sensitivity / SETTINGS_MOUSE_SENSITIVITY_BASE
+
+function scaleThirdPersonMouseSensitivity(value) {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) {
+    return CAMERA_RIG_CONFIG.follow.mouseTargetY.sensitivity
+  }
+
+  return Math.max(0.001, numericValue * THIRD_PERSON_MOUSE_SENSITIVITY_RATIO)
+}
+
 export default class CameraRig {
   constructor() {
     this.experience = new Experience()
@@ -61,6 +74,7 @@ export default class CameraRig {
     // Mouse Target Y Offset State (目标阻尼模型)
     this.mouseYOffset = 0
     this.mouseYOffsetTarget = 0
+    this.isFirstPersonActive = false
 
     // Target
     this.target = null
@@ -97,6 +111,10 @@ export default class CameraRig {
   // #region
   _setupEventListeners() {
     emitter.on('input:mouse_move', ({ movementY }) => {
+      if (this.isFirstPersonActive) {
+        return
+      }
+
       const config = this.config.follow.mouseTargetY
       if (!config.enabled) {
         return
@@ -138,7 +156,13 @@ export default class CameraRig {
 
     // Listen for mouse sensitivity changes from Settings UI
     emitter.on('settings:mouse-sensitivity-changed', (value) => {
-      this.config.follow.mouseTargetY.sensitivity = value
+      this.config.follow.mouseTargetY.sensitivity = scaleThirdPersonMouseSensitivity(value)
+    })
+
+    emitter.on('camera:perspective-changed', (payload = {}) => {
+      this.isFirstPersonActive = !!payload.firstPerson
+      this.mouseYOffset = 0
+      this.mouseYOffsetTarget = 0
     })
 
     // Listen for camera preset changes from Settings UI
@@ -220,7 +244,7 @@ export default class CameraRig {
     let blockedCount = 0
     for (let dy = 2; dy <= 4; dy++) {
       const block = terrainManager.getBlockWorld(x, y + dy, z)
-      if (block?.id !== 0) {
+      if (block?.hasCollision ?? (block?.id !== 0)) {
         blockedCount++
       }
     }

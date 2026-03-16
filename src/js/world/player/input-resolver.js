@@ -9,9 +9,12 @@ export function resolveDirectionInput(rawInput) {
     backward: false,
     left: false,
     right: false,
+    control: rawInput.control,
+    sprint: rawInput.sprint,
     shift: rawInput.shift,
     v: rawInput.v,
     space: rawInput.space,
+    sneak: rawInput.shift || rawInput.v,
   }
 
   // 1. 相反方向互相抵消 (Cancel Opposites)
