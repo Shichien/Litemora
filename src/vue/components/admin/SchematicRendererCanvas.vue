@@ -10,7 +10,10 @@ let schematicRendererModulePromise = null
 
 const RENDERER_READY_TIMEOUT_MS = 20000
 const SCHEMATIC_ID = 'litemora-preview'
-const SCHEMATIC_RENDERER_CDN_URL = 'https://cdn.jsdelivr.net/npm/schematic-renderer@1.1.23/dist/schematic-renderer.es.js'
+const SCHEMATIC_RENDERER_CDN_URLS = [
+  'https://esm.sh/schematic-renderer@1.1.23?bundle&target=es2022',
+  'https://esm.sh/schematic-renderer@1.1.23?bundle',
+]
 
 const props = defineProps({
   schematic: {
@@ -298,7 +301,21 @@ async function loadRendererModule() {
       schematicRendererModulePromise = import('schematic-renderer')
     }
     else {
-      schematicRendererModulePromise = import(/* @vite-ignore */ SCHEMATIC_RENDERER_CDN_URL)
+      schematicRendererModulePromise = (async () => {
+        let lastError = null
+
+        for (const url of SCHEMATIC_RENDERER_CDN_URLS) {
+          try {
+            return await import(/* @vite-ignore */ url)
+          }
+          catch (error) {
+            lastError = error
+          }
+        }
+
+        const reason = lastError?.message || 'unknown_cdn_import_error'
+        throw new Error(`schematic-renderer CDN 加载失败: ${reason}`)
+      })()
     }
   }
   return schematicRendererModulePromise

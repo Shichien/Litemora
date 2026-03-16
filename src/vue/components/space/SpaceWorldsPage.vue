@@ -205,8 +205,13 @@ function resetUploadDraft() {
 }
 
 async function handleCreateProjection() {
+  if (!authSession.value?.account?.id) {
+    setActionMessage('请先使用 GitHub 登录，然后再创建投影世界', 'warning')
+    return
+  }
+
   if (!hasServerSession.value) {
-    setActionMessage('当前部署没有安全会话，暂时无法创建云端投影', 'warning')
+    setActionMessage('当前部署还没有可用的安全会话，请检查 GitHub OAuth、Session Secret 和 Pages Functions 配置', 'warning')
     return
   }
 
