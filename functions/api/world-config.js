@@ -1,5 +1,6 @@
 import {
   DEFAULT_WORLD_CONFIG,
+  getProjectionId,
   getKv,
   getScopedKey,
   getSpaceName,
@@ -12,10 +13,20 @@ import {
 export async function onRequestGet(context) {
   try {
     const spaceName = getSpaceName(context.request)
+    const projectionId = getProjectionId(context.request)
     const kv = getKv(context.env)
-    const key = getScopedKey('world-config', spaceName)
-    const config = await readSpaceJson(kv, key, DEFAULT_WORLD_CONFIG)
-    return sendJson(200, config)
+    const key = getScopedKey('world-config', spaceName, projectionId)
+    const storedConfig = await readSpaceJson(kv, key, null)
+    const config = storedConfig && typeof storedConfig === 'object'
+      ? storedConfig
+      : DEFAULT_WORLD_CONFIG
+    return sendJson(200, {
+      ...config,
+      __meta: {
+        exists: !!storedConfig,
+        projection: projectionId || '',
+      },
+    })
   }
   catch (error) {
     return sendError(500, 'world_config_read_failed', error?.message || 'unknown_error')
@@ -30,8 +41,9 @@ export async function onRequestPost(context) {
     }
 
     const spaceName = getSpaceName(context.request)
+    const projectionId = getProjectionId(context.request)
     const kv = getKv(context.env)
-    const key = getScopedKey('world-config', spaceName)
+    const key = getScopedKey('world-config', spaceName, projectionId)
 
     await writeSpaceJson(kv, key, payload)
     return sendJson(200, { ok: true })

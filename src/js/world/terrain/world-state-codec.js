@@ -1,10 +1,9 @@
-import { BLOCK_IDS, ensureDynamicBlockType, getBlockSignatureById, getBlockTypeById } from './blocks-config.js'
-
 const FORMAT = 'chunk-v2'
 const SCHEMA_VERSION = 1
 const DEFAULT_CHUNK_WIDTH = 64
 const MAX_Y = 4095
-const DYNAMIC_BLOCK_ID_THRESHOLD = 1000
+const EMPTY_BLOCK_ID = 0
+const LEGACY_FALLBACK_BLOCK_ID = 3
 
 function toFiniteInt(value, fallback = 0) {
   const n = Number(value)
@@ -68,134 +67,55 @@ function base64ToBytes(base64) {
 
 function normalizeWorldState(worldState = {}) {
   return {
+    ...(worldState && typeof worldState === 'object' ? worldState : {}),
     schematicOnlyMode: !!worldState?.schematicOnlyMode,
+    minecraftSchematicLayer:
+      worldState?.minecraftSchematicLayer && typeof worldState.minecraftSchematicLayer === 'object'
+        ? worldState.minecraftSchematicLayer
+        : null,
   }
 }
 
 function encodePaletteEntry(blockIdRaw) {
-  const blockId = toFiniteInt(blockIdRaw)
-  if (!Number.isFinite(blockId) || blockId <= 0) {
-    return blockId
-  }
-
-  if (blockId < DYNAMIC_BLOCK_ID_THRESHOLD) {
-    return blockId
-  }
-
-  const blockSignature = getBlockSignatureById(blockId)
-  if (!blockSignature) {
-    return blockId
-  }
-
-  const textureName = String(blockSignature.textureName || '')
-
-  if (!textureName) {
-    return blockId
-  }
-
-  return {
-    id: blockSignature.id,
-    textureName,
-    geometryType: blockSignature.geometryType || 'cube',
-    blockName: blockSignature.blockName || textureName,
-    textureKeys: blockSignature.textureKeys || { all: textureName },
-  }
+  const blockId = toFiniteInt(blockIdRaw, EMPTY_BLOCK_ID)
+  return blockId > EMPTY_BLOCK_ID ? blockId : EMPTY_BLOCK_ID
 }
 
 function paletteEntryKey(entry) {
-  if (entry && typeof entry === 'object') {
-    const id = toFiniteInt(entry.id)
-    const textureName = String(entry.textureName || '')
-    const geometryType = String(entry.geometryType || 'cube')
-    const blockName = String(entry.blockName || '')
-    return `dyn:${id}:${textureName}:${geometryType}:${blockName}`
-  }
-  return `id:${toFiniteInt(entry)}`
+  return `id:${encodePaletteEntry(entry)}`
 }
 
-function resolvePaletteEntryToBlockId(entry, dynamicIdMap = null) {
+function resolvePaletteEntryToBlockId(entry) {
   if (entry && typeof entry === 'object') {
     const knownId = toFiniteInt(entry.id)
-    if (Number.isFinite(knownId) && knownId > 0 && getBlockTypeById(knownId)) {
+    if (Number.isFinite(knownId) && knownId > EMPTY_BLOCK_ID) {
       return knownId
     }
 
-    const textureName = String(entry.textureName || '').trim()
-    if (textureName) {
-      const dynamic = ensureDynamicBlockType(textureName, {
-        geometryType: entry.geometryType || 'cube',
-        blockName: entry.blockName || textureName,
-        preferredId: Number.isFinite(knownId) && knownId >= DYNAMIC_BLOCK_ID_THRESHOLD
-          ? knownId
-          : undefined,
-      })
-      if (dynamic?.id) {
-        if (dynamicIdMap && Number.isFinite(knownId) && knownId > 0) {
-          dynamicIdMap.set(knownId, dynamic.id)
-        }
-        return dynamic.id
-      }
+    const explicitBlockId = toFiniteInt(entry.blockId, Number.NaN)
+    if (Number.isFinite(explicitBlockId) && explicitBlockId > EMPTY_BLOCK_ID) {
+      return explicitBlockId
     }
 
-    if (Number.isFinite(knownId) && knownId > 0) {
-      return knownId >= DYNAMIC_BLOCK_ID_THRESHOLD ? BLOCK_IDS.STONE : knownId
+    const hasLegacyShapeHint = !!String(
+      entry.textureName
+      || entry.blockName
+      || entry.geometryType
+      || '',
+    ).trim()
+
+    if (hasLegacyShapeHint) {
+      return LEGACY_FALLBACK_BLOCK_ID
     }
 
-    return BLOCK_IDS.STONE
+    return EMPTY_BLOCK_ID
   }
 
-  const blockId = toFiniteInt(entry)
-  if (!Number.isFinite(blockId) || blockId < 0) {
-    return BLOCK_IDS.EMPTY
+  const blockId = encodePaletteEntry(entry)
+  if (!Number.isFinite(blockId) || blockId < EMPTY_BLOCK_ID) {
+    return EMPTY_BLOCK_ID
   }
-
-  if (blockId === BLOCK_IDS.EMPTY) {
-    return BLOCK_IDS.EMPTY
-  }
-
-  if (!getBlockTypeById(blockId) && blockId >= DYNAMIC_BLOCK_ID_THRESHOLD) {
-    if (dynamicIdMap && dynamicIdMap.has(blockId)) {
-      return dynamicIdMap.get(blockId)
-    }
-    return BLOCK_IDS.STONE
-  }
-
   return blockId
-}
-
-function normalizeDynamicPalette(snapshot = {}) {
-  const dynamicPalette = new Map()
-  const raw = snapshot?.dynamicPalette
-  if (!raw || typeof raw !== 'object') {
-    return dynamicPalette
-  }
-
-  for (const [legacyIdRaw, entry] of Object.entries(raw)) {
-    const legacyId = toFiniteInt(legacyIdRaw)
-    if (!Number.isFinite(legacyId) || legacyId < DYNAMIC_BLOCK_ID_THRESHOLD) {
-      continue
-    }
-    if (!entry || typeof entry !== 'object') {
-      continue
-    }
-
-    const textureName = String(entry.textureName || entry?.textureKeys?.all || '').trim()
-    if (!textureName) {
-      continue
-    }
-
-    const dynamic = ensureDynamicBlockType(textureName, {
-      geometryType: entry.geometryType || 'cube',
-      blockName: entry.blockName || textureName,
-      preferredId: legacyId,
-    })
-
-    if (dynamic?.id) {
-      dynamicPalette.set(legacyId, dynamic.id)
-    }
-  }
-
-  return dynamicPalette
 }
 
 export function encodeWorldStateSnapshot(snapshot = {}, options = {}) {
@@ -204,7 +124,6 @@ export function encodeWorldStateSnapshot(snapshot = {}, options = {}) {
   const modifications = snapshot?.modifications || {}
 
   const chunks = {}
-  const dynamicPalette = {}
 
   for (const [chunkKey, blockMap] of Object.entries(modifications)) {
     if (!blockMap || typeof blockMap !== 'object') {
@@ -217,7 +136,7 @@ export function encodeWorldStateSnapshot(snapshot = {}, options = {}) {
     const paletteIndexes = []
 
     for (const [blockKey, blockIdRaw] of Object.entries(blockMap)) {
-      const [localX, localY, localZ] = String(blockKey).split(',').map(v => toFiniteInt(v, NaN))
+      const [localX, localY, localZ] = String(blockKey).split(',').map(v => toFiniteInt(v, Number.NaN))
       if (!Number.isFinite(localX) || !Number.isFinite(localY) || !Number.isFinite(localZ)) {
         continue
       }
@@ -229,15 +148,6 @@ export function encodeWorldStateSnapshot(snapshot = {}, options = {}) {
 
       const blockId = toFiniteInt(blockIdRaw)
       const encodedEntry = encodePaletteEntry(blockId)
-      if (encodedEntry && typeof encodedEntry === 'object' && Number.isFinite(encodedEntry.id)) {
-        dynamicPalette[String(encodedEntry.id)] = {
-          id: encodedEntry.id,
-          textureName: encodedEntry.textureName,
-          geometryType: encodedEntry.geometryType || 'cube',
-          blockName: encodedEntry.blockName || encodedEntry.textureName,
-          textureKeys: encodedEntry.textureKeys || { all: encodedEntry.textureName },
-        }
-      }
 
       const paletteKey = paletteEntryKey(encodedEntry)
       let paletteIndex = paletteLookup.get(paletteKey)
@@ -282,7 +192,6 @@ export function encodeWorldStateSnapshot(snapshot = {}, options = {}) {
     version: SCHEMA_VERSION,
     chunkWidth,
     worldState,
-    ...(Object.keys(dynamicPalette).length ? { dynamicPalette } : {}),
     chunks,
   }
 }
@@ -300,11 +209,10 @@ export function decodeWorldStateSnapshot(snapshot = {}) {
   }
 
   const modifications = {}
-  const dynamicIdMap = normalizeDynamicPalette(snapshot)
 
   for (const [chunkKey, chunk] of Object.entries(snapshot.chunks)) {
     const palette = Array.isArray(chunk?.p)
-      ? chunk.p.map(entry => resolvePaletteEntryToBlockId(entry, dynamicIdMap))
+      ? chunk.p.map(entry => resolvePaletteEntryToBlockId(entry))
       : []
     const expectedCount = Math.max(0, toFiniteInt(chunk?.c))
     if (!palette.length || !expectedCount) {

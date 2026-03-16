@@ -71,5 +71,65 @@
   "common": {
     "cancel": "取消",
     "apply": "应用"
+  },
+  "home": {
+    "nav": {
+      "create": "创建",
+      "loginGithub": "使用 GitHub 登录"
+    },
+    "hero": {
+      "subtitle": "把 Minecraft 原理图变成可以走进去的世界。"
+    },
+    "quote": {
+      "line1": "每个原理图里都藏着一座建筑。",
+      "line2": "每个建筑都值得被真正体验。",
+      "desc": "这是一个为 Minecraft 建筑档案而设计的在线前端入口，支持画廊归档和第一人称探索。"
+    },
+    "stats": {
+      "formats": "格式支持",
+      "nativeRendering": "原生渲染",
+      "serverCost": "服务器成本"
+    },
+    "features": {
+      "step1": {
+        "title": "导入",
+        "subtitle": "从文件到世界",
+        "desc": "支持上传 .litematic, .schem 和 .schematic 格式文件。"
+      },
+      "step2": {
+        "title": "还原",
+        "subtitle": "原生视觉表现",
+        "desc": "直接解析真实 Minecraft 方块状态与资源包，实现 1:1 外观保真。"
+      },
+      "step3": {
+        "title": "游览",
+        "subtitle": "第一人称视角",
+        "desc": "具有真实物理碰撞，在你的作品中自由长廊漫步。"
+      }
+    },
+    "create": {
+      "title1": "创建你的",
+      "title2": "世界空间",
+      "desc": "Litemora 空间不仅是一个只读预览，它是你 Minecraft 原理图的永久在线画廊，完全在浏览器中依靠真实几何和碰撞运行。",
+      "placeholder": "你的空间名称或标识",
+      "error": {
+        "invalid": "名称需为 3-63 位，仅支持小写字母、数字和连字符 (-)。",
+        "failed": "创建空间失败，请稍后重试。",
+        "loginRequired": "请先使用 GitHub 登录以创建空间。"
+      },
+      "benefits": {
+        "b1Title": "独立路径",
+        "b1Desc": "立即通过自定义网址分享你的世界。",
+        "b2Title": "免费托管",
+        "b2Desc": "所有内容均在你的观众浏览器上运行，无需任何后端。",
+        "b3Title": "轻松分享",
+        "b3Desc": "发送链接，朋友就能立即跳进你的建筑。"
+      }
+    },
+    "discover": {
+      "title": "探索空间",
+      "desc": "浏览社区中精选的建筑世界与原理图画廊。"
+    },
+    "footer": "Litemora - 开源的原理图查看器。由 Cubane 与 Three.js 提供支持。"
   }
 }

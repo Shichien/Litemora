@@ -1,0 +1,38 @@
+{
+  "player": {
+    "spawnPoint": {
+      "x": 16,
+      "y": 11.5,
+      "z": 17
+    },
+    "flight": {
+      "ignoreMiningSlowdown": true,
+      "groundWalkAnimationWhenMoving": true
+    }
+  },
+  "settings": {
+    "cameraPreset": "default",
+    "visualPreset": "default",
+    "chunk": {
+      "height": 256,
+      "viewDistance": 2,
+      "unloadPadding": 1
+    },
+    "environment": {
+      "skyMode": "DayCycle",
+      "sunIntensity": 0,
+      "ambientIntensity": 0,
+      "fogDensity": 0.008
+    }
+  },
+  "ui": {
+    "pauseMenu": {
+      "showSettings": false,
+      "showSkins": true
+    },
+    "controls": {
+      "allowFlightToggle": true,
+      "allowPerspectiveToggle": true
+    }
+  }
+}

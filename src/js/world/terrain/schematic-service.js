@@ -1,102 +1,15 @@
 /* eslint-disable node/prefer-global/buffer */
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer as BufferPolyfill } from 'buffer'
-import { javaAtlasBlockTextureRects } from '../../generated/java-atlas-textures.js'
-import { javaBlockTextureStemHintsByBlock } from '../../generated/java-block-texture-hints.js'
-import {
-  isIronBarsBlockName,
-  isLanternBlockName,
-  isSlabBlockName,
-  isStairBlockName,
-  isTrapdoorBlockName,
-  isWallBlockName,
-} from './block-behaviors.js'
-import {
-  barsGeometryTypeFromProperties,
-  carpetGeometryTypeFromProperties,
-  doorGeometryTypeFromProperties,
-  fireGeometryTypeFromProperties,
-  fenceGeometryTypeFromProperties,
-  flowerPotGeometryTypeFromProperties,
-  pottedPlantGeometryTypeFromProperties,
-  buildVariantKey,
-  normalizeFacing,
-  normalizeStairShape,
-  plantCrossGeometryTypeFromProperties,
-  railGeometryTypeFromProperties,
-  slabGeometryTypeFromProperties,
-  torchGeometryTypeFromProperties,
-  trapdoorGeometryTypeFromProperties,
-  variantBoolean,
-  variantString,
-  vineGeometryTypeFromProperties,
-  wallGeometryTypeFromProperties,
-} from './block-state-adapter.js'
-import { BLOCK_IDS, ensureDynamicBlockType, getBlockTypeById } from './blocks-config.js'
 
 if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = BufferPolyfill
 }
 
-const ATLAS_TEXTURE_PREFIX = 'atlas:'
-const MISSING_TEXTURE_MARKER = `${ATLAS_TEXTURE_PREFIX}block/__missing__`
-const CROSS_PLANT_BLOCK_SET = new Set([
-  'dead_bush',
-  'short_grass',
-  'short_dry_grass',
-  'fern',
-  'dandelion',
-  'poppy',
-  'blue_orchid',
-  'allium',
-  'azure_bluet',
-  'red_tulip',
-  'orange_tulip',
-  'white_tulip',
-  'pink_tulip',
-  'oxeye_daisy',
-  'cornflower',
-  'lily_of_the_valley',
-  'wither_rose',
-  'torchflower',
-  'pink_petals',
-  'brown_mushroom',
-  'red_mushroom',
-  'crimson_fungus',
-  'warped_fungus',
-  'crimson_roots',
-  'warped_roots',
-  'nether_sprouts',
-  'mangrove_propagule',
-  'bamboo_sapling',
-  'spore_blossom',
-  'glow_lichen',
-  'sugar_cane',
-  'seagrass',
-  'tall_seagrass',
-  'kelp',
-  'kelp_plant',
-  'sea_pickle',
-  'tube_coral',
-  'brain_coral',
-  'bubble_coral',
-  'fire_coral',
-  'horn_coral',
-  'dead_tube_coral',
-  'dead_brain_coral',
-  'dead_bubble_coral',
-  'dead_fire_coral',
-  'dead_horn_coral',
-  'tube_coral_fan',
-  'brain_coral_fan',
-  'bubble_coral_fan',
-  'fire_coral_fan',
-  'horn_coral_fan',
-  'dead_tube_coral_fan',
-  'dead_brain_coral_fan',
-  'dead_bubble_coral_fan',
-  'dead_fire_coral_fan',
-  'dead_horn_coral_fan',
+const EMPTY_BLOCK_NAMES = new Set([
+  'minecraft:air',
+  'minecraft:cave_air',
+  'minecraft:void_air',
 ])
 
 /**
@@ -108,7 +21,6 @@ class SchematicService {
     this.currentSchematic = null
     this.pako = null
     this.nbtParser = null
-    this._blockResolveCache = new Map()
   }
 
   async _yieldToMainThread() {
@@ -158,8 +70,7 @@ class SchematicService {
       reader.onload = async (e) => {
         try {
           const arrayBuffer = e.target.result
-          const schematic = await this._parseBuffer(arrayBuffer)
-          this.currentSchematic = schematic
+          const schematic = await this.parseArrayBuffer(arrayBuffer)
           resolve(schematic)
         }
         catch (error) {
@@ -176,9 +87,23 @@ class SchematicService {
   }
 
   /**
+   * 从 ArrayBuffer 解析原理图
+   * @param {ArrayBuffer} arrayBuffer
+   * @param {{remember?: boolean}} options
+   * @returns {Promise<object>} 解析后的原理图对象
+   */
+  async parseArrayBuffer(arrayBuffer, options = {}) {
+    const schematic = await this._parseBuffer(arrayBuffer, options)
+    if (options.remember !== false) {
+      this.currentSchematic = schematic
+    }
+    return schematic
+  }
+
+  /**
    * 内部方法：从 ArrayBuffer 解析原理图
    */
-  async _parseBuffer(arrayBuffer) {
+  async _parseBuffer(arrayBuffer, options = {}) {
     // Litematica 文件是 gzip 压缩的 NBT 格式
     const pako = await this._loadPako()
     const nbtParser = await this._loadNbtParser()
@@ -189,17 +114,23 @@ class SchematicService {
     const metadata = simplified.Metadata || {}
     const regions = simplified.Regions || {}
 
-    return {
+    const schematic = {
       name: metadata.Name || 'Unknown',
       author: metadata.Author || 'Unknown',
+      dataVersion: Number(simplified.MinecraftDataVersion) || null,
       size: {
         x: metadata.EnclosingSize?.x || 0,
         y: metadata.EnclosingSize?.y || 0,
         z: metadata.EnclosingSize?.z || 0,
       },
       regions: this._parseRegions(regions),
-      rawNBT: simplified,
     }
+
+    if (options.includeRawNbt) {
+      schematic.rawNBT = simplified
+    }
+
+    return schematic
   }
 
   /**
@@ -233,7 +164,6 @@ class SchematicService {
         blockData: blockStates,
         totalBlocks: Math.abs(size.x || 0) * Math.abs(size.y || 0) * Math.abs(size.z || 0),
         _decodedIndices: null,
-        _paletteResolved: null,
         _solidBlockCount: null,
         _solidYStats: null,
       }
@@ -267,6 +197,10 @@ class SchematicService {
       source = source.value
     }
     return BigInt.asUintN(64, BigInt(source ?? 0))
+  }
+
+  _toInt64BigInt(value) {
+    return BigInt.asIntN(64, this._toUint64BigInt(value))
   }
 
   _decodeBlockIndices(blockData, paletteSize, totalBlocks) {
@@ -313,18 +247,78 @@ class SchematicService {
     return region._decodedIndices
   }
 
-  _buildResolvedPalette(region) {
-    if (region._paletteResolved) {
-      return region._paletteResolved
+  _buildRuntimePalette(region) {
+    if (region._runtimePalette) {
+      return region._runtimePalette
     }
 
-    const resolved = {}
-    for (const [index, entry] of Object.entries(region.palette)) {
-      const blockName = entry?.name || 'minecraft:air'
-      resolved[index] = this._resolveProjectBlock(blockName, entry?.properties || {})
+    region._runtimePalette = Object.values(region.palette || {}).map((entry) => {
+      return {
+        name: entry?.name || 'minecraft:air',
+        properties: Object.fromEntries(
+          Object.entries(entry?.properties || {}).map(([key, value]) => [String(key), String(value)]),
+        ),
+      }
+    })
+
+    return region._runtimePalette
+  }
+
+  _buildRuntimeBlockData(region) {
+    if (region._runtimeBlockData) {
+      return region._runtimeBlockData
     }
-    region._paletteResolved = resolved
-    return resolved
+
+    const sourceValues = Array.from(region.blockData || [], value => this._toUint64BigInt(value))
+    const packed = new Int32Array(sourceValues.length * 2)
+
+    for (let index = 0; index < sourceValues.length; index++) {
+      const value = sourceValues[index]
+      packed[index * 2] = Number(BigInt.asIntN(32, value >> 32n))
+      packed[(index * 2) + 1] = Number(BigInt.asIntN(32, value & 0xFFFFFFFFn))
+    }
+
+    region._runtimeBlockData = packed
+
+    return region._runtimeBlockData
+  }
+
+  buildRuntimePayload(schematic = this.currentSchematic) {
+    if (!schematic) {
+      throw new Error('No schematic loaded')
+    }
+
+    const runtimeRegions = {}
+
+    for (const [regionName, region] of Object.entries(schematic.regions || {})) {
+      runtimeRegions[regionName] = {
+        position: {
+          x: Number(region?.position?.x || 0),
+          y: Number(region?.position?.y || 0),
+          z: Number(region?.position?.z || 0),
+        },
+        size: {
+          x: Number(region?.size?.x || 0),
+          y: Number(region?.size?.y || 0),
+          z: Number(region?.size?.z || 0),
+        },
+        palette: this._buildRuntimePalette(region),
+        blockData: this._buildRuntimeBlockData(region),
+        totalBlocks: Number(region?.totalBlocks || 0),
+      }
+    }
+
+    return {
+      name: schematic.name || 'Unknown',
+      author: schematic.author || 'Unknown',
+      dataVersion: Number(schematic.dataVersion) || null,
+      size: {
+        x: Number(schematic?.size?.x || 0),
+        y: Number(schematic?.size?.y || 0),
+        z: Number(schematic?.size?.z || 0),
+      },
+      regions: runtimeRegions,
+    }
   }
 
   _countSolidBlocks(region) {
@@ -333,13 +327,12 @@ class SchematicService {
     }
 
     const blockIndices = this._getDecodedIndices(region)
-    const resolvedPalette = this._buildResolvedPalette(region)
 
     let solidCount = 0
     for (let index = 0; index < blockIndices.length; index++) {
       const paletteIndex = blockIndices[index] ?? 0
-      const resolved = resolvedPalette[paletteIndex]
-      if (resolved?.id && resolved.id !== BLOCK_IDS.EMPTY) {
+      const blockName = region.palette?.[paletteIndex]?.name || 'minecraft:air'
+      if (!EMPTY_BLOCK_NAMES.has(blockName)) {
         solidCount++
       }
     }
@@ -363,6 +356,55 @@ class SchematicService {
     }
   }
 
+  /**
+   * 遍历所有实体方块
+   * @param {(entry:{x:number,y:number,z:number,blockName:string,properties:Record<string,string>,paletteIndex:number,regionName:string,region:object})=>void} callback
+   * @param {object|null} schematic
+   */
+  forEachSolidBlock(callback, schematic = this.currentSchematic) {
+    if (!schematic) {
+      throw new Error('No schematic loaded')
+    }
+
+    for (const [regionName, region] of Object.entries(schematic.regions || {})) {
+      const sizeX = Math.abs(region.size.x)
+      const sizeY = Math.abs(region.size.y)
+      const sizeZ = Math.abs(region.size.z)
+      const totalBlocks = sizeX * sizeY * sizeZ
+      if (totalBlocks <= 0) {
+        continue
+      }
+
+      const blockIndices = this._getDecodedIndices(region)
+      const worldBase = this._getRegionWorldBase(region)
+
+      let linearIndex = 0
+      for (let y = 0; y < sizeY; y++) {
+        for (let z = 0; z < sizeZ; z++) {
+          for (let x = 0; x < sizeX; x++) {
+            const paletteIndex = blockIndices[linearIndex++] ?? 0
+            const paletteEntry = region.palette[paletteIndex]
+            const blockName = paletteEntry?.name || 'minecraft:air'
+            if (EMPTY_BLOCK_NAMES.has(blockName)) {
+              continue
+            }
+
+            callback({
+              x: worldBase.x + x,
+              y: worldBase.y + y,
+              z: worldBase.z + z,
+              blockName,
+              properties: paletteEntry?.properties || {},
+              paletteIndex,
+              regionName,
+              region,
+            })
+          }
+        }
+      }
+    }
+  }
+
   _getSolidYStats(region) {
     if (region._solidYStats) {
       return region._solidYStats
@@ -382,7 +424,6 @@ class SchematicService {
     }
 
     const blockIndices = this._getDecodedIndices(region)
-    const resolvedPalette = this._buildResolvedPalette(region)
     const worldBase = this._getRegionWorldBase(region)
 
     let linearIndex = 0
@@ -394,8 +435,8 @@ class SchematicService {
       for (let z = 0; z < sizeZ; z++) {
         for (let x = 0; x < sizeX; x++) {
           const paletteIndex = blockIndices[linearIndex++] ?? 0
-          const resolved = resolvedPalette[paletteIndex]
-          if (!resolved?.id || resolved.id === BLOCK_IDS.EMPTY) {
+          const blockName = region.palette?.[paletteIndex]?.name || 'minecraft:air'
+          if (EMPTY_BLOCK_NAMES.has(blockName)) {
             continue
           }
 
@@ -418,909 +459,6 @@ class SchematicService {
     return region._solidYStats
   }
 
-  _resolveProjectBlock(blockName, properties = {}) {
-    const cacheKey = `${blockName}::${buildVariantKey(properties)}`
-    if (this._blockResolveCache.has(cacheKey)) {
-      return this._blockResolveCache.get(cacheKey)
-    }
-
-    if (!blockName || blockName === 'minecraft:air') {
-      const result = { id: BLOCK_IDS.EMPTY, source: 'air' }
-      this._blockResolveCache.set(cacheKey, result)
-      return result
-    }
-
-    const normalizedName = blockName.replace('minecraft:', '')
-    const isDoorBlock = /_door$/u.test(normalizedName) && !/_trapdoor$/u.test(normalizedName)
-    const isFenceBlock = /_fence$/u.test(normalizedName) && !/_fence_gate$/u.test(normalizedName)
-    const isGlassPaneBlock = normalizedName === 'glass_pane' || /_glass_pane$/u.test(normalizedName)
-    const isCarpetBlock = /_carpet$/u.test(normalizedName)
-    const isVineBlock = normalizedName === 'vine'
-    const isTorchBlock = /(^|_)torch$/u.test(normalizedName)
-    const isRailBlock = /_rail$/u.test(normalizedName) || normalizedName === 'rail'
-    const isFireBlock = normalizedName === 'fire' || normalizedName === 'soul_fire'
-    const isPlainFlowerPotBlock = normalizedName === 'flower_pot'
-    const isPottedPlantBlock = normalizedName.startsWith('potted_')
-    const isPlantLikeBlock = this._isCrossPlantBlockName(normalizedName)
-
-    if (isSlabBlockName(normalizedName)) {
-      const slabBaseName = normalizedName.replace(/_slab$/u, '')
-      const geometryType = slabGeometryTypeFromProperties(properties)
-
-      const slabTextureName = this._resolveTextureName(slabBaseName)
-        || this._resolveTextureName(`${slabBaseName}_planks`)
-        || this._resolveTextureName(`planks_${slabBaseName}`)
-        || this._resolveTextureName(normalizedName)
-      if (slabTextureName) {
-        const slabBlock = ensureDynamicBlockType(slabTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (slabBlock?.id) {
-          const result = {
-            id: slabBlock.id,
-            source: 'atlas-dynamic',
-            textureName: slabTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isStairBlockName(normalizedName)) {
-      const stairBaseName = normalizedName.replace(/_stairs$/u, '')
-      const stairTextureName = this._resolveTextureName(stairBaseName)
-        || this._resolveTextureName(`${stairBaseName}_planks`)
-        || this._resolveTextureName(`planks_${stairBaseName}`)
-        || this._resolveTextureName(normalizedName)
-
-      if (stairTextureName) {
-        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties)
-        const geometryType = this._stairGeometryTypeFromProperties(mappedProperties)
-        const stairBlock = ensureDynamicBlockType(stairTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (stairBlock?.id) {
-          const result = {
-            id: stairBlock.id,
-            source: 'atlas-dynamic',
-            textureName: stairTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isDoorBlock) {
-      const doorTextureName = this._resolveDoorTextureName(normalizedName, properties)
-
-      if (doorTextureName) {
-        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties)
-        const geometryType = doorGeometryTypeFromProperties(mappedProperties)
-        const doorBlock = ensureDynamicBlockType(doorTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (doorBlock?.id) {
-          const result = {
-            id: doorBlock.id,
-            source: 'atlas-dynamic',
-            textureName: doorTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isTrapdoorBlockName(normalizedName)) {
-      const trapdoorBaseName = normalizedName.replace(/_trapdoor$/u, '')
-      const trapdoorTextureName = this._resolveTextureName(trapdoorBaseName)
-        || this._resolveTextureName(`${trapdoorBaseName}_trapdoor`)
-        || this._resolveTextureName(normalizedName)
-
-      if (trapdoorTextureName) {
-        const mappedProperties = this._mapDirectionalPropertiesForWorld(properties)
-        const geometryType = trapdoorGeometryTypeFromProperties(mappedProperties)
-        const trapdoorBlock = ensureDynamicBlockType(trapdoorTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (trapdoorBlock?.id) {
-          const result = {
-            id: trapdoorBlock.id,
-            source: 'atlas-dynamic',
-            textureName: trapdoorTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isIronBarsBlockName(normalizedName)) {
-      const barsTextureName = this._resolveTextureName(normalizedName)
-      if (barsTextureName) {
-        const geometryType = barsGeometryTypeFromProperties(properties)
-        const barsBlock = ensureDynamicBlockType(barsTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (barsBlock?.id) {
-          const result = {
-            id: barsBlock.id,
-            source: 'atlas-dynamic',
-            textureName: barsTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isGlassPaneBlock) {
-      const paneTextureName = this._resolveGlassPaneTextureName(normalizedName)
-
-      if (paneTextureName) {
-        const geometryType = barsGeometryTypeFromProperties(properties)
-        const paneBlock = ensureDynamicBlockType(paneTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (paneBlock?.id) {
-          const result = {
-            id: paneBlock.id,
-            source: 'atlas-dynamic',
-            textureName: paneTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isFenceBlock) {
-      const fenceTextureName = this._resolveFenceTextureName(normalizedName)
-
-      if (fenceTextureName) {
-        const geometryType = fenceGeometryTypeFromProperties(properties)
-        const fenceBlock = ensureDynamicBlockType(fenceTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (fenceBlock?.id) {
-          const result = {
-            id: fenceBlock.id,
-            source: 'atlas-dynamic',
-            textureName: fenceTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isWallBlockName(normalizedName)) {
-      const wallBaseName = normalizedName.replace(/_wall$/u, '')
-      const wallTextureName = this._resolveTextureName(wallBaseName)
-        || this._resolveTextureName(`${wallBaseName}_wall`)
-        || this._resolveTextureName(normalizedName)
-
-      if (wallTextureName) {
-        const geometryType = wallGeometryTypeFromProperties(properties)
-        const wallBlock = ensureDynamicBlockType(wallTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (wallBlock?.id) {
-          const result = {
-            id: wallBlock.id,
-            source: 'atlas-dynamic',
-            textureName: wallTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isLanternBlockName(normalizedName)) {
-      const lanternTextureName = this._resolveTextureName(normalizedName)
-      if (lanternTextureName) {
-        const geometryType = this._lanternGeometryTypeFromProperties(properties)
-        const lanternBlock = ensureDynamicBlockType(lanternTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (lanternBlock?.id) {
-          const result = {
-            id: lanternBlock.id,
-            source: 'atlas-dynamic',
-            textureName: lanternTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isCarpetBlock) {
-      const carpetTextureName = this._resolveTextureName(normalizedName)
-      if (carpetTextureName) {
-        const geometryType = carpetGeometryTypeFromProperties(properties)
-        const carpetBlock = ensureDynamicBlockType(carpetTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (carpetBlock?.id) {
-          const result = {
-            id: carpetBlock.id,
-            source: 'atlas-dynamic',
-            textureName: carpetTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isVineBlock) {
-      const vineTextureName = this._resolveTextureName(normalizedName)
-      if (vineTextureName) {
-        const geometryType = vineGeometryTypeFromProperties(properties)
-        const vineBlock = ensureDynamicBlockType(vineTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (vineBlock?.id) {
-          const result = {
-            id: vineBlock.id,
-            source: 'atlas-dynamic',
-            textureName: vineTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isTorchBlock) {
-      const torchTextureName = this._resolveTextureName(normalizedName)
-      if (torchTextureName) {
-        const isWallTorch = /_wall_torch$/u.test(normalizedName)
-        const mappedProperties = isWallTorch
-          ? this._mapDirectionalPropertiesForWorld(properties)
-          : properties
-        const geometryType = torchGeometryTypeFromProperties(mappedProperties, {
-          wall: isWallTorch,
-        })
-        const torchBlock = ensureDynamicBlockType(torchTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (torchBlock?.id) {
-          const result = {
-            id: torchBlock.id,
-            source: 'atlas-dynamic',
-            textureName: torchTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isRailBlock) {
-      const railTextureName = this._resolveTextureName(normalizedName)
-      if (railTextureName) {
-        const geometryType = railGeometryTypeFromProperties(properties)
-        const railBlock = ensureDynamicBlockType(railTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (railBlock?.id) {
-          const result = {
-            id: railBlock.id,
-            source: 'atlas-dynamic',
-            textureName: railTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isFireBlock) {
-      const fireTextureName = this._resolveFireTextureName(normalizedName)
-      if (fireTextureName) {
-        const geometryType = fireGeometryTypeFromProperties(properties)
-        const fireBlock = ensureDynamicBlockType(fireTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (fireBlock?.id) {
-          const result = {
-            id: fireBlock.id,
-            source: 'atlas-dynamic',
-            textureName: fireTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isPlainFlowerPotBlock) {
-      const flowerPotTextureName = this._resolveTextureName('flower_pot')
-      if (flowerPotTextureName) {
-        const geometryType = flowerPotGeometryTypeFromProperties(properties)
-        const flowerPotBlock = ensureDynamicBlockType(flowerPotTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (flowerPotBlock?.id) {
-          const result = {
-            id: flowerPotBlock.id,
-            source: 'atlas-dynamic',
-            textureName: flowerPotTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isPottedPlantBlock) {
-      const pottedPlantTextureName = this._resolvePottedPlantTextureName(normalizedName)
-      if (pottedPlantTextureName) {
-        const geometryType = pottedPlantGeometryTypeFromProperties(properties)
-        const pottedPlantBlock = ensureDynamicBlockType(pottedPlantTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (pottedPlantBlock?.id) {
-          const result = {
-            id: pottedPlantBlock.id,
-            source: 'atlas-dynamic',
-            textureName: pottedPlantTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    if (isPlantLikeBlock) {
-      const plantTextureName = this._resolveTextureName(normalizedName)
-      if (plantTextureName) {
-        const geometryType = plantCrossGeometryTypeFromProperties(properties)
-        const plantBlock = ensureDynamicBlockType(plantTextureName, {
-          blockName: normalizedName,
-          geometryType,
-        })
-
-        if (plantBlock?.id) {
-          const result = {
-            id: plantBlock.id,
-            source: 'atlas-dynamic',
-            textureName: plantTextureName,
-          }
-          this._blockResolveCache.set(cacheKey, result)
-          return result
-        }
-      }
-    }
-
-    const textureName = this._resolveTextureName(normalizedName)
-    if (textureName) {
-      const dynamicBlock = ensureDynamicBlockType(textureName, {
-        blockName: normalizedName,
-      })
-
-      if (dynamicBlock?.id) {
-        const result = {
-          id: dynamicBlock.id,
-          source: 'atlas-dynamic',
-          textureName,
-        }
-        this._blockResolveCache.set(cacheKey, result)
-        return result
-      }
-    }
-
-    const fallbackTextureName = MISSING_TEXTURE_MARKER
-    const fallbackDynamicBlock = ensureDynamicBlockType(fallbackTextureName, {
-      blockName: normalizedName,
-    })
-
-    if (fallbackDynamicBlock?.id) {
-      const fallback = {
-        id: fallbackDynamicBlock.id,
-        source: 'default-atlas-fallback',
-        textureName: fallbackTextureName,
-      }
-      this._blockResolveCache.set(cacheKey, fallback)
-      return fallback
-    }
-
-    const emptyFallback = { id: BLOCK_IDS.EMPTY, source: 'default-empty' }
-    this._blockResolveCache.set(cacheKey, emptyFallback)
-    return emptyFallback
-  }
-
-  _normalizeVariantString(value) {
-    return variantString(value)
-  }
-
-  _isCrossPlantBlockName(normalizedName = '') {
-    if (!normalizedName) {
-      return false
-    }
-
-    if (CROSS_PLANT_BLOCK_SET.has(normalizedName)) {
-      return true
-    }
-
-    if (/_sapling$/u.test(normalizedName)) {
-      return true
-    }
-
-    if (/_flower$/u.test(normalizedName)) {
-      return true
-    }
-
-    if (/_tulip$/u.test(normalizedName)) {
-      return true
-    }
-
-    if (/^(sunflower|lilac|rose_bush|peony)$/u.test(normalizedName)) {
-      return true
-    }
-
-    if (/(^|_)seagrass$/u.test(normalizedName) || /(^|_)kelp(_plant)?$/u.test(normalizedName)) {
-      return true
-    }
-
-    if (/_coral(_fan|_wall_fan)?$/u.test(normalizedName)) {
-      return true
-    }
-
-    return false
-  }
-
-  _mapHorizontalFacingForWorld(facing) {
-    if (facing === 'east') {
-      return 'west'
-    }
-    if (facing === 'west') {
-      return 'east'
-    }
-    return facing
-  }
-
-  _mapStairShapeForWorld(shape) {
-    if (shape === 'inner_left') {
-      return 'inner_right'
-    }
-    if (shape === 'inner_right') {
-      return 'inner_left'
-    }
-    if (shape === 'outer_left') {
-      return 'outer_right'
-    }
-    if (shape === 'outer_right') {
-      return 'outer_left'
-    }
-    return shape
-  }
-
-  _mapDirectionalPropertiesForWorld(properties = {}, options = {}) {
-    const mapped = {
-      ...properties,
-      facing: this._mapHorizontalFacingForWorld(variantString(properties?.facing)),
-    }
-
-    if (options?.mapStairShape) {
-      mapped.shape = this._mapStairShapeForWorld(variantString(properties?.shape))
-    }
-
-    return mapped
-  }
-
-  _normalizeFacing(value) {
-    return normalizeFacing(value)
-  }
-
-  _normalizeStairShape(value) {
-    return normalizeStairShape(value)
-  }
-
-  _stairGeometryTypeFromProperties(properties = {}) {
-    const facing = this._normalizeFacing(properties?.facing)
-    const half = this._normalizeVariantString(properties?.half) === 'top' ? 'top' : 'bottom'
-    const shape = this._normalizeStairShape(properties?.shape)
-    return `stair_${half}_${facing}_${shape}`
-  }
-
-  _normalizeBoolean(value) {
-    return variantBoolean(value)
-  }
-
-  _normalizeWallSide(value) {
-    const normalized = this._normalizeVariantString(value)
-    if (normalized === 'tall') {
-      return 2
-    }
-    if (normalized === 'low' || normalized === 'true' || normalized === '1') {
-      return 1
-    }
-    return 0
-  }
-
-  _lanternGeometryTypeFromProperties(properties = {}) {
-    const hanging = this._normalizeBoolean(properties?.hanging)
-    return hanging ? 'lantern_hanging' : 'lantern_standing'
-  }
-
-  _buildBlockVariantKey(properties = {}) {
-    return buildVariantKey(properties)
-  }
-
-  _resolveTextureName(normalizedName) {
-    return this._resolveAtlasTextureName(normalizedName)
-  }
-
-  _resolveAtlasTextureNameExact(candidates = []) {
-    const seen = new Set()
-    for (const raw of candidates) {
-      const candidate = String(raw || '').trim()
-      if (!candidate || seen.has(candidate)) {
-        continue
-      }
-      seen.add(candidate)
-      const rectKey = `block/${candidate}`
-      if (javaAtlasBlockTextureRects[rectKey]) {
-        return `${ATLAS_TEXTURE_PREFIX}${rectKey}`
-      }
-    }
-    return null
-  }
-
-  _resolveFenceTextureName(normalizedName) {
-    const hints = Array.isArray(javaBlockTextureStemHintsByBlock[normalizedName])
-      ? javaBlockTextureStemHintsByBlock[normalizedName]
-      : []
-    const fenceBaseName = normalizedName.replace(/_fence$/u, '')
-
-    const exactCandidates = [
-      ...hints,
-      normalizedName,
-      `${fenceBaseName}_planks`,
-      `planks_${fenceBaseName}`,
-      fenceBaseName,
-    ]
-
-    return this._resolveAtlasTextureNameExact(exactCandidates)
-  }
-
-  _resolveGlassPaneTextureName(normalizedName) {
-    if (normalizedName === 'glass_pane') {
-      return this._resolveAtlasTextureNameExact([
-        'glass_pane_top',
-        'glass',
-      ])
-    }
-
-    const stainedMatch = normalizedName.match(/^([a-z0-9_]+)_stained_glass_pane$/u)
-    if (stainedMatch) {
-      const color = stainedMatch[1]
-      return this._resolveAtlasTextureNameExact([
-        `${color}_stained_glass_pane_top`,
-        `${color}_stained_glass`,
-      ])
-    }
-
-    return this._resolveAtlasTextureNameExact([normalizedName])
-  }
-
-  _resolvePottedPlantTextureName(normalizedName) {
-    const plantName = normalizedName.replace(/^potted_/u, '')
-    return this._resolveTextureName(normalizedName)
-      || this._resolveTextureName(plantName)
-      || this._resolveTextureName(`${plantName}_plant`)
-      || this._resolveTextureName(`${plantName}_bush`)
-  }
-
-  _resolveFireTextureName(normalizedName) {
-    if (normalizedName === 'soul_fire') {
-      return this._resolveAtlasTextureNameExact([
-        'soul_fire_0',
-        'soul_fire_1',
-        'soul_fire_flame',
-        'soul_fire',
-      ])
-    }
-
-    return this._resolveAtlasTextureNameExact([
-      'fire_0',
-      'fire_1',
-      'fire',
-    ])
-  }
-
-  _resolveDoorTextureName(normalizedName, properties = {}) {
-    const hints = Array.isArray(javaBlockTextureStemHintsByBlock[normalizedName])
-      ? javaBlockTextureStemHintsByBlock[normalizedName]
-      : []
-    const doorBaseName = normalizedName.replace(/_door$/u, '')
-    const half = variantString(properties?.half) === 'upper' ? 'top' : 'bottom'
-
-    const exactCandidates = [
-      `${normalizedName}_${half}`,
-      `${doorBaseName}_door_${half}`,
-      ...hints,
-      normalizedName,
-      `${doorBaseName}_door`,
-      doorBaseName,
-    ]
-
-    return this._resolveAtlasTextureNameExact(exactCandidates)
-  }
-
-  _resolveAtlasTextureName(normalizedName) {
-    if (!normalizedName) {
-      return null
-    }
-
-    const baseCandidates = this._buildTextureBaseNameCandidates(normalizedName)
-    const javaTextureHints = javaBlockTextureStemHintsByBlock[normalizedName]
-    if (Array.isArray(javaTextureHints)) {
-      for (const hint of javaTextureHints) {
-        if (typeof hint === 'string' && hint) {
-          baseCandidates.push(hint)
-        }
-      }
-    }
-
-    const atlasCandidates = []
-    const seen = new Set()
-
-    for (const base of baseCandidates) {
-      const variants = [
-        base,
-        `${base}_top`,
-        `${base}_side`,
-        `${base}_front`,
-        `${base}_on`,
-        `${base}_off`,
-        `${base}_bottom`,
-        `${base}_end`,
-      ]
-
-      for (const variant of variants) {
-        if (seen.has(variant)) {
-          continue
-        }
-        seen.add(variant)
-        atlasCandidates.push(variant)
-      }
-    }
-
-    for (const candidate of atlasCandidates) {
-      const rectKey = `block/${candidate}`
-      if (javaAtlasBlockTextureRects[rectKey]) {
-        return `${ATLAS_TEXTURE_PREFIX}${rectKey}`
-      }
-    }
-
-    return null
-  }
-
-  _buildTextureBaseNameCandidates(normalizedName) {
-    const candidates = [normalizedName]
-
-    const shapeStripped = normalizedName.replace(/_(stairs|slab|wall|fence|fence_gate|door|trapdoor)$/u, '')
-    if (shapeStripped && shapeStripped !== normalizedName) {
-      candidates.push(shapeStripped)
-    }
-
-    const swapPairs = [
-      ['_planks', 'planks_'],
-      ['_concrete', 'concrete_'],
-      ['_stained_glass', 'glass_'],
-    ]
-
-    for (const source of [...candidates]) {
-      for (const [suffix, prefix] of swapPairs) {
-        if (!source.endsWith(suffix)) {
-          continue
-        }
-        const material = source.slice(0, -suffix.length)
-        if (!material) {
-          continue
-        }
-        candidates.push(`${prefix}${material}`)
-      }
-    }
-
-    for (const source of [...candidates]) {
-      if (source === 'stone_bricks' || source === 'stone_brick') {
-        candidates.push('stonebrick')
-      }
-      if (source === 'nether_bricks') {
-        candidates.push('nether_brick')
-      }
-      if (source.endsWith('_brick')) {
-        candidates.push(`${source}s`)
-      }
-      if (source.endsWith('_bricks')) {
-        candidates.push(source.slice(0, -1))
-      }
-      if (source.endsWith('_tile')) {
-        candidates.push(`${source}s`)
-      }
-      if (source.endsWith('_tiles')) {
-        candidates.push(source.slice(0, -1))
-      }
-    }
-
-    return [...new Set(candidates)]
-  }
-
-  /**
-   * 构建原理图预览体素（采样）
-   * @param {{maxBlocks?:number}} options
-   * @returns {{blocks:Array<{x:number,y:number,z:number,id:number,name:string}>,bounds:{min:{x:number,y:number,z:number},max:{x:number,y:number,z:number}},totalSolidBlocks:number,sampled:boolean}} 预览模型数据
-   */
-  buildPreviewModel(options = {}) {
-    if (!this.currentSchematic) {
-      throw new Error('No schematic loaded')
-    }
-
-    const maxBlocks = Math.max(500, Number(options.maxBlocks) || 12000)
-    const sampledBlocks = []
-    let seenSolidBlocks = 0
-
-    const bounds = {
-      min: { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY },
-      max: { x: Number.NEGATIVE_INFINITY, y: Number.NEGATIVE_INFINITY, z: Number.NEGATIVE_INFINITY },
-    }
-
-    for (const region of Object.values(this.currentSchematic.regions)) {
-      const sizeX = Math.abs(region.size.x)
-      const sizeY = Math.abs(region.size.y)
-      const sizeZ = Math.abs(region.size.z)
-      const totalBlocks = sizeX * sizeY * sizeZ
-      if (totalBlocks <= 0) {
-        continue
-      }
-
-      const blockIndices = this._getDecodedIndices(region)
-      const resolvedPalette = this._buildResolvedPalette(region)
-      const worldBase = this._getRegionWorldBase(region)
-
-      let linearIndex = 0
-      for (let y = 0; y < sizeY; y++) {
-        for (let z = 0; z < sizeZ; z++) {
-          for (let x = 0; x < sizeX; x++) {
-            const paletteIndex = blockIndices[linearIndex++] ?? 0
-            const paletteEntry = region.palette[paletteIndex]
-            const blockName = paletteEntry?.name || 'minecraft:air'
-            const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName, paletteEntry?.properties || {})
-            const projectBlockId = projectBlock.id
-            if (projectBlockId === BLOCK_IDS.EMPTY) {
-              continue
-            }
-
-            const worldX = x + worldBase.x
-            const worldY = y + worldBase.y
-            const worldZ = z + worldBase.z
-
-            bounds.min.x = Math.min(bounds.min.x, worldX)
-            bounds.min.y = Math.min(bounds.min.y, worldY)
-            bounds.min.z = Math.min(bounds.min.z, worldZ)
-            bounds.max.x = Math.max(bounds.max.x, worldX)
-            bounds.max.y = Math.max(bounds.max.y, worldY)
-            bounds.max.z = Math.max(bounds.max.z, worldZ)
-
-            seenSolidBlocks++
-
-            const blockType = getBlockTypeById(projectBlockId)
-
-            const candidate = {
-              x: worldX,
-              y: worldY,
-              z: worldZ,
-              id: projectBlockId,
-              name: blockName,
-              geometryType: blockType?.geometryType || 'cube',
-              textureName: blockType?.textureKeys?.all
-                || blockType?.textureKeys?.top
-                || blockType?.textureKeys?.side
-                || null,
-            }
-
-            if (sampledBlocks.length < maxBlocks) {
-              sampledBlocks.push(candidate)
-              continue
-            }
-
-            const replaceIndex = Math.floor(Math.random() * seenSolidBlocks)
-            if (replaceIndex < maxBlocks) {
-              sampledBlocks[replaceIndex] = candidate
-            }
-          }
-        }
-      }
-    }
-
-    if (!Number.isFinite(bounds.min.x)) {
-      bounds.min = { x: 0, y: 0, z: 0 }
-      bounds.max = { x: 0, y: 0, z: 0 }
-    }
-
-    return {
-      blocks: sampledBlocks,
-      bounds,
-      totalSolidBlocks: seenSolidBlocks,
-      sampled: seenSolidBlocks > maxBlocks,
-    }
-  }
-
-  _ensureChunkReady(chunkManager, chunkX, chunkZ) {
-    let chunk = chunkManager.getChunk(chunkX, chunkZ)
-    if (chunk) {
-      return chunk
-    }
-
-    if (typeof chunkManager._ensureChunk !== 'function') {
-      return null
-    }
-
-    chunk = chunkManager._ensureChunk(chunkX, chunkZ)
-    if (!chunk) {
-      return null
-    }
-
-    if (chunk.state === 'init') {
-      if (typeof chunkManager._prepareChunkData === 'function') {
-        const prepared = chunkManager._prepareChunkData(chunk)
-        if (!prepared) {
-          return null
-        }
-      }
-      else {
-        chunk.container.clear()
-        chunk.state = 'dataReady'
-      }
-
-      if (typeof chunkManager._applyChunkModifications === 'function') {
-        chunkManager._applyChunkModifications(chunk)
-      }
-    }
-
-    return chunk
-  }
-
   /**
    * 获取原理图的预览信息
    */
@@ -1339,65 +477,8 @@ class SchematicService {
       regionCount,
       blockCount: this._estimateSolidBlockCount(regions),
       yStats: this._collectSolidYStats(regions),
+      bounds: this._collectSolidBounds(regions),
     }
-  }
-
-  getRequiredTextureNames() {
-    if (!this.currentSchematic) {
-      return []
-    }
-
-    const textureNames = new Set()
-
-    for (const region of Object.values(this.currentSchematic.regions)) {
-      const blockIndices = this._getDecodedIndices(region)
-      if (!blockIndices.length) {
-        continue
-      }
-
-      const usedPalette = new Set(blockIndices)
-      for (const paletteIndex of usedPalette) {
-        const paletteEntry = region.palette[paletteIndex]
-        const blockName = paletteEntry?.name || 'minecraft:air'
-        const projectBlock = this._resolveProjectBlock(blockName, paletteEntry?.properties || {})
-        if (!projectBlock?.id || projectBlock.id === BLOCK_IDS.EMPTY) {
-          continue
-        }
-
-        const blockType = getBlockTypeById(projectBlock.id)
-        const keys = blockType?.textureKeys ? Object.values(blockType.textureKeys) : []
-        keys.forEach((key) => {
-          if (key) {
-            textureNames.add(key)
-          }
-        })
-      }
-    }
-
-    return [...textureNames]
-  }
-
-  async preloadTextures(resources) {
-    if (!resources?.loadByNames) {
-      return []
-    }
-
-    const names = this.getRequiredTextureNames()
-    if (!names.length) {
-      return []
-    }
-
-    return resources.loadByNames(names)
-  }
-
-  /**
-   * 估算原理图中的方块数量
-   */
-  _estimateBlockCount(regions) {
-    return Object.values(regions).reduce((sum, region) => {
-      const { x, y, z } = region.size
-      return sum + (x * y * z)
-    }, 0)
   }
 
   _estimateSolidBlockCount(regions) {
@@ -1434,6 +515,72 @@ class SchematicService {
     }
   }
 
+  _collectSolidBounds(regions) {
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let minZ = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    let maxZ = Number.NEGATIVE_INFINITY
+
+    for (const region of Object.values(regions)) {
+      const sizeX = Math.abs(region.size.x)
+      const sizeY = Math.abs(region.size.y)
+      const sizeZ = Math.abs(region.size.z)
+      const totalBlocks = sizeX * sizeY * sizeZ
+      if (totalBlocks <= 0) {
+        continue
+      }
+
+      const blockIndices = this._getDecodedIndices(region)
+      const worldBase = this._getRegionWorldBase(region)
+      let linearIndex = 0
+
+      for (let y = 0; y < sizeY; y++) {
+        for (let z = 0; z < sizeZ; z++) {
+          for (let x = 0; x < sizeX; x++) {
+            const paletteIndex = blockIndices[linearIndex++] ?? 0
+            const blockName = region.palette?.[paletteIndex]?.name || 'minecraft:air'
+            if (EMPTY_BLOCK_NAMES.has(blockName)) {
+              continue
+            }
+
+            const worldX = x + worldBase.x
+            const worldY = y + worldBase.y
+            const worldZ = z + worldBase.z
+
+            minX = Math.min(minX, worldX)
+            minY = Math.min(minY, worldY)
+            minZ = Math.min(minZ, worldZ)
+            maxX = Math.max(maxX, worldX)
+            maxY = Math.max(maxY, worldY)
+            maxZ = Math.max(maxZ, worldZ)
+          }
+        }
+      }
+    }
+
+    if (!Number.isFinite(minX)) {
+      return {
+        minX: null,
+        minY: null,
+        minZ: null,
+        maxX: null,
+        maxY: null,
+        maxZ: null,
+      }
+    }
+
+    return {
+      minX,
+      minY,
+      minZ,
+      maxX,
+      maxY,
+      maxZ,
+    }
+  }
+
   /**
    * 将原理图注入到世界
    * 这是一个占位符，实现需要与 World/Terrain 系统集成
@@ -1463,14 +610,17 @@ class SchematicService {
       replaced: 0,
       persisted: 0,
       skipped: 0,
-      mappedByExact: 0,
-      mappedByKeyword: 0,
-      mappedByAtlasDynamic: 0,
-      mappedByAtlasFallback: 0,
-      unknownMappedToAtlasFallback: 0,
       touchedChunks: 0,
       worldClearedChunks: 0,
       skippedOutOfHeight: 0,
+    }
+    const placedBounds = {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      minZ: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+      maxZ: Number.NEGATIVE_INFINITY,
     }
 
     const blocksPerFrame = 1400
@@ -1494,12 +644,6 @@ class SchematicService {
     }
 
     const touchedChunkKeys = new Set()
-    const textureUsage = new Map()
-    const shapeUsage = {
-      stairs: 0,
-      slabs: 0,
-      walls: 0,
-    }
 
     reportProgress('prepare', {
       replaceWorld,
@@ -1507,34 +651,20 @@ class SchematicService {
 
     try {
       if (replaceWorld) {
+        chunkManager.setMinecraftRenderOverlayActive?.(false)
+        chunkManager.minecraftSchematicLayer?.clear?.()
         chunkManager.setSchematicOnlyMode?.(true)
         chunkManager.persistence?.clearAllModifications?.()
 
-        const loadedChunks = Array.from(chunkManager.chunks?.values?.() || [])
+        const loadedChunks = Array.from(chunkManager.chunks?.entries?.() || [])
         for (let index = 0; index < loadedChunks.length; index++) {
-          const chunk = loadedChunks[index]
+          const [chunkKey, chunk] = loadedChunks[index]
           if (!chunk || chunk.state === 'disposed') {
             continue
           }
 
-          if (chunk.state === 'init') {
-            if (typeof chunkManager._prepareChunkData === 'function') {
-              const prepared = chunkManager._prepareChunkData(chunk)
-              if (!prepared) {
-                continue
-              }
-            }
-            else {
-              chunk.generator.params.seed = chunkManager.seed
-              const generated = chunk.generateData()
-              if (!generated) {
-                continue
-              }
-            }
-          }
-
-          chunk.container.clear()
-          touchedChunkKeys.add(`${chunk.chunkX},${chunk.chunkZ}`)
+          chunk.dispose?.()
+          chunkManager.chunks?.delete?.(chunkKey)
           stats.worldClearedChunks++
 
           reportProgress('clearing-world', {
@@ -1558,7 +688,6 @@ class SchematicService {
         }
 
         const blockIndices = this._getDecodedIndices(region)
-        const resolvedPalette = this._buildResolvedPalette(region)
         const worldBase = this._getRegionWorldBase(region)
 
         let linearIndex = 0
@@ -1568,24 +697,12 @@ class SchematicService {
               const paletteIndex = blockIndices[linearIndex++] ?? 0
               const paletteEntry = region.palette[paletteIndex]
               const blockName = paletteEntry?.name || 'minecraft:air'
-              const projectBlock = resolvedPalette[paletteIndex] || this._resolveProjectBlock(blockName, paletteEntry?.properties || {})
-              const projectBlockId = projectBlock.id
-              if (projectBlockId === BLOCK_IDS.EMPTY) {
+              if (
+                blockName === 'minecraft:air'
+                || blockName === 'minecraft:cave_air'
+                || blockName === 'minecraft:void_air'
+              ) {
                 continue
-              }
-
-              if (projectBlock.source === 'exact') {
-                stats.mappedByExact++
-              }
-              else if (projectBlock.source === 'keyword') {
-                stats.mappedByKeyword++
-              }
-              else if (projectBlock.source === 'atlas-dynamic') {
-                stats.mappedByAtlasDynamic++
-              }
-              else if (projectBlock.source === 'default-atlas-fallback') {
-                stats.mappedByAtlasFallback++
-                stats.unknownMappedToAtlasFallback++
               }
 
               const worldX = x + worldBase.x + offsetX
@@ -1602,61 +719,29 @@ class SchematicService {
               const chunkZ = Math.floor(worldZ / chunkManager.chunkWidth)
               const chunkKey = `${chunkX},${chunkZ}`
 
-              const chunk = this._ensureChunkReady(chunkManager, chunkX, chunkZ)
-              if (!chunk) {
-                stats.skipped++
-                continue
-              }
+              const existing = chunkManager.minecraftSchematicLayer?.getBlock?.(worldX, worldY, worldZ)
+              chunkManager.setImportedMinecraftBlock?.(
+                worldX,
+                worldY,
+                worldZ,
+                blockName,
+                paletteEntry?.properties || {},
+              )
 
-              const localX = Math.floor(worldX - chunkX * chunkManager.chunkWidth)
-              const localZ = Math.floor(worldZ - chunkZ * chunkManager.chunkWidth)
-              const existing = chunk.container.getBlock(localX, worldY, localZ)
-              if (!existing) {
-                stats.skipped++
-                continue
-              }
-
-              if (existing.id === projectBlockId) {
-                continue
-              }
-
-              if (existing.id !== BLOCK_IDS.EMPTY) {
+              if (existing) {
                 stats.replaced++
               }
-              stats.placed++
-
-              const normalizedName = blockName.replace('minecraft:', '')
-              if (isStairBlockName(normalizedName)) {
-                shapeUsage.stairs++
-              }
-              else if (isSlabBlockName(normalizedName)) {
-                shapeUsage.slabs++
-              }
-              else if (isWallBlockName(normalizedName)) {
-                shapeUsage.walls++
+              else {
+                stats.placed++
               }
 
-              const blockType = getBlockTypeById(projectBlockId)
-              const textureName = projectBlock.textureName
-                || blockType?.textureKeys?.all
-                || blockType?.textureKeys?.top
-                || blockType?.textureKeys?.side
-              if (textureName) {
-                textureUsage.set(textureName, (textureUsage.get(textureName) || 0) + 1)
-              }
+              placedBounds.minX = Math.min(placedBounds.minX, worldX)
+              placedBounds.minY = Math.min(placedBounds.minY, worldY)
+              placedBounds.minZ = Math.min(placedBounds.minZ, worldZ)
+              placedBounds.maxX = Math.max(placedBounds.maxX, worldX)
+              placedBounds.maxY = Math.max(placedBounds.maxY, worldY)
+              placedBounds.maxZ = Math.max(placedBounds.maxZ, worldZ)
 
-              chunk.container.setBlockId(localX, worldY, localZ, projectBlockId)
-              if (persistModifications) {
-                chunkManager.persistence.recordChunkLocalModification(
-                  chunkX,
-                  chunkZ,
-                  localX,
-                  worldY,
-                  localZ,
-                  projectBlockId,
-                )
-                stats.persisted++
-              }
               touchedChunkKeys.add(chunkKey)
               processedSolidBlocks++
 
@@ -1673,59 +758,40 @@ class SchematicService {
         }
       }
 
-      const touchedChunks = Array.from(touchedChunkKeys)
-      for (let index = 0; index < touchedChunks.length; index++) {
-        const chunkKey = touchedChunks[index]
-        const [chunkX, chunkZ] = chunkKey.split(',').map(Number)
-        const chunk = chunkManager.getChunk(chunkX, chunkZ)
-        if (!chunk || chunk.state === 'disposed') {
-          continue
-        }
-
-        if (chunk.state === 'dataReady') {
-          const built = chunk.buildMesh()
-          if (built) {
-            chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
-          }
-        }
-        else if (chunk.state === 'meshReady') {
-          chunk.renderer?._rebuildFromContainer?.()
-          chunk.renderer?.group?.scale?.setScalar?.(chunkManager.renderParams?.scale ?? 1)
-        }
-
-        if ((index + 1) % chunksPerFrame === 0) {
-          reportProgress('rebuilding-chunks', {
-            rebuiltChunks: index + 1,
-            totalTouchedChunks: touchedChunks.length,
-          })
-          await this._yieldToMainThread()
-        }
-      }
+      chunkManager.syncMinecraftSchematicLayerState?.({
+        scheduleSave: persistModifications,
+      })
 
       if (persistModifications) {
+        stats.persisted = stats.placed + stats.replaced
         chunkManager.persistence.save()
       }
 
       stats.touchedChunks = touchedChunkKeys.size
+      chunkManager._updateStats?.()
 
       reportProgress('done', {
         touchedChunks: stats.touchedChunks,
         skipped: stats.skipped,
-        importedShapes: shapeUsage,
       })
-
-      const topTextures = [...textureUsage.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 12)
-        .map(([name, count]) => ({ name, count }))
 
       return {
         status: 'applied',
         totalBlocks: totalSolidBlocks,
         offset: { x: offsetX, y: offsetY, z: offsetZ },
+        placedBounds: Number.isFinite(placedBounds.minX)
+          ? { ...placedBounds }
+          : {
+              minX: null,
+              minY: null,
+              minZ: null,
+              maxX: null,
+              maxY: null,
+              maxZ: null,
+            },
         importDiagnostics: {
-          shapeUsage,
-          topTextures,
+          renderMode: 'minecraft-native',
+          importedChunkCount: touchedChunkKeys.size,
         },
         ...stats,
       }

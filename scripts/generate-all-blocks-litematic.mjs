@@ -1,10 +1,13 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
 import { Buffer as BufferPolyfill } from 'node:buffer'
+import fs from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+
 import pako from 'pako'
 import { writeUncompressed } from 'prismarine-nbt'
-import { javaAtlasBlockTextureRects } from '../src/js/generated/java-atlas-textures.js'
-import { javaBlockTextureStemHintsByBlock } from '../src/js/generated/java-block-texture-hints.js'
+
+const require = createRequire(import.meta.url)
+const minecraftData = require('minecraft-data')
 
 const ROOT = process.cwd()
 const OUTPUT_DIR = path.join(ROOT, 'litematic')
@@ -13,57 +16,37 @@ const OUTPUT_LIST = path.join(OUTPUT_DIR, 'all-blocks-test-block-names.txt')
 const OUTPUT_CSV = path.join(OUTPUT_DIR, 'all-blocks-test-layout.csv')
 
 const GRID_COLUMNS = 64
+const EMPTY_BLOCK_NAMES = new Set(['air', 'cave_air', 'void_air'])
 
-function sanitizeCandidateName(name) {
-  const normalized = String(name || '').trim().toLowerCase()
-  if (!normalized) {
+function parseCliArg(name) {
+  const index = process.argv.indexOf(name)
+  if (index === -1) {
     return null
   }
 
-  if (!/^[a-z0-9_]+$/u.test(normalized)) {
-    return null
-  }
-
-  if (normalized.endsWith('_top')
-    || normalized.endsWith('_bottom')
-    || normalized.endsWith('_side')
-    || normalized.endsWith('_front')
-    || normalized.endsWith('_back')
-    || normalized.endsWith('_end')
-    || normalized.endsWith('_inner')
-    || normalized.endsWith('_outer')
-    || normalized.endsWith('_overlay')
-    || normalized.endsWith('_particle')
-    || normalized.endsWith('_flow')) {
-    return null
-  }
-
-  return normalized
+  return process.argv[index + 1] || null
 }
 
-function collectBlockNames() {
-  const names = new Set()
+function resolveDefaultMcVersion() {
+  const latestStable = (minecraftData.versions.pc || [])
+    .find(entry => /^\d+\.\d+(?:\.\d+)?$/.test(String(entry?.minecraftVersion || '')))
 
-  for (const key of Object.keys(javaBlockTextureStemHintsByBlock)) {
-    const hit = sanitizeCandidateName(key)
-    if (hit) {
-      names.add(hit)
-    }
-  }
+  return latestStable?.minecraftVersion || '1.21.4'
+}
 
-  for (const key of Object.keys(javaAtlasBlockTextureRects)) {
-    if (!key.startsWith('block/')) {
-      continue
-    }
-    const candidate = key.slice('block/'.length)
-    const hit = sanitizeCandidateName(candidate)
-    if (hit) {
-      names.add(hit)
-    }
-  }
+const TARGET_MC_VERSION = parseCliArg('--mc-version') || resolveDefaultMcVersion()
+const TARGET_VERSION_INFO = minecraftData.versionsByMinecraftVersion.pc?.[TARGET_MC_VERSION]
 
-  names.delete('air')
-  return [...names].sort((a, b) => a.localeCompare(b))
+if (!TARGET_VERSION_INFO) {
+  throw new Error(`Unknown or unsupported Minecraft version: ${TARGET_MC_VERSION}`)
+}
+
+function collectBlockNames(mcVersion) {
+  const mc = minecraftData(mcVersion)
+
+  return Object.keys(mc.blocksByName || {})
+    .filter(name => !EMPTY_BLOCK_NAMES.has(name))
+    .sort((left, right) => left.localeCompare(right))
 }
 
 function encodeBlockIndices(indices, paletteSize) {
@@ -82,12 +65,10 @@ function encodeBlockIndices(indices, paletteSize) {
     longs[longIndex] |= value << BigInt(bitOffset)
 
     const spillBits = bitOffset + bitsPerBlock - 64
-    if (spillBits > 0) {
+    if (spillBits > 0 && longIndex + 1 < longs.length) {
       const spillMask = (1n << BigInt(spillBits)) - 1n
       const spillValue = (value >> BigInt(bitsPerBlock - spillBits)) & spillMask
-      if (longIndex + 1 < longs.length) {
-        longs[longIndex + 1] |= spillValue
-      }
+      longs[longIndex + 1] |= spillValue
     }
   }
 
@@ -114,7 +95,7 @@ function nbtList(type, value = []) {
   return { type: 'list', value: { type, value } }
 }
 
-function buildLitematicNbt(blockNames) {
+function buildLitematicNbt(blockNames, mcVersion, versionInfo) {
   const paletteEntries = ['minecraft:air', ...blockNames.map(name => `minecraft:${name}`)]
 
   const sizeX = GRID_COLUMNS
@@ -143,52 +124,52 @@ function buildLitematicNbt(blockNames) {
   }
 
   const blockStates = encodeBlockIndices(indices, paletteEntries.length)
-
   const paletteList = paletteEntries.map(blockName => ({ Name: nbtString(blockName) }))
   const now = BigInt(Date.now())
+  const schematicName = `all-blocks-test-${mcVersion}`
 
   const root = {
     name: '',
     type: 'compound',
     value: {
-    MinecraftDataVersion: nbtInt(4189),
-    Version: nbtInt(6),
-    SubVersion: nbtInt(1),
-    Metadata: nbtCompound({
-      Name: nbtString('all-blocks-test'),
-      Author: nbtString('Third-Person-MC generator'),
-      Description: nbtString('Auto-generated litematic for block render verification.'),
-      RegionCount: nbtInt(1),
-      TotalBlocks: nbtInt(blockNames.length),
-      TotalVolume: nbtInt(totalBlocks),
-      TimeCreated: nbtLong(now),
-      TimeModified: nbtLong(now),
-      EnclosingSize: nbtCompound({
-        x: nbtInt(sizeX),
-        y: nbtInt(sizeY),
-        z: nbtInt(sizeZ),
-      }),
-    }),
-    Regions: nbtCompound({
-      test_region: nbtCompound({
-        Position: nbtCompound({
-          x: nbtInt(0),
-          y: nbtInt(0),
-          z: nbtInt(0),
-        }),
-        Size: nbtCompound({
+      MinecraftDataVersion: nbtInt(Number(versionInfo.dataVersion)),
+      Version: nbtInt(6),
+      SubVersion: nbtInt(1),
+      Metadata: nbtCompound({
+        Name: nbtString(schematicName),
+        Author: nbtString('Litemora generator'),
+        Description: nbtString(`Auto-generated block coverage test for Minecraft ${mcVersion}.`),
+        RegionCount: nbtInt(1),
+        TotalBlocks: nbtInt(blockNames.length),
+        TotalVolume: nbtInt(totalBlocks),
+        TimeCreated: nbtLong(now),
+        TimeModified: nbtLong(now),
+        EnclosingSize: nbtCompound({
           x: nbtInt(sizeX),
           y: nbtInt(sizeY),
           z: nbtInt(sizeZ),
         }),
-        BlockStatePalette: nbtList('compound', paletteList),
-        BlockStates: { type: 'longArray', value: blockStates },
-        Entities: nbtList('end', []),
-        TileEntities: nbtList('end', []),
-        PendingBlockTicks: nbtList('end', []),
-        PendingFluidTicks: nbtList('end', []),
       }),
-    }),
+      Regions: nbtCompound({
+        test_region: nbtCompound({
+          Position: nbtCompound({
+            x: nbtInt(0),
+            y: nbtInt(0),
+            z: nbtInt(0),
+          }),
+          Size: nbtCompound({
+            x: nbtInt(sizeX),
+            y: nbtInt(sizeY),
+            z: nbtInt(sizeZ),
+          }),
+          BlockStatePalette: nbtList('compound', paletteList),
+          BlockStates: { type: 'longArray', value: blockStates },
+          Entities: nbtList('end', []),
+          TileEntities: nbtList('end', []),
+          PendingBlockTicks: nbtList('end', []),
+          PendingFluidTicks: nbtList('end', []),
+        }),
+      }),
     },
   }
 
@@ -199,16 +180,21 @@ function buildLitematicNbt(blockNames) {
     sizeY,
     sizeZ,
     totalBlocks,
+    schematicName,
   }
 }
 
 async function main() {
-  const blockNames = collectBlockNames()
+  const blockNames = collectBlockNames(TARGET_MC_VERSION)
   if (!blockNames.length) {
-    throw new Error('No block names found from generated datasets.')
+    throw new Error(`No block names found for Minecraft ${TARGET_MC_VERSION}.`)
   }
 
-  const { root, layoutRows, sizeX, sizeY, sizeZ, totalBlocks } = buildLitematicNbt(blockNames)
+  const { root, layoutRows, sizeX, sizeY, sizeZ, totalBlocks, schematicName } = buildLitematicNbt(
+    blockNames,
+    TARGET_MC_VERSION,
+    TARGET_VERSION_INFO,
+  )
   const nbtBuffer = writeUncompressed(root, 'big')
   const gzipped = BufferPolyfill.from(pako.gzip(new Uint8Array(nbtBuffer)))
 
@@ -223,6 +209,9 @@ async function main() {
   await fs.writeFile(OUTPUT_CSV, `${csvLines.join('\n')}\n`, 'utf8')
 
   console.log(`Generated: ${path.relative(ROOT, OUTPUT_LITEMATIC)}`)
+  console.log(`Schematic name: ${schematicName}`)
+  console.log(`Minecraft version: ${TARGET_MC_VERSION}`)
+  console.log(`Data version: ${TARGET_VERSION_INFO.dataVersion}`)
   console.log(`Block names: ${blockNames.length}`)
   console.log(`Region size: ${sizeX} x ${sizeY} x ${sizeZ} (${totalBlocks} volume)`)
   console.log(`Name list: ${path.relative(ROOT, OUTPUT_LIST)}`)

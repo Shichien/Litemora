@@ -6,12 +6,17 @@ const SCHEMATIC_DB_VERSION = 1
 const SCHEMATIC_FALLBACK_PREFIX = 'mc-admin-schematic-fallback'
 
 function buildSchematicKey(accountId = '') {
+  const activeSpace = getActiveSpaceName()
+  if (activeSpace) {
+    return buildSpaceScopedKey('account:default', activeSpace)
+  }
+
   const normalizedId = String(accountId || '').trim()
   const baseKey = normalizedId ? `account:${encodeURIComponent(normalizedId)}` : 'account:default'
   if (normalizedId) {
     return baseKey
   }
-  return buildSpaceScopedKey(baseKey, getActiveSpaceName())
+  return baseKey
 }
 
 function openDb() {
@@ -66,6 +71,29 @@ function createFileFromBuffer(buffer, fileName, mimeType) {
     const blob = new Blob([buffer], { type })
     blob.name = fileName
     return blob
+  }
+}
+
+function readFallbackRecord(accountId = '') {
+  const raw = localStorage.getItem(fallbackStorageKey(accountId))
+  if (!raw) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed?.base64) {
+      return null
+    }
+    const buffer = fromDataUrlBase64(parsed.base64)
+    return {
+      file: createFileFromBuffer(buffer, parsed.fileName || 'uploaded.litematic', parsed.mimeType),
+      fileName: parsed.fileName || 'uploaded.litematic',
+      updatedAt: parsed.updatedAt || 0,
+    }
+  }
+  catch {
+    return null
   }
 }
 
@@ -124,7 +152,7 @@ export async function loadAdminSchematicFile(accountId = '') {
     db.close()
 
     if (!record?.buffer) {
-      return null
+      return readFallbackRecord(accountId)
     }
 
     return {
@@ -134,26 +162,7 @@ export async function loadAdminSchematicFile(accountId = '') {
     }
   }
   catch {
-    const raw = localStorage.getItem(fallbackStorageKey(accountId))
-    if (!raw) {
-      return null
-    }
-
-    try {
-      const parsed = JSON.parse(raw)
-      if (!parsed?.base64) {
-        return null
-      }
-      const buffer = fromDataUrlBase64(parsed.base64)
-      return {
-        file: createFileFromBuffer(buffer, parsed.fileName || 'uploaded.litematic', parsed.mimeType),
-        fileName: parsed.fileName || 'uploaded.litematic',
-        updatedAt: parsed.updatedAt || 0,
-      }
-    }
-    catch {
-      return null
-    }
+    return readFallbackRecord(accountId)
   }
 }
 

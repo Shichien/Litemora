@@ -8,7 +8,6 @@ import {
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
 import emitter from '@three/utils/event/event-bus.js'
-import { getActiveSpaceName } from '@three/utils/space-context.js'
 
 import {
   DEFAULT_BACKEND_WORLD_CONFIG,
@@ -23,7 +22,7 @@ import {
   saveAdminSchematicFile,
 } from '@three/world/terrain/admin-schematic-storage.js'
 import schematicService from '@three/world/terrain/schematic-service.js'
-import SchematicPreviewCanvas from '@ui-components/admin/SchematicPreviewCanvas.vue'
+import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
 
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -43,8 +42,6 @@ const isApplying = ref(false)
 
 const currentAccount = computed(() => authSession.value?.account || null)
 const currentAccountId = computed(() => currentAccount.value?.id || '')
-const currentSpaceName = getActiveSpaceName()
-const currentConfigScopeId = computed(() => currentSpaceName || currentAccountId.value || '')
 const currentAccountDisplay = computed(() => {
   const account = currentAccount.value
   if (!account) {
@@ -56,13 +53,12 @@ const isAuthenticated = computed(() => !!currentAccount.value)
 
 // 原理图导入状态
 const schematicFile = ref(null)
+const schematicSourceFile = ref(null)
+const schematicObject = ref(null)
 const schematicPreview = ref(null)
-const schematicModelData = ref(null)
 const isParsingSchematic = ref(false)
-const isBuildingSchematicPreview = ref(false)
-const schematicOffsetX = ref(0)
 const schematicOffsetY = ref(0)
-const schematicOffsetZ = ref(0)
+const schematicSpawnLift = ref(2)
 const schematicApplyProgress = ref(null)
 const schematicImportLogs = ref([])
 
@@ -92,6 +88,24 @@ const schematicYStats = computed(() => {
   return schematicPreview.value?.yStats || null
 })
 
+const schematicBounds = computed(() => {
+  return schematicPreview.value?.bounds || null
+})
+
+const schematicPlacedBounds = computed(() => {
+  const bounds = schematicBounds.value
+  if (!bounds || bounds.minX === null || bounds.maxX === null) {
+    return null
+  }
+
+  const yOffset = Number(schematicOffsetY.value) || 0
+  return {
+    ...bounds,
+    minY: bounds.minY + yOffset,
+    maxY: bounds.maxY + yOffset,
+  }
+})
+
 const schematicProgressPercent = computed(() => {
   if (!schematicApplyProgress.value) {
     return 0
@@ -109,6 +123,7 @@ const schematicProgressLabel = computed(() => {
     'prepare': '准备中',
     'clearing-world': '清空世界',
     'placing-blocks': '写入方块',
+    'building-minecraft-render-layer': '构建真实方块渲染',
     'rebuilding-chunks': '重建区块网格',
     'done': '完成',
   }
@@ -135,13 +150,15 @@ function backToGame() {
 }
 
 async function restorePersistedSchematic() {
-  const scopeId = currentConfigScopeId.value
-  if (!scopeId) {
-    clearSchematicFile({ withStatus: false })
-    return
+  const scopeId = currentAccountId.value || ''
+  let persisted = await loadAdminSchematicFile(scopeId)
+  let restoredFromScope = scopeId
+
+  if (!persisted?.file && scopeId) {
+    persisted = await loadAdminSchematicFile('')
+    restoredFromScope = ''
   }
 
-  const persisted = await loadAdminSchematicFile(scopeId)
   if (!persisted?.file) {
     clearSchematicFile({ withStatus: false })
     return
@@ -150,10 +167,16 @@ async function restorePersistedSchematic() {
   isParsingSchematic.value = true
   try {
     const schematic = await schematicService.parseFile(persisted.file)
+    schematicObject.value = schematic
     schematicFile.value = persisted.fileName || persisted.file.name || null
+    schematicSourceFile.value = persisted.file
     schematicPreview.value = schematicService.getPreview()
-    isBuildingSchematicPreview.value = true
-    schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 30000 })
+    if (scopeId && restoredFromScope !== scopeId) {
+      await saveAdminSchematicFile({
+        accountId: scopeId,
+        file: persisted.file,
+      })
+    }
     setStatus(`已恢复投影文件: ${schematic.name} (${schematicPreview.value.blockCount} 方块)`, 'success')
   }
   catch (error) {
@@ -161,7 +184,6 @@ async function restorePersistedSchematic() {
     setStatus(`恢复投影文件失败: ${error.message}`, 'warning')
   }
   finally {
-    isBuildingSchematicPreview.value = false
     isParsingSchematic.value = false
   }
 }
@@ -228,7 +250,7 @@ function logout() {
 }
 
 async function loadCurrentConfig() {
-  const loaded = await loadBackendWorldConfig(currentConfigScopeId.value)
+  const loaded = await loadBackendWorldConfig(currentAccountId.value)
   markSaved(loaded)
   setStatus('已读取当前生效配置', 'success')
 }
@@ -253,11 +275,11 @@ async function applyConfig() {
   let saved = null
 
   try {
-    saved = await saveBackendWorldConfigRemote(configDraft.value, currentConfigScopeId.value)
+    saved = await saveBackendWorldConfigRemote(configDraft.value, currentAccountId.value)
     setStatus('已保存并应用（服务端已持久化）', 'success')
   }
   catch {
-    saved = saveAdminWorldConfig(configDraft.value, currentConfigScopeId.value)
+    saved = saveAdminWorldConfig(configDraft.value, currentAccountId.value)
     setStatus('服务端保存失败，已回退到本地保存并应用', 'warning')
   }
 
@@ -292,12 +314,12 @@ async function handleSchematicFileSelect(event) {
   isParsingSchematic.value = true
   try {
     const schematic = await schematicService.parseFile(file)
+    schematicObject.value = schematic
     schematicFile.value = file.name
+    schematicSourceFile.value = file
     schematicPreview.value = schematicService.getPreview()
-    isBuildingSchematicPreview.value = true
-    schematicModelData.value = schematicService.buildPreviewModel({ maxBlocks: 30000 })
     await saveAdminSchematicFile({
-      accountId: currentConfigScopeId.value,
+      accountId: currentAccountId.value,
       file,
     })
     const yInfo = schematicPreview.value?.yStats
@@ -312,26 +334,23 @@ async function handleSchematicFileSelect(event) {
     }
   }
   catch (error) {
+    schematicObject.value = null
     schematicPreview.value = null
-    schematicModelData.value = null
     setStatus(`解析失败: ${error.message}`, 'warning')
   }
   finally {
-    isBuildingSchematicPreview.value = false
     isParsingSchematic.value = false
   }
 }
 
 function clearSchematicFile({ withStatus = true } = {}) {
   schematicFile.value = null
+  schematicSourceFile.value = null
+  schematicObject.value = null
   schematicPreview.value = null
-  schematicModelData.value = null
-  schematicOffsetX.value = 0
   schematicOffsetY.value = 0
-  schematicOffsetZ.value = 0
-  if (currentConfigScopeId.value) {
-    clearAdminSchematicFile(currentConfigScopeId.value)
-  }
+  schematicSpawnLift.value = 2
+  clearAdminSchematicFile(currentAccountId.value || '')
   if (withStatus) {
     setStatus('已清除原理图', 'neutral')
   }
@@ -368,10 +387,11 @@ async function applySchematic() {
   }
   try {
     const offset = {
-      x: Number(schematicOffsetX.value) || 0,
+      x: 0,
       y: Number(schematicOffsetY.value) || 0,
-      z: Number(schematicOffsetZ.value) || 0,
+      z: 0,
     }
+    const runtimeConfig = normalizeBackendWorldConfig(configDraft.value)
 
     const resultPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -386,6 +406,10 @@ async function applySchematic() {
 
     emitter.emit('schematic:apply-request', {
       offset,
+      spawnPoint: {
+        ...runtimeConfig.player.spawnPoint,
+      },
+      movePlayerToSpawn: true,
       options: {
         replaceWorld: true,
         persistModifications: true,
@@ -399,32 +423,32 @@ async function applySchematic() {
     }
 
     const result = payload.result
-    const shapeUsage = result?.importDiagnostics?.shapeUsage || { stairs: 0, slabs: 0, walls: 0 }
-    const topTextures = result?.importDiagnostics?.topTextures || []
+    const renderMode = result?.importDiagnostics?.renderMode || 'minecraft-native'
+    const importedChunkCount = result?.importDiagnostics?.importedChunkCount || result?.touchedChunks || 0
     const persistenceSaved = result?.persistenceSaved !== false
     const minPlacedY = (schematicPreview.value?.yStats?.minY ?? 0) + offset.y
     if (minPlacedY < 0) {
       setStatus(
-        `应用完成：放置 ${result.placed}，替换 ${result.replaced}，楼梯 ${shapeUsage.stairs}，台阶 ${shapeUsage.slabs}，墙 ${shapeUsage.walls}，跳过 ${result.skipped}（其中越界 ${result.skippedOutOfHeight || 0}），注意最小Y=${minPlacedY} 低于 0`,
+        `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}（其中越界 ${result.skippedOutOfHeight || 0}），渲染模式 ${renderMode}，注意最小Y=${minPlacedY} 低于 0`,
         'warning',
       )
       appendSchematicImportLog({
         level: 'warning',
-        summary: `导入完成（Y 越界警告）: 楼梯 ${shapeUsage.stairs} / 台阶 ${shapeUsage.slabs} / 墙 ${shapeUsage.walls}`,
+        summary: `导入完成（Y 越界警告）: ${renderMode}`,
         details: {
           placed: result.placed,
           replaced: result.replaced,
           skipped: result.skipped,
           skippedOutOfHeight: result.skippedOutOfHeight || 0,
           touchedChunks: result.touchedChunks,
-          topTextures,
+          importedChunkCount,
         },
       })
       return
     }
 
     setStatus(
-      `应用完成：放置 ${result.placed}，替换 ${result.replaced}，楼梯 ${shapeUsage.stairs}，台阶 ${shapeUsage.slabs}，墙 ${shapeUsage.walls}，跳过 ${result.skipped}，清空区块 ${result.worldClearedChunks || 0}，涉及 ${result.touchedChunks} 个区块`,
+      `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}，清空区块 ${result.worldClearedChunks || 0}，涉及 ${result.touchedChunks} 个区块，渲染模式 ${renderMode}${result?.spawnPoint ? `，出生点 ${result.spawnPoint.x}, ${result.spawnPoint.y}, ${result.spawnPoint.z}` : ''}`,
       persistenceSaved ? 'success' : 'warning',
     )
 
@@ -433,13 +457,14 @@ async function applySchematic() {
     }
     appendSchematicImportLog({
       level: 'success',
-      summary: `导入完成: 楼梯 ${shapeUsage.stairs} / 台阶 ${shapeUsage.slabs} / 墙 ${shapeUsage.walls}`,
+      summary: `导入完成: ${renderMode}`,
       details: {
         placed: result.placed,
         replaced: result.replaced,
         skipped: result.skipped,
         touchedChunks: result.touchedChunks,
-        topTextures,
+        importedChunkCount,
+        spawnPoint: result?.spawnPoint || null,
       },
     })
   }
@@ -469,13 +494,53 @@ async function applySchematic() {
   }
 }
 
+function setProjectionSpawnPreset() {
+  const bounds = schematicPlacedBounds.value
+  if (!bounds) {
+    setStatus('当前原理图还没有可用于计算出生点的边界', 'warning')
+    return
+  }
+
+  const lift = Number(schematicSpawnLift.value) || 0
+  const spawnPoint = {
+    x: Number((((bounds.minX + bounds.maxX) * 0.5)).toFixed(2)),
+    y: Number((bounds.maxY + 0.5 + lift).toFixed(2)),
+    z: Number((((bounds.minZ + bounds.maxZ) * 0.5)).toFixed(2)),
+  }
+
+  configDraft.value.player.spawnPoint = spawnPoint
+  setStatus(`已将出生点设置到投影顶部中心 (${spawnPoint.x}, ${spawnPoint.y}, ${spawnPoint.z})`, 'success')
+}
+
+function setProjectionSpawnFromPreviewBlock(payload) {
+  const x = Number(payload?.x)
+  const y = Number(payload?.y)
+  const z = Number(payload?.z)
+
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    setStatus('当前高亮方块没有可用坐标，暂时无法设置出生点', 'warning')
+    return
+  }
+
+  const lift = Number(schematicSpawnLift.value) || 0
+  const spawnPoint = {
+    x: Number(x.toFixed(2)),
+    y: Number((y + 0.5 + lift).toFixed(2)),
+    z: Number(z.toFixed(2)),
+  }
+
+  configDraft.value.player.spawnPoint = spawnPoint
+  setStatus(`已将出生点设置到方块 (${x}, ${y}, ${z}) 上方 (${spawnPoint.x}, ${spawnPoint.y}, ${spawnPoint.z})`, 'success')
+}
+
 onMounted(async () => {
   emitter.on('schematic:apply-progress', onSchematicApplyProgress)
 
-  if (isAuthenticated.value) {
-    await hydrateCurrentAccountData()
-  }
+  await restorePersistedSchematic()
 
+  if (isAuthenticated.value) {
+    await loadCurrentConfig()
+  }
 })
 
 watch(currentAccountId, async (nextId, previousId) => {
@@ -750,13 +815,6 @@ onBeforeUnmount(() => {
 
             <div class="setting-row grid-three">
               <label>
-                偏移 X
-                <div class="range-wrap">
-                  <input v-model.number="schematicOffsetX" min="-128" max="128" step="1" type="range">
-                  <span class="slider-value">{{ formatSliderDisplay(schematicOffsetX, 128) }}</span>
-                </div>
-              </label>
-              <label>
                 偏移 Y
                 <div class="range-wrap">
                   <input v-model.number="schematicOffsetY" min="-64" max="128" step="1" type="range">
@@ -764,29 +822,52 @@ onBeforeUnmount(() => {
                 </div>
               </label>
               <label>
-                偏移 Z
+                出生点抬升
                 <div class="range-wrap">
-                  <input v-model.number="schematicOffsetZ" min="-128" max="128" step="1" type="range">
-                  <span class="slider-value">{{ formatSliderDisplay(schematicOffsetZ, 128) }}</span>
+                  <input v-model.number="schematicSpawnLift" min="0" max="24" step="0.5" type="range">
+                  <span class="slider-value">{{ formatSliderDisplay(schematicSpawnLift, 24, 1) }}</span>
                 </div>
+              </label>
+              <label>
+                当前投影边界
+                <input
+                  :value="schematicPlacedBounds ? `X ${schematicPlacedBounds.minX} ~ ${schematicPlacedBounds.maxX} / Y ${schematicPlacedBounds.minY} ~ ${schematicPlacedBounds.maxY} / Z ${schematicPlacedBounds.minZ} ~ ${schematicPlacedBounds.maxZ}` : '等待可渲染原理图'"
+                  readonly
+                  type="text"
+                >
               </label>
             </div>
 
+            <div class="setting-row grid-three">
+              <label>投影 Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
+              <label>投影 Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
+              <label>投影 Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
+            </div>
+
             <div class="setting-row schematic-preview-row">
-              <SchematicPreviewCanvas
-                v-if="schematicModelData"
-                :model-data="schematicModelData"
-                :preview-offset="{ x: schematicOffsetX, y: schematicOffsetY, z: schematicOffsetZ }"
-                :environment="configDraft.settings.environment"
+              <SchematicRendererCanvas
+                v-if="schematicObject"
+                :schematic="schematicObject"
+                :source-file="schematicSourceFile"
+                :preview-offset="{ x: 0, y: schematicOffsetY, z: 0 }"
+                empty-label="真实渲染预览会显示在这里"
+                @block-picked="setProjectionSpawnFromPreviewBlock"
               />
               <div v-else class="schematic-preview-placeholder">
-                {{ isBuildingSchematicPreview ? '正在生成预览模型...' : '暂无预览模型' }}
+                {{ isParsingSchematic ? '正在解析原理图...' : '暂无可渲染的原理图' }}
               </div>
             </div>
+
+            <p class="schematic-preview-hint">
+              鼠标移到高亮方块后双击，可直接把该方块上方设置为出生点；选中的方块会保持绿色半透明标记。
+            </p>
 
             <div class="preview-actions-right" style="margin-top: 12px;">
               <button class="btn primary" :disabled="isApplying" @click="applySchematic">
                 {{ isApplying ? '应用中...' : '应用原理图' }}
+              </button>
+              <button class="btn ghost" :disabled="!schematicPlacedBounds" @click="setProjectionSpawnPreset">
+                使用投影顶部中心作为出生点
               </button>
               <button class="btn ghost" @click="clearSchematicFile">
                 清除
@@ -1401,6 +1482,12 @@ input::placeholder {
   width: 50%;
   min-width: 320px;
   margin: 0 auto;
+}
+
+.schematic-preview-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #cbd5e1;
 }
 
 .schematic-console {

@@ -1,3 +1,4 @@
+import { loadAdminAuthSession } from '../auth/admin-auth.js'
 import { useSettingsStore } from '../../pinia/settingsStore.js'
 import { useUiStore } from '../../pinia/uiStore.js'
 import CameraRig from '../camera/camera-rig.js'
@@ -6,6 +7,7 @@ import {
 } from '../config/chunk-config.js'
 import { INTERACTION_CONFIG } from '../config/interaction-config.js'
 import Experience from '../experience.js'
+import { fetchGalleryItem } from '../gallery/gallery-api.js'
 import BlockBreakParticles from '../interaction/block-break-particles.js'
 import BlockInteractionManager from '../interaction/block-interaction-manager.js'
 import BlockMiningController from '../interaction/block-mining-controller.js'
@@ -14,27 +16,199 @@ import BlockRaycaster from '../interaction/block-raycaster.js'
 import BlockSelectionHelper from '../interaction/block-selection-helper.js'
 import ItemPickupAnimator from '../interaction/item-pickup-animator.js'
 import emitter from '../utils/event/event-bus.js'
-import { buildSpaceScopedKey, getActiveSpaceName } from '../utils/space-context.js'
-import { loadBackendWorldConfig } from './backend-world-config.js'
+import { buildSpaceScopedKey, getActiveProjectionId, getActiveSpaceName } from '../utils/space-context.js'
+import {
+  loadBackendWorldConfig,
+  loadBackendWorldConfigRecord,
+  normalizeBackendWorldConfig,
+  saveAdminWorldConfig,
+  saveBackendWorldConfigRemote,
+} from './backend-world-config.js'
 import Environment from './environment.js'
 import Player from './player/player.js'
 import ChunkManager from './terrain/chunk-manager.js'
-import { preloadAtlasTextureImage } from './terrain/java-atlas-texture-provider.js'
+import MinecraftSchematicRenderLayer from './terrain/minecraft-schematic-render-layer.js'
 import schematicService from './terrain/schematic-service.js'
 import { decodeWorldStateSnapshot, encodeWorldStateSnapshot } from './terrain/world-state-codec.js'
 
 const WORLD_STATE_STORAGE_KEY = 'mc-world-state'
+const WORLD_STATE_DB_NAME = 'mc-world-state-storage'
+const WORLD_STATE_DB_STORE = 'snapshots'
+const WORLD_STATE_DB_VERSION = 1
+const DEFAULT_PROJECTION_SPAWN_LIFT = 2
 
-function hasSnapshotModifications(snapshot = null) {
-  const modifications = snapshot?.modifications
-  if (!modifications || typeof modifications !== 'object') {
-    return false
+function decodeBase64ToArrayBuffer(base64Text = '') {
+  const binary = atob(String(base64Text || ''))
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes.buffer
+}
+
+function hasSpawnPoint(config = null) {
+  const spawnPoint = config?.player?.spawnPoint
+  return Number.isFinite(Number(spawnPoint?.x))
+    && Number.isFinite(Number(spawnPoint?.y))
+    && Number.isFinite(Number(spawnPoint?.z))
+}
+
+function buildProjectionSpawnPoint(preview = null, lift = DEFAULT_PROJECTION_SPAWN_LIFT) {
+  const bounds = preview?.bounds
+  if (!bounds || bounds.minX === null || bounds.maxX === null) {
+    return null
   }
 
-  for (const value of Object.values(modifications)) {
-    if (value && typeof value === 'object' && Object.keys(value).length > 0) {
-      return true
+  return {
+    x: Number((((bounds.minX + bounds.maxX) * 0.5)).toFixed(2)),
+    y: Number((bounds.maxY + 0.5 + lift).toFixed(2)),
+    z: Number((((bounds.minZ + bounds.maxZ) * 0.5)).toFixed(2)),
+  }
+}
+
+function normalizeStoredWorldStatePayload(record = null) {
+  if (!record || typeof record !== 'object') {
+    return null
+  }
+
+  if (record.payload && typeof record.payload === 'object') {
+    return {
+      payload: record.payload,
+      updatedAt: Number(record.updatedAt || 0) || 0,
     }
+  }
+
+  return {
+    payload: record,
+    updatedAt: 0,
+  }
+}
+
+function openWorldStateDb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('indexeddb_unavailable'))
+      return
+    }
+
+    const request = indexedDB.open(WORLD_STATE_DB_NAME, WORLD_STATE_DB_VERSION)
+    request.onerror = () => reject(request.error || new Error('indexeddb_open_failed'))
+    request.onsuccess = () => resolve(request.result)
+    request.onupgradeneeded = () => {
+      const db = request.result
+      if (!db.objectStoreNames.contains(WORLD_STATE_DB_STORE)) {
+        db.createObjectStore(WORLD_STATE_DB_STORE, { keyPath: 'id' })
+      }
+    }
+  })
+}
+
+async function loadWorldStateFromIndexedDb(storageKey) {
+  const db = await openWorldStateDb()
+  try {
+    const record = await new Promise((resolve, reject) => {
+      const tx = db.transaction(WORLD_STATE_DB_STORE, 'readonly')
+      const store = tx.objectStore(WORLD_STATE_DB_STORE)
+      const request = store.get(storageKey)
+      request.onsuccess = () => resolve(request.result || null)
+      request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'))
+    })
+    return normalizeStoredWorldStatePayload(record)
+  }
+  finally {
+    db.close()
+  }
+}
+
+async function saveWorldStateToIndexedDb(storageKey, payload) {
+  const db = await openWorldStateDb()
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(WORLD_STATE_DB_STORE, 'readwrite')
+      const store = tx.objectStore(WORLD_STATE_DB_STORE)
+      store.put({
+        id: storageKey,
+        payload,
+        updatedAt: Date.now(),
+      })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error || new Error('indexeddb_write_failed'))
+      tx.onabort = () => reject(tx.error || new Error('indexeddb_write_aborted'))
+    })
+  }
+  finally {
+    db.close()
+  }
+}
+
+async function loadLocalWorldStateRecord(storageKey) {
+  try {
+    const indexedDbRecord = await loadWorldStateFromIndexedDb(storageKey)
+    if (indexedDbRecord?.payload && typeof indexedDbRecord.payload === 'object') {
+      return {
+        source: 'indexeddb',
+        ...indexedDbRecord,
+      }
+    }
+  }
+  catch {
+    // ignore IndexedDB failures and fall back to localStorage
+  }
+
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw)
+    const normalized = normalizeStoredWorldStatePayload(parsed)
+    if (!normalized?.payload || typeof normalized.payload !== 'object') {
+      return null
+    }
+
+    return {
+      source: 'local-storage',
+      ...normalized,
+    }
+  }
+  catch {
+    return null
+  }
+}
+
+async function persistWorldStateLocally(storageKey, payload) {
+  try {
+    await saveWorldStateToIndexedDb(storageKey, payload)
+  }
+  catch {
+    // ignore IndexedDB failures and continue with localStorage fallback
+  }
+
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({
+      payload,
+      updatedAt: Date.now(),
+    }))
+  }
+  catch {
+    // ignore local storage quota errors
+  }
+}
+
+function hasSnapshotContent(snapshot = null) {
+  const modifications = snapshot?.modifications
+  if (modifications && typeof modifications === 'object') {
+    for (const value of Object.values(modifications)) {
+      if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+        return true
+      }
+    }
+  }
+
+  const minecraftChunks = snapshot?.worldState?.minecraftSchematicLayer?.chunks
+  if (minecraftChunks && typeof minecraftChunks === 'object' && Object.keys(minecraftChunks).length > 0) {
+    return true
   }
 
   return false
@@ -49,7 +223,7 @@ function sanitizeSnapshot(snapshot = null) {
     ? { ...snapshot.worldState }
     : { schematicOnlyMode: false }
 
-  if (worldState.schematicOnlyMode && !hasSnapshotModifications(snapshot)) {
+  if (worldState.schematicOnlyMode && !hasSnapshotContent(snapshot)) {
     worldState.schematicOnlyMode = false
   }
 
@@ -64,6 +238,10 @@ function summarizeSnapshotForDebug(snapshot = null) {
   const modifications = safe.modifications && typeof safe.modifications === 'object'
     ? safe.modifications
     : {}
+  const minecraftChunks = safe?.worldState?.minecraftSchematicLayer?.chunks
+    && typeof safe.worldState.minecraftSchematicLayer.chunks === 'object'
+      ? safe.worldState.minecraftSchematicLayer.chunks
+      : {}
 
   let modificationCount = 0
   for (const blocks of Object.values(modifications)) {
@@ -76,6 +254,7 @@ function summarizeSnapshotForDebug(snapshot = null) {
     format: safe.format || 'classic',
     chunkCount: Object.keys(modifications).length,
     modificationCount,
+    minecraftSchematicChunkCount: Object.keys(minecraftChunks).length,
     schematicOnlyMode: !!safe?.worldState?.schematicOnlyMode,
   }
 }
@@ -90,18 +269,27 @@ export default class World {
     this.scene = this.experience.scene
     this.resources = this.experience.resources
     this.backendConfig = null
+    this.backendConfigRecord = null
+    this.minecraftSchematicRenderLayer = null
+    this.activeProjectionContext = null
+    this._projectionBootstrapApplied = false
+    this._minecraftRenderLayerSyncTimer = null
+    this._onMinecraftBlockBreakComplete = this._onMinecraftBlockBreakComplete.bind(this)
+    this._onMinecraftBlockPlace = this._onMinecraftBlockPlace.bind(this)
+
+    emitter.on('game:block-break-complete', this._onMinecraftBlockBreakComplete)
+    emitter.on('game:block-place', this._onMinecraftBlockPlace)
 
     emitter.on('core:ready', async () => {
-      this.backendConfig = await loadBackendWorldConfig()
+      this.activeProjectionContext = await this._loadActiveProjectionContext()
+      this.backendConfigRecord = await loadBackendWorldConfigRecord()
+      this.backendConfig = this.backendConfigRecord.config
       const sharedWorldState = await this._loadSharedWorldState()
 
       this._initTerrain(this.backendConfig, sharedWorldState)
-
-      try {
-        await preloadAtlasTextureImage()
-      }
-      catch (error) {
-        console.warn('[World] Atlas preload failed before player spawn:', error)
+      this.backendConfig = await this._ensureProjectionWorldInitialized(sharedWorldState, this.backendConfig)
+      if (!this._projectionBootstrapApplied) {
+        await this._restoreMinecraftSchematicRenderLayer()
       }
 
       this._initPlayerAndCamera()
@@ -113,30 +301,13 @@ export default class World {
     })
 
     emitter.on('backend:config-updated', async (config) => {
+      this.backendConfig = config
       await this._applyBackendRuntimeConfig(config, { movePlayer: false })
     })
 
     emitter.on('schematic:apply-request', async (payload = {}) => {
       try {
-        const offset = payload.offset || { x: 0, y: 0, z: 0 }
-        emitter.emit('schematic:apply-progress', {
-          phase: 'loading-textures',
-          progress: 0,
-          processedBlocks: 0,
-          totalBlocks: schematicService.getPreview()?.blockCount || 0,
-        })
-
-        await schematicService.preloadTextures(this.resources)
-
-        const options = {
-          ...(payload.options || {}),
-          onProgress: (progress) => {
-            emitter.emit('schematic:apply-progress', progress)
-          },
-        }
-        const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
-        const persistenceSaved = await this._saveSharedWorldState()
-        result.persistenceSaved = persistenceSaved
+        const result = await this._applySchematicPayload(payload)
         emitter.emit('schematic:apply-result', { ok: true, result })
       }
       catch (error) {
@@ -146,6 +317,155 @@ export default class World {
         })
       }
     })
+  }
+
+  async _loadActiveProjectionContext() {
+    const spaceName = getActiveSpaceName()
+    const projectionId = getActiveProjectionId()
+    if (!spaceName || !projectionId) {
+      return null
+    }
+
+    try {
+      const session = loadAdminAuthSession()
+      const payload = await fetchGalleryItem(spaceName, projectionId, session)
+      return {
+        spaceName,
+        projectionId,
+        item: payload?.item || null,
+      }
+    }
+    catch (error) {
+      console.warn('[World] Failed to load projection metadata:', error)
+      emitter.emit('projection:bootstrap-error', {
+        spaceName,
+        projectionId,
+        error: error?.message || 'projection_metadata_load_failed',
+      })
+      return {
+        spaceName,
+        projectionId,
+        item: null,
+      }
+    }
+  }
+
+  async _ensureProjectionWorldInitialized(sharedWorldState = null, backendConfig = null) {
+    const projectionContext = this.activeProjectionContext
+    if (!projectionContext?.projectionId) {
+      return backendConfig
+    }
+
+    if (hasSnapshotContent(sharedWorldState)) {
+      return backendConfig
+    }
+
+    const sourceFile = projectionContext.item?.sourceFile
+    if (!sourceFile?.fileBase64) {
+      emitter.emit('projection:bootstrap-error', {
+        spaceName: projectionContext.spaceName,
+        projectionId: projectionContext.projectionId,
+        error: 'projection_source_file_missing',
+      })
+      return backendConfig
+    }
+
+    try {
+      await schematicService.parseArrayBuffer(decodeBase64ToArrayBuffer(sourceFile.fileBase64))
+      const preview = schematicService.getPreview()
+      let nextConfig = backendConfig
+
+      if (!this.backendConfigRecord?.exists || !hasSpawnPoint(nextConfig)) {
+        const spawnPoint = buildProjectionSpawnPoint(preview)
+        if (spawnPoint) {
+          nextConfig = normalizeBackendWorldConfig({
+            ...nextConfig,
+            player: {
+              ...nextConfig?.player,
+              spawnPoint,
+            },
+          })
+          try {
+            await saveBackendWorldConfigRemote(nextConfig)
+          }
+          catch {
+            saveAdminWorldConfig(nextConfig)
+          }
+        }
+      }
+
+      await this._applySchematicPayload({
+        offset: { x: 0, y: 0, z: 0 },
+        spawnPoint: nextConfig?.player?.spawnPoint || null,
+        movePlayerToSpawn: false,
+        options: {
+          replaceWorld: true,
+          persistModifications: true,
+          keepSchematicOnlyMode: true,
+        },
+      })
+      this._projectionBootstrapApplied = true
+
+      return nextConfig
+    }
+    catch (error) {
+      console.warn('[World] Failed to initialize projection world:', error)
+      emitter.emit('projection:bootstrap-error', {
+        spaceName: projectionContext.spaceName,
+        projectionId: projectionContext.projectionId,
+        error: error?.message || 'projection_bootstrap_failed',
+      })
+      return backendConfig
+    }
+  }
+
+  async _applySchematicPayload(payload = {}) {
+    const offset = payload.offset || { x: 0, y: 0, z: 0 }
+    const spawnPoint = payload.spawnPoint
+      && Number.isFinite(Number(payload.spawnPoint.x))
+      && Number.isFinite(Number(payload.spawnPoint.y))
+      && Number.isFinite(Number(payload.spawnPoint.z))
+      ? {
+          x: Number(payload.spawnPoint.x),
+          y: Number(payload.spawnPoint.y),
+          z: Number(payload.spawnPoint.z),
+        }
+      : null
+
+    const options = {
+      ...(payload.options || {}),
+      onProgress: (progress) => {
+        emitter.emit('schematic:apply-progress', progress)
+      },
+    }
+    const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
+    try {
+      const renderOverlay = await this._syncMinecraftSchematicRenderLayer({
+        onProgress: (renderProgress) => {
+          emitter.emit('schematic:apply-progress', {
+            phase: 'building-minecraft-render-layer',
+            processedStates: renderProgress.processedStates,
+            totalStates: renderProgress.totalStates,
+            builtMeshes: renderProgress.builtMeshes,
+            progress: renderProgress.progress,
+          })
+        },
+      })
+      result.renderOverlay = renderOverlay
+    }
+    catch (renderError) {
+      console.warn('[World] Failed to rebuild Minecraft schematic render layer:', renderError)
+      result.renderOverlayError = renderError?.message || 'minecraft_render_overlay_failed'
+    }
+
+    if (spawnPoint) {
+      this._applyBackendSpawn({ spawnPoint }, { movePlayer: !!payload.movePlayerToSpawn })
+      result.spawnPoint = spawnPoint
+    }
+
+    const persistenceSaved = await this._saveSharedWorldState()
+    result.persistenceSaved = persistenceSaved
+    return result
   }
 
   async _applyBackendRuntimeConfig(runtimeConfig = null, options = {}) {
@@ -228,6 +548,7 @@ export default class World {
 
     if (snapshot && nextManager.persistence?.applySnapshot) {
       nextManager.persistence.applySnapshot(snapshot, { persist: true })
+      nextManager.restoreRuntimeStateFromPersistence?.()
       nextManager.schematicOnlyMode = !!nextManager.persistence.getWorldState?.().schematicOnlyMode
     }
 
@@ -241,6 +562,10 @@ export default class World {
 
     this.chunkManager = nextManager
     this.experience.terrainDataManager = nextManager
+    if (this.minecraftSchematicRenderLayer) {
+      this.minecraftSchematicRenderLayer.chunkManager = nextManager
+      void this._syncMinecraftSchematicRenderLayer()
+    }
 
     if (this.blockRaycaster) {
       this.blockRaycaster.chunkManager = nextManager
@@ -269,31 +594,115 @@ export default class World {
     }
   }
 
+  async _ensureMinecraftSchematicRenderLayer() {
+    if (!this.minecraftSchematicRenderLayer) {
+      this.minecraftSchematicRenderLayer = new MinecraftSchematicRenderLayer({
+        chunkManager: this.chunkManager,
+      })
+    }
+
+    this.minecraftSchematicRenderLayer.chunkManager = this.chunkManager
+    return this.minecraftSchematicRenderLayer
+  }
+
+  async _syncMinecraftSchematicRenderLayer(options = {}) {
+    const schematicLayer = this.chunkManager?.minecraftSchematicLayer
+    const stats = schematicLayer?.getStats?.() || { blockCount: 0 }
+
+    if (!stats.blockCount) {
+      this.chunkManager?.setMinecraftRenderOverlayActive?.(false)
+      this.minecraftSchematicRenderLayer?.clear?.()
+      return {
+        uniqueBlockStates: 0,
+        builtMeshes: 0,
+        resourcePackStatus: {
+          attempted: false,
+          loaded: false,
+          source: 'none',
+        },
+      }
+    }
+
+    const renderLayer = await this._ensureMinecraftSchematicRenderLayer()
+    const result = await renderLayer.rebuildFromLayer(schematicLayer, options)
+    this.chunkManager?.setMinecraftRenderOverlayActive?.(true)
+    return result
+  }
+
+  async _restoreMinecraftSchematicRenderLayer() {
+    try {
+      await this._syncMinecraftSchematicRenderLayer()
+    }
+    catch (error) {
+      console.warn('[World] Failed to restore Minecraft schematic render layer:', error)
+    }
+  }
+
+  _scheduleMinecraftSchematicRenderLayerSync(delayMs = 60) {
+    if (this._minecraftRenderLayerSyncTimer) {
+      clearTimeout(this._minecraftRenderLayerSyncTimer)
+    }
+
+    this._minecraftRenderLayerSyncTimer = setTimeout(() => {
+      this._minecraftRenderLayerSyncTimer = null
+      void this._syncMinecraftSchematicRenderLayer()
+    }, delayMs)
+  }
+
+  _onMinecraftBlockBreakComplete() {
+    if (this.chunkManager?.minecraftRenderOverlayActive) {
+      this._scheduleMinecraftSchematicRenderLayerSync()
+    }
+  }
+
+  _onMinecraftBlockPlace() {
+    if (this.chunkManager?.minecraftRenderOverlayActive) {
+      this._scheduleMinecraftSchematicRenderLayerSync()
+    }
+  }
+
   async _loadSharedWorldState() {
     const activeSpace = getActiveSpaceName()
+    const activeProjectionId = getActiveProjectionId()
     const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
+    const localRecord = await loadLocalWorldStateRecord(storageKey)
+    const localDecoded = localRecord?.payload
+      ? sanitizeSnapshot(decodeWorldStateSnapshot(localRecord.payload))
+      : null
+
+    if (localDecoded && hasSnapshotContent(localDecoded)) {
+      console.info('[World Debug] Loaded local world-state', {
+        source: localRecord?.source || 'local',
+        space: activeSpace || 'default',
+        storageKey,
+        ...summarizeSnapshotForDebug(localDecoded),
+      })
+      return localDecoded
+    }
 
     if (activeSpace) {
       try {
-        const requestUrl = `/api/world-state?space=${encodeURIComponent(activeSpace)}`
+        const url = new URL('/api/world-state', window.location.origin)
+        url.searchParams.set('space', activeSpace)
+        if (activeProjectionId) {
+          url.searchParams.set('projection', activeProjectionId)
+        }
+        const requestUrl = `${url.pathname}${url.search}`
         const response = await fetch(requestUrl, { cache: 'no-store' })
         if (response.ok) {
           const data = await response.json()
           if (data && typeof data === 'object') {
             const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
-            console.info('[World Debug] Loaded remote world-state (space-first)', {
-              source: 'remote-space-first',
-              space: activeSpace || 'default',
-              storageKey,
-              ...summarizeSnapshotForDebug(decoded),
-            })
-            try {
-              localStorage.setItem(storageKey, JSON.stringify(data))
+            if (hasSnapshotContent(decoded) || !localDecoded) {
+              console.info('[World Debug] Loaded remote world-state (space-first)', {
+                source: 'remote-space-first',
+                space: activeSpace || 'default',
+                storageKey,
+                ...summarizeSnapshotForDebug(decoded),
+              })
+              await persistWorldStateLocally(storageKey, data)
+              return decoded
             }
-            catch {
-              // ignore local storage quota errors
-            }
-            return decoded
           }
         }
       }
@@ -302,30 +711,25 @@ export default class World {
       }
     }
 
-    try {
-      const raw = localStorage.getItem(storageKey)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (parsed && typeof parsed === 'object') {
-          const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(parsed))
-          console.info('[World Debug] Loaded local world-state', {
-            source: 'local-storage',
-            space: activeSpace || 'default',
-            storageKey,
-            ...summarizeSnapshotForDebug(decoded),
-          })
-          return decoded
-        }
-      }
-    }
-    catch {
-      // ignore invalid local state
+    if (localDecoded) {
+      console.info('[World Debug] Loaded local fallback world-state', {
+        source: localRecord?.source || 'local-fallback',
+        space: activeSpace || 'default',
+        storageKey,
+        ...summarizeSnapshotForDebug(localDecoded),
+      })
+      return localDecoded
     }
 
     try {
-      const requestUrl = activeSpace
-        ? `/api/world-state?space=${encodeURIComponent(activeSpace)}`
-        : '/api/world-state'
+      const url = new URL('/api/world-state', window.location.origin)
+      if (activeSpace) {
+        url.searchParams.set('space', activeSpace)
+      }
+      if (activeProjectionId) {
+        url.searchParams.set('projection', activeProjectionId)
+      }
+      const requestUrl = `${url.pathname}${url.search}` || '/api/world-state'
       const response = await fetch(requestUrl, { cache: 'no-store' })
       if (!response.ok) {
         return activeSpace
@@ -348,12 +752,7 @@ export default class World {
         ...summarizeSnapshotForDebug(decoded),
       })
 
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(data))
-      }
-      catch {
-        // ignore local storage quota errors
-      }
+      await persistWorldStateLocally(storageKey, data)
 
       return decoded
     }
@@ -375,18 +774,24 @@ export default class World {
         chunkWidth: this.chunkManager.chunkWidth,
       })
       const activeSpace = getActiveSpaceName()
+      const activeProjectionId = getActiveProjectionId()
       const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
 
       try {
-        localStorage.setItem(storageKey, JSON.stringify(compactPayload))
+        await persistWorldStateLocally(storageKey, compactPayload)
       }
       catch {
-        // ignore local storage quota errors
+        // ignore local persistence failures and still try remote
       }
 
-      const requestUrl = activeSpace
-        ? `/api/world-state?space=${encodeURIComponent(activeSpace)}`
-        : '/api/world-state'
+      const url = new URL('/api/world-state', window.location.origin)
+      if (activeSpace) {
+        url.searchParams.set('space', activeSpace)
+      }
+      if (activeProjectionId) {
+        url.searchParams.set('projection', activeProjectionId)
+      }
+      const requestUrl = `${url.pathname}${url.search}` || '/api/world-state'
 
       const response = await fetch(requestUrl, {
         method: 'POST',
@@ -432,6 +837,7 @@ export default class World {
 
     if (sharedWorldState && this.chunkManager?.persistence?.applySnapshot) {
       this.chunkManager.persistence.applySnapshot(sharedWorldState, { persist: true })
+      this.chunkManager.restoreRuntimeStateFromPersistence?.()
       this.chunkManager.schematicOnlyMode = !!this.chunkManager.persistence.getWorldState?.().schematicOnlyMode
     }
 
@@ -440,6 +846,11 @@ export default class World {
 
     this.experience.terrainDataManager = this.chunkManager
     this.chunkManager.initInitialGrid()
+
+    const runtimeSnapshot = this.chunkManager.persistence?.exportSnapshot?.() || null
+    if (!hasSnapshotContent(sharedWorldState) && hasSnapshotContent(runtimeSnapshot)) {
+      void this._saveSharedWorldState()
+    }
   }
 
   /** 玩家 + 相机 Rig，依赖地形（贴地/碰撞用 terrainDataManager） */
@@ -448,6 +859,11 @@ export default class World {
     this.cameraRig = new CameraRig()
     this.cameraRig.attachPlayer(this.player)
     this.experience.camera.attachRig(this.cameraRig)
+
+    const camera = this.experience.camera
+    const isFirstPerson = camera?.currentMode === camera?.cameraModes?.FIRST_PERSON
+    this.player.isFirstPersonView = !!isFirstPerson
+    this.player.setFirstPersonHidden(!!isFirstPerson)
   }
 
   /** 环境（天空、光照等） */
@@ -510,6 +926,8 @@ export default class World {
     }
     if (this.chunkManager)
       this.chunkManager.update()
+    if (this.minecraftSchematicRenderLayer)
+      this.minecraftSchematicRenderLayer.update()
     if (this.blockMiningController)
       this.blockMiningController.update()
     if (this.player)
@@ -540,6 +958,13 @@ export default class World {
   }
 
   destroy() {
+    if (this._minecraftRenderLayerSyncTimer) {
+      clearTimeout(this._minecraftRenderLayerSyncTimer)
+      this._minecraftRenderLayerSyncTimer = null
+    }
+    emitter.off('game:block-break-complete', this._onMinecraftBlockBreakComplete)
+    emitter.off('game:block-place', this._onMinecraftBlockPlace)
+
     // Destroy child components
     this.blockMiningOverlay?.dispose()
     this.blockInteractionManager?.destroy()
@@ -551,6 +976,7 @@ export default class World {
     this.environment?.destroy()
     this.cameraRig?.destroy()
     this.player?.destroy()
+    this.minecraftSchematicRenderLayer?.dispose()
     this.chunkManager?.destroy()
 
     // Clear terrainDataManager reference

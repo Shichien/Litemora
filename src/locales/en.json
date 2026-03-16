@@ -71,5 +71,65 @@
   "common": {
     "cancel": "Cancel",
     "apply": "Apply"
+  },
+  "home": {
+    "nav": {
+      "create": "Create",
+      "loginGithub": "Login with GitHub"
+    },
+    "hero": {
+      "subtitle": "Where schematics become playable worlds."
+    },
+    "quote": {
+      "line1": "Every schematic holds a build.",
+      "line2": "Every moment deserves a stage.",
+      "desc": "A cinematic web front end for Minecraft schematic worlds, gallery spaces, and first-person exploration."
+    },
+    "stats": {
+      "formats": "Formats",
+      "nativeRendering": "Native rendering",
+      "serverCost": "Server cost"
+    },
+    "features": {
+      "step1": {
+        "title": "Typical",
+        "subtitle": "Schematic to World",
+        "desc": "Supports .litematic, .schem, and .schematic formats."
+      },
+      "step2": {
+        "title": "Create",
+        "subtitle": "Native Aesthetics",
+        "desc": "Uses real Minecraft block states and resource packs for 1:1 fidelity."
+      },
+      "step3": {
+        "title": "Share",
+        "subtitle": "First Person View",
+        "desc": "Walk through your creations with true physics and collision."
+      }
+    },
+    "create": {
+      "title1": "Create Your",
+      "title2": "World Space.",
+      "desc": "A Litemora space is a permanent, shareable gallery for your Minecraft schematic, running purely in the browser with real geometry and collision.",
+      "placeholder": "your-space-name",
+      "error": {
+        "invalid": "Name must be 3-63 chars, lowercase letters, numbers, and hyphens only.",
+        "failed": "Failed to create space. Please try again.",
+        "loginRequired": "Please login with GitHub to create a space."
+      },
+      "benefits": {
+        "b1Title": "Dedicated Path",
+        "b1Desc": "Share your world via a custom URL instantly.",
+        "b2Title": "Free Hosting",
+        "b2Desc": "Everything runs on the client, no backend needed.",
+        "b3Title": "Easy Sharing",
+        "b3Desc": "Send a link and colleagues can jump into your build immediately."
+      }
+    },
+    "discover": {
+      "title": "Discover Spaces",
+      "desc": "Explore curated schematic worlds created by the community."
+    },
+    "footer": "Litemora - Open Source Schematic Viewer. Powered by Cubane & Three.js."
   }
 }

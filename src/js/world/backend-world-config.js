@@ -1,4 +1,4 @@
-import { buildSpaceScopedKey, getActiveSpaceName } from '../utils/space-context.js'
+import { buildSpaceScopedKey, getActiveProjectionId, getActiveSpaceName } from '../utils/space-context.js'
 
 const BACKEND_CONFIG_URLS = [
   '/api/world-config',
@@ -7,12 +7,31 @@ const BACKEND_CONFIG_URLS = [
 
 const ADMIN_WORLD_CONFIG_STORAGE_KEY = 'mc-admin-world-config'
 
-function buildAdminWorldConfigStorageKey(accountId = '') {
+function buildWorldConfigRequestUrl(baseUrl, spaceName = getActiveSpaceName(), projectionId = getActiveProjectionId()) {
+  const url = new URL(baseUrl, window.location.origin)
+  if (spaceName) {
+    url.searchParams.set('space', spaceName)
+  }
+  if (projectionId) {
+    url.searchParams.set('projection', projectionId)
+  }
+  return `${url.pathname}${url.search}`
+}
+
+function buildAdminWorldConfigStorageKey(accountId = '', options = {}) {
+  const spaceName = String(options.spaceName || getActiveSpaceName() || '').trim()
+  const projectionId = String(options.projectionId || getActiveProjectionId() || '').trim()
+
+  if (spaceName) {
+    return buildSpaceScopedKey(ADMIN_WORLD_CONFIG_STORAGE_KEY, spaceName, projectionId)
+  }
+
   const normalizedId = String(accountId || '').trim()
   if (!normalizedId) {
-    return buildSpaceScopedKey(ADMIN_WORLD_CONFIG_STORAGE_KEY, getActiveSpaceName())
+    return ADMIN_WORLD_CONFIG_STORAGE_KEY
   }
-  return `${ADMIN_WORLD_CONFIG_STORAGE_KEY}:${encodeURIComponent(normalizedId)}`
+
+  return `${ADMIN_WORLD_CONFIG_STORAGE_KEY}:account:${encodeURIComponent(normalizedId)}`
 }
 
 const DEFAULT_BACKEND_WORLD_CONFIG = {
@@ -134,16 +153,16 @@ export function normalizeBackendWorldConfig(raw = {}) {
   return mergeBackendConfig(raw)
 }
 
-export function getAdminWorldConfig(accountId = '') {
+export function getAdminWorldConfig(accountId = '', options = {}) {
   try {
-    const scopedKey = buildAdminWorldConfigStorageKey(accountId)
+    const scopedKey = buildAdminWorldConfigStorageKey(accountId, options)
     const raw = localStorage.getItem(scopedKey)
     if (raw) {
       const json = JSON.parse(raw)
       return mergeBackendConfig(json)
     }
 
-    if (accountId) {
+    if (accountId && !options.spaceName && !options.projectionId && !getActiveSpaceName()) {
       const legacyRaw = localStorage.getItem(ADMIN_WORLD_CONFIG_STORAGE_KEY)
       if (!legacyRaw) {
         return null
@@ -183,10 +202,7 @@ export function clearAdminWorldConfig(accountId = '') {
 
 export async function saveBackendWorldConfigRemote(raw = {}, accountId = '') {
   const normalized = mergeBackendConfig(raw)
-  const activeSpace = getActiveSpaceName()
-  const requestUrl = activeSpace
-    ? `/api/world-config?space=${encodeURIComponent(activeSpace)}`
-    : '/api/world-config'
+  const requestUrl = buildWorldConfigRequestUrl('/api/world-config')
 
   const response = await fetch(requestUrl, {
     method: 'POST',
@@ -205,20 +221,38 @@ export async function saveBackendWorldConfigRemote(raw = {}, accountId = '') {
   return normalized
 }
 
-export async function loadBackendWorldConfig(accountId = '') {
+export async function loadBackendWorldConfigRecord(accountId = '') {
   const activeSpace = getActiveSpaceName()
+  const activeProjectionId = getActiveProjectionId()
+  let fallbackRecord = null
 
   for (const url of BACKEND_CONFIG_URLS) {
     try {
-      const requestUrl = activeSpace ? `${url}?space=${encodeURIComponent(activeSpace)}` : url
+      const requestUrl = buildWorldConfigRequestUrl(url, activeSpace, activeProjectionId)
       const res = await fetch(requestUrl, { cache: 'no-store' })
       if (!res.ok) {
         continue
       }
       const json = await res.json()
       const merged = mergeBackendConfig(json)
-      saveAdminWorldConfig(merged, accountId)
-      return merged
+      const exists = !!json?.__meta?.exists
+      if (exists) {
+        saveAdminWorldConfig(merged, accountId)
+      }
+      else if (url.startsWith('/api/')) {
+        clearAdminWorldConfig(accountId)
+      }
+      const record = {
+        config: merged,
+        exists,
+        source: url.startsWith('/api/') ? 'remote-api' : 'remote-fallback',
+      }
+      if (exists) {
+        return record
+      }
+      if (!fallbackRecord) {
+        fallbackRecord = record
+      }
     }
     catch {
       // continue fallback
@@ -227,12 +261,30 @@ export async function loadBackendWorldConfig(accountId = '') {
 
   const adminConfig = getAdminWorldConfig(accountId)
   if (adminConfig) {
-    return adminConfig
+    return {
+      config: adminConfig,
+      exists: true,
+      source: 'local-admin-cache',
+    }
   }
 
-  return mergeBackendConfig()
+  if (fallbackRecord) {
+    return fallbackRecord
+  }
+
+  return {
+    config: mergeBackendConfig(),
+    exists: false,
+    source: 'default',
+  }
+}
+
+export async function loadBackendWorldConfig(accountId = '') {
+  const record = await loadBackendWorldConfigRecord(accountId)
+  return record.config
 }
 
 export { DEFAULT_BACKEND_WORLD_CONFIG }
 export { ADMIN_WORLD_CONFIG_STORAGE_KEY }
 export { buildAdminWorldConfigStorageKey }
+export { buildWorldConfigRequestUrl }

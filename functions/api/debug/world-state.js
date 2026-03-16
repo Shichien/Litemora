@@ -1,5 +1,6 @@
 import {
   getKv,
+  getProjectionId,
   getScopedKey,
   getSpaceName,
   readSpaceJson,
@@ -25,7 +26,7 @@ function countModificationsFromChunkV2(chunks = {}) {
   return count
 }
 
-function summarizePayload(payload, key, spaceName) {
+function summarizePayload(payload, key, spaceName, projectionId = '') {
   const format = payload?.format || 'classic'
   const isChunkV2 = format === 'chunk-v2'
   const chunkCount = isChunkV2
@@ -39,6 +40,7 @@ function summarizePayload(payload, key, spaceName) {
   return {
     ok: true,
     space: spaceName || 'default',
+    projection: projectionId || '',
     key,
     format,
     chunkWidth: Number(payload?.chunkWidth) || null,
@@ -53,13 +55,15 @@ function summarizePayload(payload, key, spaceName) {
 export async function onRequestGet(context) {
   try {
     const spaceName = getSpaceName(context.request)
+    const projectionId = getProjectionId(context.request)
     const kv = getKv(context.env)
-    const key = getScopedKey('world-state', spaceName)
+    const key = getScopedKey('world-state', spaceName, projectionId)
 
     if (!kv) {
       return sendJson(200, {
         ok: false,
         space: spaceName || 'default',
+        projection: projectionId || '',
         key,
         missingKvBinding: true,
       })
@@ -70,12 +74,13 @@ export async function onRequestGet(context) {
       return sendJson(200, {
         ok: false,
         space: spaceName || 'default',
+        projection: projectionId || '',
         key,
         found: false,
       })
     }
 
-    return sendJson(200, summarizePayload(payload, key, spaceName))
+    return sendJson(200, summarizePayload(payload, key, spaceName, projectionId))
   }
   catch (error) {
     return sendError(500, 'debug_world_state_failed', error?.message || 'unknown_error')
