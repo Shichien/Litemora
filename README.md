@@ -1,296 +1,95 @@
-# Third-Person-MC（网页第三人称 MC / Web3D Demo）
+# Litemora | Playable Schematic Worlds
 
-中文 | [English](README_EN.md)
+[English](README_EN.md) | 中文
 
-> 用 **Three.js + Vue 3** 搭建的网页 3D 演示：展示 **MC 风格多世界传送门** 与 **魂类锁定战斗** 的预热体验。
-> 目标：把 Web3D 做成“可跑、可玩、可继续迭代”的项目，而不只是一个截图 Demo。
+Litemora 是一个**极致优雅、极简主义**的网页 3D 画廊，专门用于展示和探索 Minecraft 的建筑原理图（Schematics）。
+我们致力于将生硬的建筑文件转化为**可进入、可漫游的沉浸式世界**，并使用原版资源包（Resource Packs）提供真实的视觉效果。
 
-- 在线预览：`https://third-person-mc.vercel.app/`
-- Debug 面板：`https://third-person-mc.vercel.app/#debug`
-- 产品需求（PRD，早期版本，可能与实现有偏差）：[`docs/PRD.md`](docs/PRD.md)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/shichien/Litemora/main/public/og.jpg" width="800" alt="Litemora Banner" />
+</div>
 
-## 目录
+> **在线预览**: [https://litemora.art/](https://litemora.art/)
+> **设计语言**: 深色模式、极致排版、Afilmory 画廊风格
 
-- [视觉预览](#视觉预览)
-- [玩法与按键操作](#玩法与按键操作)
-- [生态地形与地形生成](#生态地形与地形生成)
-- [相机自适应与 HUD](#相机自适应与-hud)
-- [项目技术栈](#项目技术栈)
-- [项目结构](#项目结构)
-- [素材出处](#素材出处)
-- [未完成内容 (TODO)](#未完成内容-todo)
-- [快速开始](#快速开始)
-- [License](#license)
+---
 
-## 视觉预览
+## 核心亮点
 
-### 开始界面展示
-<img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/image.webp" width="960" alt="开始界面展示" />
+Litemora 已经彻底演进，放弃了初期的“魂类战斗”杂项演示，专注于**建筑投影的纯粹展示**。
 
-| 攻击效果预览                                                                                                                         | 地形：多生态拼图                                                                                                                            |
-| :----------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
-| <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/attack.gif" width="420" alt="攻击效果预览" /><br/>攻击效果预览 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/多生态拼图.webp" width="420" alt="多生态拼图" /><br/>地形：多生态拼图 |
+1. **真实渲染质感 (Native Rendering)**  
+   原汁原味解析 Minecraft 方块模型，结合自定义资源包呈现完美光影。
+2. **多格式支持 (3+ Formats)**  
+   直接读取 `.litematic` 等原理图文件，0 服务端成本，纯前端即时渲染。
+3. **沉浸式探索 (First-Person Exploration)**  
+   不仅是查看模型，而是以第一人称视角走入建筑，感受真实碰撞体与物理系统。
+4. **创作者空间 (Creator Spaces)**  
+   一键创建专属链接（如 `litemora.art/your-space`），将其作为你个人的建筑展览册。
 
-## 核心亮点（来自项目与实现现实）
+---
 
-- **运动系统**：第三人称角色移动与姿态切换（走/跑/跳），强调操作反馈与动画衔接
-- **生态地形**：基于随机数与噪声的程序化地形（项目内有多生态概念：平原/森林/沙漠/冻洋等）
-- **第三人称相机**：针对地形起伏做避障/防穿模的相机跟随思路，提升可玩性与稳定观感
+## 核心技术栈
 
-> 备注：仓库里还集成了 HUD/菜单 UI、资源加载、Shader 管线等基础设施，详见下方“项目结构”和 PRD。
+本项目由前沿前端技术驱动，追求极致性能与设计感：
 
-## 玩法与按键操作
+- **3D 引擎**: [Three.js](https://threejs.org/) (v0.172+)
+- **界面框架**: [Vue 3](https://vuejs.org/) + [Tailwind CSS](https://tailwindcss.com/)
+- **状态管理**: [Pinia](https://pinia.vuejs.org/)
+- **国际化**: [Vue-i18n](https://vue-i18n.intlify.dev/) (支持中英双语)
+- **多语言接入**: GitHub OAuth 鉴权，保护私人画廊空间
 
-> 以“读者打开页面 30 秒内就能上手”为标准。
+---
 
-| 操作              | 按键            | 说明                      |
-| ----------------- | --------------- | ------------------------- |
-| **移动**          | `W / A / S / D` | 八向位移，包含姿态切换    |
-| **普通攻击**      | `Z`             | 支持连击 Combo            |
-| **重攻击**        | `X`             | 强力打击反馈              |
-| **锁定目标**      | `鼠标中键`      | (开发中) 魂类锁定逻辑     |
-| **格挡**          | `C`             | 防御动作                  |
-| **互动**          | `E / F`         | (开发中) 采集或开启传送门 |
-| **关闭弹窗/菜单** | `ESC`           | 退出或暂停                |
+## 本地开发指南
 
-## 生态地形与地形生成
-
-项目内地形强调“体素风格 + 程序化生态变化”，并尽量保持稳定帧率。
-
-| 平原地形                                                                                                                        | 森林地形                                                                                                                        |
-| :------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------ |
-| <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/01.2rvmobho84.gif" width="420" alt="平原" /><br/>平原地形 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/05.6f16budguw.gif" width="420" alt="森林" /><br/>森林地形 |
-
-| 白桦林地形                                                                                                                          | 樱花林地形                                                                                                                         |
-| :---------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
-| <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/06.7lkhkg2dhn.gif" width="420" alt="白桦林" /><br/>白桦林地形 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/08.b9e9easke.gif" width="420" alt="樱花林" /><br/>樱花林地形 |
-
-| 沙漠地形                                                                                                                        | 冻洋地形                                                                                                                |
-| :------------------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------- |
-| <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/07.9gx2d2et4h.gif" width="420" alt="沙漠" /><br/>沙漠地形 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/冻洋.webp" width="420" alt="冻洋" /><br/>冻洋地形 |
-
-### 地形生成思路 (Noise & FBM)
-
-#### 一个 Seed 一个世界 (PRNG)
-<img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/seed.webp" width="960" alt="一个 Seed 一个世界" />
-
-| 地形振幅调节 (Noise)                                                                                                           | 地面细节调节 (FBM)                                                                                                       |
-| :----------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
-| <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/地形振幅.gif" width="420" alt="振幅" /><br/>地形振幅调节 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/FBM.gif" width="420" alt="FBM" /><br/>地面细节调节 |
-
-## 相机自适应与 HUD
-
-核心目标：自由旋转视角，相机根据地形自动躲避不穿模。
-
-### HUD 界面总览
-<img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/HUD.webp" width="960" alt="HUD 总览" />
-
-| 相机跟随展示                                                                                                                                | 相机越肩调整                                                                                                                       |
-| :------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------- |
-| <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/03.6f16budgsi.gif" width="420" alt="相机跟随展示" /><br/>相机跟随展示 | <img src="https://github.com/hexianWeb/picx-images-hosting/raw/master/相机调整.gif" width="420" alt="相机调整" /><br/>相机越肩调整 |
-
-## 项目技术栈
-
-### 核心框架
-- **Three.js (v0.172+)**: 核心 3D 渲染引擎
-- **Vue 3**: UI 层开发框架
-- **Vite**: 极速构建工具与开发服务器
-- **Pinia**: 响应式状态管理（UI 与 3D 场景同步）
-
-### 渲染与动画
-- **GLSL (Custom Shaders)**: 自定义着色器实现传送门、地形渲染与后处理
-- **three-custom-shader-material**: 材质增强插件
-- **GSAP**: 高性能补间动画库
-- **InstancedMesh**: 大规模体素与植被渲染优化
-
-### 工具与工程化
-- **mitt**: 全局事件总线，处理 UI 与 3D 层实时通信
-- **Tailwind CSS**: 样式工具库
-- **Sass/PostCSS**: 预处理器支持
-- **Husky & Commitlint**: 规范化代码提交
-
-## 项目结构
-
-```text
-E:\圖形學\Third-Person-MC\
-├── public/                 # 静态资源
-│   ├── models/             # GLB/GLTF 模型 (角色、方块)
-│   ├── textures/           # 材质贴图 (环境、方块、HUD)
-│   └── fonts/              # Minecraft 字体
-├── src/
-│   ├── components/         # Vue UI 组件
-│   │   ├── hud/            # 游戏内 HUD (血条、经验、快捷栏等)
-│   │   ├── menu/           # 主菜单、设置、加载界面
-│   │   └── MiniMap.vue     # 小地图组件
-│   ├── js/                 # 核心逻辑
-│   │   ├── camera/         # 相机控制器与 Rig
-│   │   ├── world/          # 场景元素、玩家逻辑、地形系统
-│   │   │   └── terrain/    # 生态生成、区块管理、AO 计算
-│   │   ├── interaction/    # 射线拾取、方块交互
-│   │   ├── utils/          # 调试、事件、输入解析
-│   │   └── experience.js   # 框架单例入口
-│   ├── shaders/            # 自定义 GLSL 着色器
-│   └── vue/                # Pinia Stores
-├── docs/                   # 产品文档与开发计划
-└── vite.config.js          # 构建配置
-```
-
-## 素材出处
-- **模型**: 基于 Minecraft 风格自定义建模 ( character.glb )
-- **皮肤**:
-  - **Steve & Alex**: 由 [hibiki_ekko](https://www.planetminecraft.com/member/hibiki_ekko/) 创作，来源 [Planet Minecraft](https://www.planetminecraft.com/member/hibiki_ekko/)
-  - **Classic (Player)**: 由 [holland0519](https://www.minecraftskins.com/profile/5521971/holland0519) 创作，来源 [Minecraft Skins](https://www.minecraftskins.com/profile/5521971/holland0519)
-  - 特别感谢 **hibiki_ekko** 和 **holland0519** 为项目提供的精美皮肤资源！
-- **贴图**: 提取自 Minecraft[Mojang/bedrock-samples](Mojang/bedrock-samples) 游戏资源包，由 [hexianWeb](https://github.com/hexianWeb) 优化。
-- **字体**: [Minecraftia-Regular.ttf](https://www.dafont.com/minecraftia.font) & [TakWolf/fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font)
-- **音效**: 计划由 Suno AI 生成 ( 命中、环境音 **还没生成**)
-
-## 未完成内容 (TODO)
-- [ ] **一直陪伴玩家的可爱狗**: 实现宠物 AI 逻辑与跟随系统
-- [ ] **更好的 Biome**: 优化生态转换平滑度与更多植被种类
-- [ ] **背包功能**: 实现完整的物品存放与交互 UI
-- [ ] **挖掘特效**: 方块破坏时的粒子效果与动画
-- [ ] **换肤功能**: 实时切换玩家模型贴图
-- [ ] **敌人锁定特效**: 魂类锁定视觉反馈增强
-
-## 快速开始
+Litemora 采用现代化的包管理器和构建工具。
 
 ### 环境要求
 
-- Node.js（建议 LTS）
-- 包管理器：推荐 pnpm（仓库包含 `pnpm-lock.yaml`）
+- **Node.js**: 20.x 或以上 LTS 版本
+- **包管理器**: 推荐使用 `pnpm` (仓库内包含 `pnpm-lock.yaml`)
 
 ### 安装与运行
 
 ```bash
+# 1. 克隆仓库
+git clone https://github.com/shichien/Litemora.git
+cd Litemora
+
+# 2. 安装依赖
 pnpm install
+
+# 3. 启动本地开发服务器
 pnpm dev
 ```
+启动后，访问 Vite 输出的地址（通常为 `http://localhost:5175` 或 `5173`）即可预览最新的极简主页。
 
-然后打开终端输出的本地地址（Vite 会以 `--host` 启动）。
+### 服务端 OAuth 部署 (Cloudflare Pages)
 
-### 管理后台 OAuth 登录（GitHub / Google，Cloudflare 可部署）
+对于希望部署并启用“创建空间”功能的开发者，需要在服务端配置环境变量：
+- `OAUTH_GITHUB_CLIENT_ID`
+- `OAUTH_GITHUB_CLIENT_SECRET`
+- `LITEMORA_SESSION_SECRET`
 
-管理后台使用标准 `Authorization Code + PKCE` 流程。部署到 Cloudflare Pages 时，使用仓库内 Pages Functions 接口：
+配置在 Cloudflare Pages 的 **Settings -> Environment variables** 中，确保 `_SECRET` 不在客户端暴露。
 
-- `POST /api/auth/github/exchange`
-- `POST /api/auth/google/exchange`
+---
 
-Cloudflare Functions 位置：
+## 开发架构与规约
 
-- `functions/api/auth/github/exchange.js`
-- `functions/api/auth/google/exchange.js`
+1. **UI 与 3D 解耦**：  
+   `src/vue/` 仅负责绝美的 DOM 交互，3D 渲染逻辑严格封闭在 `src/js/experience.js` 中。两者通过 Pinia 或事件总线（mitt）通信。
+2. **样式设计**：  
+   全局使用 CSS 变量（`--bg`, `--text-main`, `--accent`），主打深沉、低饱和色调与衬线字体（Playfair Display）。尽量避免花哨的组件库，使用纯手工打磨的 HTML/CSS。
+3. **资源加载**：  
+   由于体素模型巨大，一切纹理、BufferGeometry 必须做好 GC，绝不允许内存泄漏。
 
-Node 风格接口（可用于其他平台）位置：
+---
 
-- `api/auth/github/exchange.js`
-- `api/auth/google/exchange.js`
+## 协议与授权
 
-#### 1) 前端环境变量（公开）
+本项目采用 **AGPL-3.0-only** 协议开源，详见 [LICENSE](LICENSE) 文件。
+如果你使用了 Litemora 的代码作为商业用途或架设公开服务，**必须**开源你的修改与后端。
 
-写到 `.env.local`（本地）或部署平台的前端环境变量：
-
-```bash
-VITE_OAUTH_GITHUB_CLIENT_ID=your_github_client_id
-VITE_OAUTH_GOOGLE_CLIENT_ID=your_google_client_id
-```
-
-#### 2) 服务端环境变量（必须保密）
-
-写到 Cloudflare Pages → 项目 → `Settings` → `Environment variables`（Production / Preview 都要配）：
-
-```bash
-OAUTH_GITHUB_CLIENT_ID=your_github_client_id
-OAUTH_GITHUB_CLIENT_SECRET=your_github_client_secret
-OAUTH_GOOGLE_CLIENT_ID=your_google_client_id
-OAUTH_GOOGLE_CLIENT_SECRET=your_google_client_secret
-```
-
-> 注意：`*_CLIENT_SECRET` 只能放服务端环境变量，不能放 `VITE_` 前缀。
-
-#### 3) OAuth 平台回调地址（Cloudflare）
-
-- 本地开发：
-  - `http://localhost:5173/auth-callback.html?provider=github`
-  - `http://localhost:5173/auth-callback.html?provider=google`
-- 生产部署（示例，Cloudflare Pages 自定义域名）：
-  - `https://your-domain.com/auth-callback.html?provider=github`
-  - `https://your-domain.com/auth-callback.html?provider=google`
-
-GitHub OAuth App 填 `Authorization callback URL`，Google OAuth Client 填 `Authorized redirect URIs`。
-
-#### 4) exchange 请求/响应格式
-
-请求体示例：
-
-```json
-{
-  "code": "oauth_authorization_code",
-  "codeVerifier": "pkce_code_verifier",
-  "redirectUri": "https://your-domain.com/auth-callback.html?provider=github"
-}
-```
-
-响应体示例：
-
-```json
-{
-  "account": {
-    "id": "github:123456",
-    "provider": "github",
-    "name": "Admin",
-    "email": "admin@example.com",
-    "avatar": "https://..."
-  }
-}
-```
-
-#### 5) Cloudflare Pages 构建设置
-
-- Framework preset: `None`
-- Build command: `pnpm build`
-- Build output directory: `dist`
-- Root directory: 仓库根目录
-- Functions directory: `functions`
-
-#### 6) 本地 mock 说明
-
-`vite.config.js` 仍保留本地开发 mock，方便无密钥联调；生产环境应使用上面的真实 `api/auth/*/exchange` 接口。
-
-## 常用命令（与 `package.json` 对齐）
-
-```bash
-# 开发
-pnpm dev
-
-# 构建/预览
-pnpm build
-pnpm preview
-
-# 代码检查
-pnpm lint
-pnpm lint:fix
-
-```
-
-## 文档与入口
-
-- PRD：[`docs/PRD.md`](docs/PRD.md)
-- 规划与设计：[`docs/plans/`](docs/plans/)
-
-## 开发约定（与仓库风格保持一致）
-
-- Three.js 侧以 `src/js/experience.js` 的 **Experience 单例**为核心入口组织代码
-- UI（Vue）与 3D 场景（Three.js）解耦：状态优先用 Pinia，同步/即时事件用 mitt
-- 新增 3D 组件建议配套 `debugInit` 面板，方便调参和定位问题
-
-（更详细规则请看 `.cursor/rules/` 下的规范文件）
-
-## 贡献
-
-- 行为准则：[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
-- 仓库启用 Husky + Commitlint，提交信息建议遵循 Conventional Commits
-
-## License
-
-MIT，见 [`LICENSE`](LICENSE)。
+*“Where schematics become playable worlds.”*
