@@ -53,16 +53,24 @@ function hasSpawnPoint(config = null) {
     && Number.isFinite(Number(spawnPoint?.z))
 }
 
-function buildProjectionSpawnPoint(preview = null, lift = DEFAULT_PROJECTION_SPAWN_LIFT) {
+function buildProjectionSpawnPoint(
+  preview = null,
+  placementOffset = null,
+  lift = DEFAULT_PROJECTION_SPAWN_LIFT,
+) {
   const bounds = preview?.bounds
   if (!bounds || bounds.minX === null || bounds.maxX === null) {
     return null
   }
 
+  const offsetX = Number(placementOffset?.x || 0)
+  const offsetY = Number(placementOffset?.y || 0)
+  const offsetZ = Number(placementOffset?.z || 0)
+
   return {
-    x: Number((((bounds.minX + bounds.maxX) * 0.5)).toFixed(2)),
-    y: Number((bounds.maxY + 0.5 + lift).toFixed(2)),
-    z: Number((((bounds.minZ + bounds.maxZ) * 0.5)).toFixed(2)),
+    x: Number((((bounds.minX + bounds.maxX) * 0.5) + offsetX).toFixed(2)),
+    y: Number((bounds.maxY + offsetY + 0.5 + lift).toFixed(2)),
+    z: Number((((bounds.minZ + bounds.maxZ) * 0.5) + offsetZ).toFixed(2)),
   }
 }
 
@@ -206,9 +214,37 @@ function hasSnapshotContent(snapshot = null) {
     }
   }
 
-  const minecraftChunks = snapshot?.worldState?.minecraftSchematicLayer?.chunks
-  if (minecraftChunks && typeof minecraftChunks === 'object' && Object.keys(minecraftChunks).length > 0) {
+  // Check if schematic actually has block data, not just empty chunk structures
+  if (hasSchematicBlockContent(snapshot)) {
     return true
+  }
+
+  return false
+}
+
+/**
+ * Check if the schematic snapshot actually has block data
+ * @param {object} snapshot
+ * @returns {boolean}
+ */
+function hasSchematicBlockContent(snapshot = null) {
+  const minecraftChunks = snapshot?.worldState?.minecraftSchematicLayer?.chunks
+  if (!minecraftChunks || typeof minecraftChunks !== 'object') {
+    return false
+  }
+
+  // Check if any chunk has actual block data
+  for (const chunk of Object.values(minecraftChunks)) {
+    if (chunk && typeof chunk === 'object') {
+      // Check for blocks or any meaningful data
+      if (chunk.blocks && typeof chunk.blocks === 'object' && Object.keys(chunk.blocks).length > 0) {
+        return true
+      }
+      // Also check for other possible data structures
+      if (Object.keys(chunk).length > 0) {
+        return true
+      }
+    }
   }
 
   return false
@@ -280,6 +316,11 @@ export default class World {
     emitter.on('game:block-break-complete', this._onMinecraftBlockBreakComplete)
     emitter.on('game:block-place', this._onMinecraftBlockPlace)
 
+    // Listen for resource loading errors to help diagnose issues
+    emitter.on('core:resource-error', (error) => {
+      console.error('[World] Resource failed to load:', error.name, '-', error.path, '-', error.message)
+    })
+
     emitter.on('core:ready', async () => {
       this.activeProjectionContext = await this._loadActiveProjectionContext()
       this.backendConfigRecord = await loadBackendWorldConfigRecord()
@@ -322,11 +363,14 @@ export default class World {
   async _loadActiveProjectionContext() {
     const spaceName = getActiveSpaceName()
     const projectionId = getActiveProjectionId()
+    console.log('[World Debug] _loadActiveProjectionContext:', { spaceName, projectionId, pathname: window.location.pathname, search: window.location.search })
     if (!spaceName || !projectionId) {
+      console.log('[World Debug] _loadActiveProjectionContext returning null: no spaceName or projectionId')
       return null
     }
 
     try {
+      // Guests don't need a session for public projections
       const session = loadAdminAuthSession()
       const payload = await fetchGalleryItem(spaceName, projectionId, session)
       return {
@@ -352,15 +396,43 @@ export default class World {
 
   async _ensureProjectionWorldInitialized(sharedWorldState = null, backendConfig = null) {
     const projectionContext = this.activeProjectionContext
+    console.log('[World Debug] _ensureProjectionWorldInitialized called:', {
+      hasProjectionContext: !!projectionContext,
+      projectionId: projectionContext?.projectionId,
+      hasSharedWorldState: !!sharedWorldState,
+      hasSnapshotContent: hasSnapshotContent(sharedWorldState),
+      hasSchematicBlockContent: hasSchematicBlockContent(sharedWorldState),
+      sharedWorldState: sharedWorldState ? {
+        modificationsKeys: Object.keys(sharedWorldState.modifications || {}),
+        worldStateKeys: sharedWorldState.worldState ? Object.keys(sharedWorldState.worldState) : 'none',
+        schematicLayerChunks: sharedWorldState?.worldState?.minecraftSchematicLayer?.chunks ? Object.keys(sharedWorldState.worldState.minecraftSchematicLayer.chunks) : 'none',
+      } : null,
+    })
     if (!projectionContext?.projectionId) {
+      console.log('[World Debug] Early return: no projectionId')
       return backendConfig
     }
 
-    if (hasSnapshotContent(sharedWorldState)) {
+    // For projection worlds, always try to load the schematic from the projection metadata
+    // unless we already have valid schematic content (actual blocks, not just empty chunk structures)
+    const hasValidSchematicContent = hasSchematicBlockContent(sharedWorldState)
+    const hasModifications = sharedWorldState?.modifications && typeof sharedWorldState.modifications === 'object' &&
+      Object.keys(sharedWorldState.modifications).length > 0
+
+    if (hasValidSchematicContent) {
+      console.log('[World Debug] Early return: has valid schematic block content')
       return backendConfig
     }
+
+    // If there are modifications but no schematic blocks, still need to load schematic
+    // (schematic blocks may have been cleared but terrain modifications remain)
+
+    // Even if there's existing world state, we need to apply the projection schematic
+    // if it doesn't have schematic content yet
+    console.log('[World Debug] Proceeding to load schematic (no existing schematic content)')
 
     const sourceFile = projectionContext.item?.sourceFile
+    console.log('[World Debug] Parsed projection context item:', projectionContext.item)
     if (!sourceFile?.fileBase64) {
       emitter.emit('projection:bootstrap-error', {
         spaceName: projectionContext.spaceName,
@@ -371,12 +443,20 @@ export default class World {
     }
 
     try {
-      await schematicService.parseArrayBuffer(decodeBase64ToArrayBuffer(sourceFile.fileBase64))
+      const buffer = decodeBase64ToArrayBuffer(sourceFile.fileBase64)
+      console.log('[World Debug] Decoded buffer length:', buffer.byteLength)
+      await schematicService.parseArrayBuffer(buffer)
       const preview = schematicService.getPreview()
+      const placementOffset = {
+        x: Number(projectionContext.item?.placement?.offset?.x || 0),
+        y: Number(projectionContext.item?.placement?.offset?.y || 0),
+        z: Number(projectionContext.item?.placement?.offset?.z || 0),
+      }
+      console.log('[World Debug] Parsing schematic complete, bounds:', preview?.bounds)
       let nextConfig = backendConfig
 
       if (!this.backendConfigRecord?.exists || !hasSpawnPoint(nextConfig)) {
-        const spawnPoint = buildProjectionSpawnPoint(preview)
+        const spawnPoint = buildProjectionSpawnPoint(preview, placementOffset)
         if (spawnPoint) {
           nextConfig = normalizeBackendWorldConfig({
             ...nextConfig,
@@ -386,16 +466,22 @@ export default class World {
             },
           })
           try {
-            await saveBackendWorldConfigRemote(nextConfig)
+            await saveBackendWorldConfigRemote(nextConfig, '', {
+              spaceName: projectionContext.spaceName,
+              projectionId: projectionContext.projectionId,
+            })
           }
           catch {
-            saveAdminWorldConfig(nextConfig)
+            saveAdminWorldConfig(nextConfig, '', {
+              spaceName: projectionContext.spaceName,
+              projectionId: projectionContext.projectionId,
+            })
           }
         }
       }
 
       await this._applySchematicPayload({
-        offset: { x: 0, y: 0, z: 0 },
+        offset: placementOffset,
         spawnPoint: nextConfig?.player?.spawnPoint || null,
         movePlayerToSpawn: false,
         options: {
@@ -608,6 +694,7 @@ export default class World {
   async _syncMinecraftSchematicRenderLayer(options = {}) {
     const schematicLayer = this.chunkManager?.minecraftSchematicLayer
     const stats = schematicLayer?.getStats?.() || { blockCount: 0 }
+    console.log('[World Debug] _syncMinecraftSchematicRenderLayer:', { blockCount: stats.blockCount, hasSchematicLayer: !!schematicLayer })
 
     if (!stats.blockCount) {
       this.chunkManager?.setMinecraftRenderOverlayActive?.(false)
@@ -664,14 +751,15 @@ export default class World {
   async _loadSharedWorldState() {
     const activeSpace = getActiveSpaceName()
     const activeProjectionId = getActiveProjectionId()
-    const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
+    const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace, activeProjectionId)
     const localRecord = await loadLocalWorldStateRecord(storageKey)
     const localDecoded = localRecord?.payload
       ? sanitizeSnapshot(decodeWorldStateSnapshot(localRecord.payload))
       : null
 
     if (localDecoded && hasSnapshotContent(localDecoded)) {
-      console.info('[World Debug] Loaded local world-state', {
+      console.info('[World Debug] Loaded local world-state FULL:', localDecoded)
+      console.info('[World Debug] Loaded local world-state SUMMARY', {
         source: localRecord?.source || 'local',
         space: activeSpace || 'default',
         storageKey,
@@ -770,12 +858,12 @@ export default class World {
 
     try {
       const payload = this.chunkManager.persistence.exportSnapshot()
-      const compactPayload = encodeWorldStateSnapshot(payload, {
-        chunkWidth: this.chunkManager.chunkWidth,
-      })
-      const activeSpace = getActiveSpaceName()
-      const activeProjectionId = getActiveProjectionId()
-      const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace)
+        const compactPayload = encodeWorldStateSnapshot(payload, {
+          chunkWidth: this.chunkManager.chunkWidth,
+        })
+        const activeSpace = getActiveSpaceName()
+        const activeProjectionId = getActiveProjectionId()
+        const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace, activeProjectionId)
 
       try {
         await persistWorldStateLocally(storageKey, compactPayload)
@@ -855,7 +943,7 @@ export default class World {
 
   /** 玩家 + 相机 Rig，依赖地形（贴地/碰撞用 terrainDataManager） */
   _initPlayerAndCamera() {
-    this.player = new Player()
+    this.player = new Player(this.experience)
     this.cameraRig = new CameraRig()
     this.cameraRig.attachPlayer(this.player)
     this.experience.camera.attachRig(this.cameraRig)

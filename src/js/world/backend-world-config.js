@@ -7,7 +7,15 @@ const BACKEND_CONFIG_URLS = [
 
 const ADMIN_WORLD_CONFIG_STORAGE_KEY = 'mc-admin-world-config'
 
-function buildWorldConfigRequestUrl(baseUrl, spaceName = getActiveSpaceName(), projectionId = getActiveProjectionId()) {
+function resolveScopedRouteOptions(options = {}) {
+  return {
+    spaceName: String(options.spaceName || getActiveSpaceName() || '').trim(),
+    projectionId: String(options.projectionId || getActiveProjectionId() || '').trim(),
+  }
+}
+
+function buildWorldConfigRequestUrl(baseUrl, options = {}) {
+  const { spaceName, projectionId } = resolveScopedRouteOptions(options)
   const url = new URL(baseUrl, window.location.origin)
   if (spaceName) {
     url.searchParams.set('space', spaceName)
@@ -19,8 +27,7 @@ function buildWorldConfigRequestUrl(baseUrl, spaceName = getActiveSpaceName(), p
 }
 
 function buildAdminWorldConfigStorageKey(accountId = '', options = {}) {
-  const spaceName = String(options.spaceName || getActiveSpaceName() || '').trim()
-  const projectionId = String(options.projectionId || getActiveProjectionId() || '').trim()
+  const { spaceName, projectionId } = resolveScopedRouteOptions(options)
 
   if (spaceName) {
     return buildSpaceScopedKey(ADMIN_WORLD_CONFIG_STORAGE_KEY, spaceName, projectionId)
@@ -185,9 +192,9 @@ export function getAdminWorldConfig(accountId = '', options = {}) {
   }
 }
 
-export function saveAdminWorldConfig(raw = {}, accountId = '') {
+export function saveAdminWorldConfig(raw = {}, accountId = '', options = {}) {
   const normalized = mergeBackendConfig(raw)
-  const scopedKey = buildAdminWorldConfigStorageKey(accountId)
+  const scopedKey = buildAdminWorldConfigStorageKey(accountId, options)
   localStorage.setItem(
     scopedKey,
     JSON.stringify(normalized),
@@ -195,14 +202,14 @@ export function saveAdminWorldConfig(raw = {}, accountId = '') {
   return normalized
 }
 
-export function clearAdminWorldConfig(accountId = '') {
-  const scopedKey = buildAdminWorldConfigStorageKey(accountId)
+export function clearAdminWorldConfig(accountId = '', options = {}) {
+  const scopedKey = buildAdminWorldConfigStorageKey(accountId, options)
   localStorage.removeItem(scopedKey)
 }
 
-export async function saveBackendWorldConfigRemote(raw = {}, accountId = '') {
+export async function saveBackendWorldConfigRemote(raw = {}, accountId = '', options = {}) {
   const normalized = mergeBackendConfig(raw)
-  const requestUrl = buildWorldConfigRequestUrl('/api/world-config')
+  const requestUrl = buildWorldConfigRequestUrl('/api/world-config', options)
 
   const response = await fetch(requestUrl, {
     method: 'POST',
@@ -217,18 +224,20 @@ export async function saveBackendWorldConfigRemote(raw = {}, accountId = '') {
     throw new Error(payload?.error || 'save_world_config_remote_failed')
   }
 
-  saveAdminWorldConfig(normalized, accountId)
+  saveAdminWorldConfig(normalized, accountId, options)
   return normalized
 }
 
-export async function loadBackendWorldConfigRecord(accountId = '') {
-  const activeSpace = getActiveSpaceName()
-  const activeProjectionId = getActiveProjectionId()
+export async function loadBackendWorldConfigRecord(accountId = '', options = {}) {
+  const { spaceName: activeSpace, projectionId: activeProjectionId } = resolveScopedRouteOptions(options)
   let fallbackRecord = null
 
   for (const url of BACKEND_CONFIG_URLS) {
     try {
-      const requestUrl = buildWorldConfigRequestUrl(url, activeSpace, activeProjectionId)
+      const requestUrl = buildWorldConfigRequestUrl(url, {
+        spaceName: activeSpace,
+        projectionId: activeProjectionId,
+      })
       const res = await fetch(requestUrl, { cache: 'no-store' })
       if (!res.ok) {
         continue
@@ -237,10 +246,10 @@ export async function loadBackendWorldConfigRecord(accountId = '') {
       const merged = mergeBackendConfig(json)
       const exists = !!json?.__meta?.exists
       if (exists) {
-        saveAdminWorldConfig(merged, accountId)
+        saveAdminWorldConfig(merged, accountId, options)
       }
       else if (url.startsWith('/api/')) {
-        clearAdminWorldConfig(accountId)
+        clearAdminWorldConfig(accountId, options)
       }
       const record = {
         config: merged,
@@ -259,7 +268,7 @@ export async function loadBackendWorldConfigRecord(accountId = '') {
     }
   }
 
-  const adminConfig = getAdminWorldConfig(accountId)
+  const adminConfig = getAdminWorldConfig(accountId, options)
   if (adminConfig) {
     return {
       config: adminConfig,
@@ -279,8 +288,8 @@ export async function loadBackendWorldConfigRecord(accountId = '') {
   }
 }
 
-export async function loadBackendWorldConfig(accountId = '') {
-  const record = await loadBackendWorldConfigRecord(accountId)
+export async function loadBackendWorldConfig(accountId = '', options = {}) {
+  const record = await loadBackendWorldConfigRecord(accountId, options)
   return record.config
 }
 

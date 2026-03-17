@@ -29,10 +29,68 @@ function sanitizeSpaceName(value) {
   return /^[a-z0-9-]{3,63}$/.test(normalized) ? normalized : ''
 }
 
+function sanitizeProjectionName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-z0-9]/giu, '')
+    .slice(0, 48)
+}
+
+function normalizeProjectionSlug(value) {
+  return sanitizeProjectionName(value).toLowerCase()
+}
+
+function createUniqueProjectionSlug(value, items = []) {
+  const baseSlug = normalizeProjectionSlug(value) || 'world'
+  const usedSlugs = new Set(
+    (Array.isArray(items) ? items : [])
+      .map(item => normalizeProjectionSlug(item?.projectionSlug || ''))
+      .filter(Boolean),
+  )
+
+  if (!usedSlugs.has(baseSlug)) {
+    return baseSlug
+  }
+
+  let suffix = 2
+  while (usedSlugs.has(`${baseSlug}${suffix}`)) {
+    suffix += 1
+  }
+
+  return `${baseSlug}${suffix}`
+}
+
+function findGalleryManifestItemByIdentifier(items = [], identifier = '') {
+  const rawIdentifier = String(identifier || '').trim()
+  const normalizedSlug = normalizeProjectionSlug(rawIdentifier)
+
+  return (Array.isArray(items) ? items : []).find((item) => {
+    if (!item) {
+      return false
+    }
+
+    if (String(item.id || '').trim() === rawIdentifier) {
+      return true
+    }
+
+    return normalizedSlug && normalizeProjectionSlug(item.projectionSlug || '') === normalizedSlug
+  }) || null
+}
+
 function getSpaceNameFromRequest(req) {
   try {
     const requestUrl = new URL(req.url || '/', 'http://localhost')
     return sanitizeSpaceName(requestUrl.searchParams.get('space'))
+  }
+  catch {
+    return ''
+  }
+}
+
+function getProjectionIdFromRequest(req) {
+  try {
+    const requestUrl = new URL(req.url || '/', 'http://localhost')
+    return String(requestUrl.searchParams.get('projection') || '').trim()
   }
   catch {
     return ''
@@ -44,6 +102,27 @@ function resolveSpaceJsonPath(fileName, spaceName = '') {
     return path.resolve(__dirname, 'public', fileName)
   }
   return path.resolve(__dirname, 'public', 'spaces', spaceName, fileName)
+}
+
+function resolveScopedSpaceJsonPath(fileName, spaceName = '', projectionId = '') {
+  const normalizedProjectionId = String(projectionId || '').trim()
+  if (!normalizedProjectionId) {
+    return resolveSpaceJsonPath(fileName, spaceName)
+  }
+
+  if (!spaceName) {
+    return path.resolve(__dirname, 'public', 'projections', encodeURIComponent(normalizedProjectionId), fileName)
+  }
+
+  return path.resolve(
+    __dirname,
+    'public',
+    'spaces',
+    spaceName,
+    'projections',
+    encodeURIComponent(normalizedProjectionId),
+    fileName,
+  )
 }
 
 function resolveGallerySpaceDir(spaceName = '') {
@@ -239,7 +318,12 @@ function registerMockApi(middlewares) {
     }
 
     const profile = await readJsonFileOr(resolveGalleryProfilePath(spaceName), null)
-    const item = await readJsonFileOr(resolveGalleryItemPath(spaceName, itemId), null)
+    const manifest = await readJsonFileOr(resolveGalleryManifestPath(spaceName), {
+      items: [],
+    })
+    const resolvedSummary = findGalleryManifestItemByIdentifier(manifest?.items, itemId)
+    const resolvedItemId = resolvedSummary?.id || itemId
+    const item = await readJsonFileOr(resolveGalleryItemPath(spaceName, resolvedItemId), null)
     const viewer = readMockAccount(req)
     const canManage = !!viewer?.id && viewer.id === profile?.ownerAccountId
 
@@ -278,8 +362,10 @@ function registerMockApi(middlewares) {
       const manifest = await readJsonFileOr(resolveGalleryManifestPath(spaceName), {
         items: [],
       })
+      const resolvedSummary = findGalleryManifestItemByIdentifier(manifest?.items, itemId)
+      const resolvedItemId = resolvedSummary?.id || itemId
       const nextItems = Array.isArray(manifest?.items)
-        ? manifest.items.filter(entry => entry?.id !== itemId)
+        ? manifest.items.filter(entry => entry?.id !== resolvedItemId)
         : []
       const nextManifest = {
         ...(manifest || {}),
@@ -294,7 +380,7 @@ function registerMockApi(middlewares) {
           }
         : null
 
-      await deleteFileIfExists(resolveGalleryItemPath(spaceName, itemId))
+      await deleteFileIfExists(resolveGalleryItemPath(spaceName, resolvedItemId))
       await writeJsonFile(resolveGalleryManifestPath(spaceName), nextManifest)
       if (nextProfile) {
         await writeJsonFile(resolveGalleryProfilePath(spaceName), nextProfile)
@@ -372,10 +458,19 @@ function registerMockApi(middlewares) {
         itemCount: 0,
       }
 
+      const projectionName = sanitizeProjectionName(
+        payload?.projectionName || payload?.title || payload?.schematic?.name || payload?.fileName || 'World',
+      ) || 'World'
+      const projectionSlug = createUniqueProjectionSlug(
+        projectionName,
+        Array.isArray(existingManifest?.items) ? existingManifest.items : [],
+      )
+
       const item = {
         id: itemId,
         space: spaceName,
-        title: String(payload?.title || payload?.schematic?.name || payload?.fileName || 'Untitled build').slice(0, 160),
+        title: projectionName,
+        projectionSlug,
         description: String(payload?.description || '').slice(0, 4000),
         visibility: payload?.visibility === 'private' ? 'private' : 'public',
         fileName: String(payload?.fileName || 'uploaded.litematic').slice(0, 240),
@@ -387,6 +482,7 @@ function registerMockApi(middlewares) {
         },
         schematic: payload?.schematic || null,
         previewModel: payload?.previewModel || null,
+        placement: payload?.placement || null,
         owner: {
           id: viewer.id,
           name: viewer.name || viewer.email || spaceName,
@@ -399,10 +495,12 @@ function registerMockApi(middlewares) {
       const summary = {
         id: item.id,
         title: item.title,
+        projectionSlug: item.projectionSlug,
         description: item.description,
         visibility: item.visibility,
         fileName: item.fileName,
         schematic: item.schematic,
+        placement: item.placement,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
         preview: {
@@ -558,20 +656,35 @@ function registerMockApi(middlewares) {
 
   middlewares.use('/api/world-config', async (req, res) => {
     const spaceName = getSpaceNameFromRequest(req)
-    const jsonPath = resolveSpaceJsonPath('world-config.json', spaceName)
+    const projectionId = getProjectionIdFromRequest(req)
+    const jsonPath = resolveScopedSpaceJsonPath('world-config.json', spaceName, projectionId)
 
     if (req.method === 'GET') {
       try {
         const content = await fs.readFile(jsonPath, 'utf-8')
+        const payload = JSON.parse(content)
         res.setHeader('Content-Type', 'application/json; charset=utf-8')
-        res.end(content)
+        res.end(JSON.stringify({
+          ...payload,
+          __meta: {
+            exists: true,
+            projection: projectionId || '',
+          },
+        }))
       }
       catch {
         try {
           const fallbackPath = resolveSpaceJsonPath('world-config.json')
           const fallbackContent = await fs.readFile(fallbackPath, 'utf-8')
+          const payload = JSON.parse(fallbackContent)
           res.setHeader('Content-Type', 'application/json; charset=utf-8')
-          res.end(fallbackContent)
+          res.end(JSON.stringify({
+            ...payload,
+            __meta: {
+              exists: false,
+              projection: projectionId || '',
+            },
+          }))
         }
         catch {
           res.statusCode = 500
@@ -611,7 +724,8 @@ function registerMockApi(middlewares) {
 
   middlewares.use('/api/world-state', async (req, res) => {
     const spaceName = getSpaceNameFromRequest(req)
-    const statePath = resolveSpaceJsonPath('world-state.json', spaceName)
+    const projectionId = getProjectionIdFromRequest(req)
+    const statePath = resolveScopedSpaceJsonPath('world-state.json', spaceName, projectionId)
 
     if (req.method === 'GET') {
       try {

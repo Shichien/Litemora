@@ -1,6 +1,8 @@
 <script setup>
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+
 import Experience from '@three/experience.js'
-import { loadAdminAuthSession } from '@three/auth/admin-auth.js'
+import { isLocalDevAuthEnabled, loadAdminAuthSession } from '@three/auth/admin-auth.js'
 import { fetchGallery } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
 import {
@@ -19,7 +21,6 @@ import PortalHome from '@ui-components/landing/PortalHome.vue'
 import UiRoot from '@ui-components/menu/UiRoot.vue'
 import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
 import SpaceWorldsPage from '@ui-components/space/SpaceWorldsPage.vue'
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const threeCanvas = ref(null)
 const authSession = ref(loadAdminAuthSession())
@@ -27,8 +28,13 @@ const routeKind = ref('portal')
 const activeSpaceName = ref('')
 const activeProjectionId = ref('')
 const isAdminMode = ref(window.location.hash === '#admin')
+const isAdminConfigMode = ref(window.location.hash === '#admin-config')
 const isDebugMode = ref(window.location.hash === '#debug')
 const canManageActiveSpace = ref(false)
+const canShowAdminConfig = computed(() => {
+  // 管理员配置页面：需要用户已登录且有管理权限
+  return isAdminConfigMode.value && !!authSession.value && canManageActiveSpace.value
+})
 const currentWorldRouteKey = ref('')
 let experience = null
 const handleHashChange = () => { void syncRouteState() }
@@ -87,6 +93,12 @@ async function resolveActiveSpaceManageAccess(spaceName) {
     return
   }
 
+  if (isLocalDevAuthEnabled()) {
+    canManageActiveSpace.value = true
+    syncManageAccessBroadcast()
+    return
+  }
+
   try {
     const payload = await fetchGallery(spaceName, authSession.value)
     canManageActiveSpace.value = !!payload?.viewer?.canManage
@@ -134,6 +146,7 @@ async function syncRouteState() {
   }
 
   isAdminMode.value = window.location.hash === '#admin'
+  isAdminConfigMode.value = window.location.hash === '#admin-config'
   isDebugMode.value = window.location.hash === '#debug'
   syncScrollableRouteClass()
 
@@ -177,7 +190,11 @@ onBeforeUnmount(() => {
   <!-- 主容器：相对定位 -->
   <PortalHome v-if="routeKind === 'portal'" />
   <SpaceWorldsPage v-else-if="routeKind === 'worlds'" :space-name="activeSpaceName" />
-  <div v-else class="relative w-screen h-screen overflow-hidden">
+
+  <!-- Admin 配置弹窗：作为覆盖层显示在所有页面之上 -->
+  <AdminConfigPage v-if="(isAdminMode && canManageActiveSpace) || canShowAdminConfig" class="admin-overlay" />
+
+  <div v-if="routeKind !== 'portal' && routeKind !== 'worlds'" class="relative w-screen h-screen overflow-hidden">
     <!-- Three.js Canvas -->
     <canvas ref="threeCanvas" class="three-canvas absolute inset-0 z-0" />
 
@@ -196,9 +213,6 @@ onBeforeUnmount(() => {
 
     <!-- Debug 模式：浮动 Event Monitor 面板 -->
     <EventMonitorPanel v-if="isDebugMode" class="event-monitor-overlay overflow-visible" />
-
-    <!-- Admin 覆盖层：不销毁游戏实例，确保进度保留 -->
-    <AdminConfigPage v-if="isAdminMode && canManageActiveSpace" class="admin-overlay" />
   </div>
 </template>
 

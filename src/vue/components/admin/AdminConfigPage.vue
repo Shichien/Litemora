@@ -7,7 +7,15 @@ import {
   signInWithPassword,
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
+import { getActiveProjectionId, getActiveSpaceName, buildSpaceProjectionUrl } from '@three/utils/space-context.js'
+import { navigateToUrl } from '@three/utils/navigation.js'
+import { createGalleryItem } from '@three/gallery/gallery-api.js'
 import emitter from '@three/utils/event/event-bus.js'
+import {
+  ensureProjectionDisplayName,
+  isValidProjectionName,
+  sanitizeProjectionNameInput,
+} from '@three/utils/projection-name.js'
 
 import {
   DEFAULT_BACKEND_WORLD_CONFIG,
@@ -56,6 +64,7 @@ const schematicFile = ref(null)
 const schematicSourceFile = ref(null)
 const schematicObject = ref(null)
 const schematicPreview = ref(null)
+const schematicProjectionName = ref('')
 const isParsingSchematic = ref(false)
 const schematicOffsetY = ref(0)
 const schematicSpawnLift = ref(2)
@@ -105,6 +114,8 @@ const schematicPlacedBounds = computed(() => {
     maxY: bounds.maxY + yOffset,
   }
 })
+
+const sanitizedProjectionName = computed(() => sanitizeProjectionNameInput(schematicProjectionName.value))
 
 const schematicProgressPercent = computed(() => {
   if (!schematicApplyProgress.value) {
@@ -171,6 +182,11 @@ async function restorePersistedSchematic() {
     schematicFile.value = persisted.fileName || persisted.file.name || null
     schematicSourceFile.value = persisted.file
     schematicPreview.value = schematicService.getPreview()
+    if (!sanitizedProjectionName.value) {
+      schematicProjectionName.value = ensureProjectionDisplayName(
+        schematic.name || persisted.fileName || persisted.file.name || '',
+      )
+    }
     if (scopeId && restoredFromScope !== scopeId) {
       await saveAdminSchematicFile({
         accountId: scopeId,
@@ -318,6 +334,9 @@ async function handleSchematicFileSelect(event) {
     schematicFile.value = file.name
     schematicSourceFile.value = file
     schematicPreview.value = schematicService.getPreview()
+    schematicProjectionName.value = ensureProjectionDisplayName(
+      schematic.name || file.name.replace(/\.litematic$/iu, ''),
+    )
     await saveAdminSchematicFile({
       accountId: currentAccountId.value,
       file,
@@ -348,6 +367,7 @@ function clearSchematicFile({ withStatus = true } = {}) {
   schematicSourceFile.value = null
   schematicObject.value = null
   schematicPreview.value = null
+  schematicProjectionName.value = ''
   schematicOffsetY.value = 0
   schematicSpawnLift.value = 2
   clearAdminSchematicFile(currentAccountId.value || '')
@@ -378,6 +398,93 @@ async function applySchematic() {
     return
   }
 
+  // 检查是否在投影视图中
+  const spaceName = getActiveSpaceName()
+  const projectionId = getActiveProjectionId()
+  const isInProjection = !!(spaceName && projectionId)
+
+  // 如果不在投影视图，先创建 Gallery Item 然后跳转
+  if (!isInProjection) {
+    const session = loadAdminAuthSession()
+    if (!session?.account?.id) {
+      setStatus('请先登录再创建投影', 'warning')
+      return
+    }
+
+    if (!isValidProjectionName(sanitizedProjectionName.value)) {
+      setStatus('投影名称仅支持英文字母和数字', 'warning')
+      return
+    }
+
+    setStatus('正在创建投影...', 'neutral')
+    isApplying.value = true
+
+    try {
+      // 创建 Gallery Item
+      const payload = await createGalleryItem({
+        spaceName,
+        title: ensureProjectionDisplayName(schematicProjectionName.value, schematicPreview.value?.name || 'World'),
+        description: '',
+        file: schematicSourceFile.value,
+        schematic: schematicPreview.value,
+        previewModel: schematicPreview.value,
+        placement: {
+          offset: {
+            x: 0,
+            y: Number(schematicOffsetY.value) || 0,
+            z: 0,
+          },
+        },
+        projectionName: sanitizedProjectionName.value,
+        session,
+      })
+
+      const projectionRouteId = payload?.item?.projectionSlug || payload?.item?.id
+      if (projectionRouteId) {
+        let savedProjectionConfig = null
+        try {
+          savedProjectionConfig = await saveBackendWorldConfigRemote(
+            configDraft.value,
+            currentAccountId.value,
+            {
+              spaceName,
+              projectionId: projectionRouteId,
+            },
+          )
+        }
+        catch {
+          savedProjectionConfig = saveAdminWorldConfig(
+            configDraft.value,
+            currentAccountId.value,
+            {
+              spaceName,
+              projectionId: projectionRouteId,
+            },
+          )
+        }
+
+        if (savedProjectionConfig) {
+          markSaved(savedProjectionConfig)
+        }
+
+        setStatus('投影已创建，正在进入...', 'success')
+        // 跳转到新创建的投影视图（直接进入游戏，World 会在 bootstrap 时自动应用原理图）
+        const targetUrl = buildSpaceProjectionUrl(spaceName, projectionRouteId)
+        navigateToUrl(targetUrl)
+        return
+      }
+      else {
+        throw new Error('创建投影失败')
+      }
+    }
+    catch (error) {
+      setStatus(`创建投影失败: ${error.message}`, 'warning')
+      isApplying.value = false
+      return
+    }
+  }
+
+  // 下面是原有的应用原理图逻辑（投影视图中执行）
   isApplying.value = true
   schematicApplyProgress.value = {
     phase: 'prepare',
@@ -452,6 +559,14 @@ async function applySchematic() {
       persistenceSaved ? 'success' : 'warning',
     )
 
+    // 自动跳转到游戏视图
+    if (spaceName && projectionId) {
+      setTimeout(() => {
+        const gameUrl = buildSpaceProjectionUrl(spaceName, projectionId)
+        navigateToUrl(gameUrl)
+      }, 500)
+    }
+
     if (!persistenceSaved) {
       setStatus('应用完成但远端持久化失败（请检查 KV 写入限制/绑定）', 'warning')
     }
@@ -523,9 +638,10 @@ function setProjectionSpawnFromPreviewBlock(payload) {
   }
 
   const lift = Number(schematicSpawnLift.value) || 0
+  const yOffset = Number(schematicOffsetY.value) || 0
   const spawnPoint = {
     x: Number(x.toFixed(2)),
-    y: Number((y + 0.5 + lift).toFixed(2)),
+    y: Number((y + yOffset + 0.5 + lift).toFixed(2)),
     z: Number(z.toFixed(2)),
   }
 
@@ -792,6 +908,16 @@ onBeforeUnmount(() => {
             <div class="preview-info">
               <div>
                 <strong>文件:</strong> {{ schematicFile }}
+              </div>
+              <div>
+                <strong>投影名:</strong>
+                <input
+                  v-model="schematicProjectionName"
+                  maxlength="48"
+                  placeholder="仅英文字母和数字"
+                  type="text"
+                  @input="schematicProjectionName = sanitizeProjectionNameInput(schematicProjectionName)"
+                >
               </div>
               <div v-if="schematicPreview">
                 <strong>名称:</strong> {{ schematicPreview.name }}
@@ -1488,6 +1614,14 @@ input::placeholder {
   margin: 10px 0 0;
   font-size: 12px;
   color: #cbd5e1;
+}
+
+.schematic-preview-hint.warning {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
 .schematic-console {

@@ -2,28 +2,21 @@
 /**
  * PauseMenu - ESC menu when game is paused
  */
-import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useUiStore } from '@pinia/uiStore.js'
+import { navigateToUrl } from '@three/utils/navigation.js'
+import { buildSpaceWorldsUrl, getActiveSpaceName } from '@three/utils/space-context.js'
 
 const ui = useUiStore()
-const canManageProjection = ref(false)
 
-function enterAdmin() {
-  window.location.hash = '#admin'
+function exitWorld() {
+  const activeSpaceName = getActiveSpaceName()
+  if (!activeSpaceName) {
+    return
+  }
+
+  ui.toPlaying({ requestPointerLock: false })
+  navigateToUrl(buildSpaceWorldsUrl(activeSpaceName))
 }
-
-function handleSpaceAccessChanged(event) {
-  canManageProjection.value = !!event?.detail?.canManage
-}
-
-onMounted(() => {
-  canManageProjection.value = !!window.__LITEMORA_SPACE_ACCESS__?.canManage
-  window.addEventListener('space-access-changed', handleSpaceAccessChanged)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('space-access-changed', handleSpaceAccessChanged)
-})
 </script>
 
 <template>
@@ -42,8 +35,8 @@ onBeforeUnmount(() => {
       <button v-if="ui.pauseMenuConfig.showSkins" class="mc-button" @click="ui.toSkinSelector()">
         <span class="title">{{ $t('menu.skins') }}</span>
       </button>
-      <button v-if="canManageProjection" class="mc-button" @click="enterAdmin">
-        <span class="title">Admin Console</span>
+      <button class="mc-button" @click="exitWorld">
+        <span class="title">{{ $t('menu.exitWorld') }}</span>
       </button>
     </div>
   </div>

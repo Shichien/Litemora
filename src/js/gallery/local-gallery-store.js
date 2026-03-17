@@ -1,3 +1,9 @@
+import {
+  createUniqueProjectionSlug,
+  ensureProjectionDisplayName,
+  normalizeProjectionSlug,
+} from '../utils/projection-name.js'
+
 const LOCAL_GALLERY_DB_NAME = 'mc-local-gallery'
 const LOCAL_GALLERY_DB_STORE = 'records'
 const LOCAL_GALLERY_DB_VERSION = 1
@@ -186,6 +192,23 @@ function buildLocalManifest(spaceName, previousManifest = null) {
   }
 }
 
+function findManifestItemByIdentifier(items = [], identifier = '') {
+  const rawIdentifier = String(identifier || '').trim()
+  const normalizedSlug = normalizeProjectionSlug(rawIdentifier)
+
+  return items.find((entry) => {
+    if (!entry) {
+      return false
+    }
+
+    if (String(entry.id || '').trim() === rawIdentifier) {
+      return true
+    }
+
+    return normalizedSlug && normalizeProjectionSlug(entry.projectionSlug || entry.slug || '') === normalizedSlug
+  }) || null
+}
+
 function createItemId() {
   const randomPart = typeof crypto?.randomUUID === 'function'
     ? crypto.randomUUID().slice(0, 8)
@@ -234,6 +257,8 @@ export async function createLocalGalleryItem({
   file,
   schematic = null,
   previewModel = null,
+  placement = null,
+  projectionName = '',
 }) {
   const normalizedSpaceName = normalizeSpaceName(spaceName)
   const { profile: currentProfile, manifest: currentManifest } = await readSpaceState(normalizedSpaceName)
@@ -248,13 +273,24 @@ export async function createLocalGalleryItem({
     fileBase64: toBase64(fileBuffer),
   }
 
+  const projectionDisplayName = ensureProjectionDisplayName(
+    projectionName || title || schematic?.name || sourceFile.fileName,
+    `World${Date.now().toString(36)}`,
+  )
+  const projectionSlug = createUniqueProjectionSlug(
+    projectionDisplayName,
+    Array.isArray(nextManifest.items) ? nextManifest.items : [],
+  )
+
   const summary = {
     id: itemId,
-    title: String(title || '').trim() || schematic?.name || sourceFile.fileName,
+    title: projectionDisplayName,
+    projectionSlug,
     description: String(description || '').trim(),
     visibility: 'public',
     fileName: sourceFile.fileName,
     schematic: schematic || null,
+    placement: placement || null,
     createdAt: now,
     updatedAt: now,
     preview: {
@@ -271,6 +307,7 @@ export async function createLocalGalleryItem({
     mimeType: sourceFile.mimeType,
     sourceFile,
     previewModel: previewModel || null,
+    placement: placement || null,
     owner: {
       id: LOCAL_DEV_ACCOUNT.id,
       name: LOCAL_DEV_ACCOUNT.name,
@@ -301,12 +338,13 @@ export async function createLocalGalleryItem({
 
 export async function fetchLocalGalleryItem(spaceName, itemId) {
   const normalizedSpaceName = normalizeSpaceName(spaceName)
-  const item = await readRecord(itemKey(normalizedSpaceName, itemId), null)
+  const { profile, manifest } = await readSpaceState(normalizedSpaceName)
+  const resolvedSummary = findManifestItemByIdentifier(manifest?.items, itemId)
+  const resolvedItemId = resolvedSummary?.id || String(itemId || '').trim()
+  const item = await readRecord(itemKey(normalizedSpaceName, resolvedItemId), null)
   if (!item) {
     throw new Error('gallery_item_not_found')
   }
-
-  const { profile } = await readSpaceState(normalizedSpaceName)
 
   return {
     item,
@@ -319,15 +357,17 @@ export async function fetchLocalGalleryItem(spaceName, itemId) {
 export async function deleteLocalGalleryItem(spaceName, itemId) {
   const normalizedSpaceName = normalizeSpaceName(spaceName)
   const { profile: currentProfile, manifest: currentManifest } = await readSpaceState(normalizedSpaceName)
+  const resolvedSummary = findManifestItemByIdentifier(currentManifest?.items, itemId)
+  const resolvedItemId = resolvedSummary?.id || String(itemId || '').trim()
   const nextManifest = buildLocalManifest(normalizedSpaceName, currentManifest)
-  nextManifest.items = nextManifest.items.filter(item => item?.id !== itemId)
+  nextManifest.items = nextManifest.items.filter(item => item?.id !== resolvedItemId)
   nextManifest.updatedAt = Date.now()
 
   const nextProfile = buildLocalProfile(normalizedSpaceName, currentProfile)
   nextProfile.itemCount = nextManifest.items.length
   nextProfile.updatedAt = Date.now()
 
-  await deleteRecord(itemKey(normalizedSpaceName, itemId))
+  await deleteRecord(itemKey(normalizedSpaceName, resolvedItemId))
   await writeSpaceState(normalizedSpaceName, nextProfile, nextManifest)
 
   return {
