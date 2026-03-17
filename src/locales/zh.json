@@ -10,6 +10,7 @@
     "skins": "皮肤",
     "paused": "游戏暂停",
     "resume": "继续游戏",
+    "exitWorld": "退出世界",
     "credits": "制作人员",
     "back": "返回",
     "randomSeed": "随机种子",
@@ -114,6 +115,7 @@
       "placeholder": "你的空间名称或标识",
       "error": {
         "invalid": "名称需为 3-63 位，仅支持小写字母、数字和连字符 (-)。",
+        "duplicate": "该空间名已被创建，请选择另一个名字。",
         "failed": "创建空间失败，请稍后重试。",
         "loginRequired": "请先使用 GitHub 登录以创建空间。"
       },

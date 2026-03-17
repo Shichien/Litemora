@@ -10,6 +10,7 @@
     "skins": "Skins",
     "paused": "Game Paused",
     "resume": "Resume",
+    "exitWorld": "Exit World",
     "credits": "Credits",
     "back": "Back",
     "randomSeed": "Random Seed",
@@ -114,6 +115,7 @@
       "placeholder": "your-space-name",
       "error": {
         "invalid": "Name must be 3-63 chars, lowercase letters, numbers, and hyphens only.",
+        "duplicate": "This space name already exists. Please choose another one.",
         "failed": "Failed to create space. Please try again.",
         "loginRequired": "Please login with GitHub to create a space."
       },

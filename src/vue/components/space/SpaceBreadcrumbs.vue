@@ -31,10 +31,6 @@ const crumbs = computed(() => {
       label: props.spaceName,
       href: buildSpaceWorldsUrl(props.spaceName),
     })
-    items.push({
-      label: 'Worlds',
-      href: props.projectionId ? buildSpaceWorldsUrl(props.spaceName) : '',
-    })
   }
 
   if (props.projectionId) {
