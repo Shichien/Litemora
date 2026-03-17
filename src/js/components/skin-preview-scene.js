@@ -6,6 +6,8 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
+import { resolvePublicAssetUrl } from '../utils/public-asset-url.js'
+
 export default class SkinPreviewScene {
   /**
    * 创建皮肤预览场景
@@ -264,7 +266,7 @@ export default class SkinPreviewScene {
 
     try {
       // 加载新模型
-      const gltf = await this.loader.loadAsync(modelPath)
+      const gltf = await this.loader.loadAsync(resolvePublicAssetUrl(modelPath))
 
       // 检查是否是最新的加载请求（防止并发加载导致重复模型）
       if (currentLoadId !== this.loadingId) {

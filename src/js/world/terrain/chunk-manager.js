@@ -7,6 +7,7 @@ import {
 } from '../../config/chunk-config.js'
 import Experience from '../../experience.js'
 import IdleQueue from '../../utils/utils/idle-queue.js'
+import MinecraftSchematicLayer from './minecraft-schematic-layer.js'
 import { blocks, resources } from './blocks-config.js'
 import TerrainChunk from './terrain-chunk.js'
 import TerrainPersistence from './terrain-persistence.js'
@@ -47,11 +48,16 @@ export default class ChunkManager {
     this._lastPlayerChunkX = null
     this._lastPlayerChunkZ = null
     this.schematicOnlyMode = false
+    this.minecraftRenderOverlayActive = false
 
     this.persistence = new TerrainPersistence({
       worldName: options.worldName || CHUNK_BASIC_CONFIG.worldName,
       useIndexedDB: options.useIndexedDB ?? CHUNK_BASIC_CONFIG.useIndexedDB,
     })
+    this.minecraftSchematicLayer = new MinecraftSchematicLayer({
+      chunkWidth: this.chunkWidth,
+    })
+    this.restoreRuntimeStateFromPersistence()
 
     this.schematicOnlyMode = !!this.persistence.getWorldState?.().schematicOnlyMode
 
@@ -65,6 +71,14 @@ export default class ChunkManager {
 
   _key(chunkX, chunkZ) {
     return `${chunkX},${chunkZ}`
+  }
+
+  _createEmptyBlockRecord() {
+    return { id: blocks.empty.id, instanceId: null }
+  }
+
+  _hasLegacyBlock(block) {
+    return !!(block?.id && block.id !== blocks.empty.id)
   }
 
   initInitialGrid() {
@@ -131,12 +145,14 @@ export default class ChunkManager {
       if (chunk.state === 'dataReady') {
         const built = chunk.buildMesh()
         if (built) {
-          chunk.renderer.group.scale.setScalar(this.renderParams.scale)
+          chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
+          chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
         }
       }
       else if (chunk.state === 'meshReady') {
         chunk.renderer?._rebuildFromContainer?.()
         chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
+        chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
       }
     }
 
@@ -199,14 +215,126 @@ export default class ChunkManager {
     const chunkX = Math.floor(x / this.chunkWidth)
     const chunkZ = Math.floor(z / this.chunkWidth)
     const chunk = this.getChunk(chunkX, chunkZ)
-    if (!chunk) {
-      return { id: blocks.empty.id, instanceId: null }
-    }
 
-    // 转换为 chunk 内局部坐标（确保落在 0..chunkWidth-1）
     const localX = Math.floor(x - chunkX * this.chunkWidth)
     const localZ = Math.floor(z - chunkZ * this.chunkWidth)
-    return chunk.container.getBlock(localX, y, localZ)
+
+    const baseBlock = !this.schematicOnlyMode && chunk
+      ? chunk.container.getBlock(localX, y, localZ)
+      : this._createEmptyBlockRecord()
+
+    const importedMinecraftBlock = this.minecraftSchematicLayer.getBlock(x, y, z)
+    const hasImportedMinecraftBlock = !!importedMinecraftBlock
+    const hasImportedCollision = Array.isArray(importedMinecraftBlock?.collisionBoxes)
+    const hasCollision = hasImportedCollision
+      ? importedMinecraftBlock.collisionBoxes.length > 0
+      : this._hasLegacyBlock(baseBlock)
+
+    return {
+      ...baseBlock,
+      source: hasImportedMinecraftBlock
+        ? 'minecraft-schematic'
+        : (this._hasLegacyBlock(baseBlock) ? 'legacy' : 'empty'),
+      minecraftBlock: importedMinecraftBlock
+        ? {
+            name: `minecraft:${importedMinecraftBlock.blockName}`,
+            properties: importedMinecraftBlock.properties,
+          }
+        : null,
+      isImportedMinecraft: hasImportedMinecraftBlock,
+      collisionBoxes: hasImportedCollision ? importedMinecraftBlock.collisionBoxes : null,
+      collisionSource: importedMinecraftBlock?.collisionSource || null,
+      hasCollision,
+      stateId: importedMinecraftBlock?.stateId ?? null,
+    }
+  }
+
+  shouldRenderTerrainBlock(worldX, worldY, worldZ) {
+    if (!this.minecraftRenderOverlayActive) {
+      return true
+    }
+
+    return !this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+  }
+
+  setMinecraftRenderOverlayActive(enabled = true) {
+    const nextValue = !!enabled
+    if (this.minecraftRenderOverlayActive === nextValue) {
+      return
+    }
+
+    this.minecraftRenderOverlayActive = nextValue
+    this._rebuildAllChunks()
+  }
+
+  getCollisionBoxesWorld(x, y, z) {
+    const block = this.getBlockWorld(x, y, z)
+    if (Array.isArray(block?.collisionBoxes)) {
+      return block.collisionBoxes.map(([minX, minY, minZ, maxX, maxY, maxZ]) => ({
+        minX: x - 0.5 + Number(minX),
+        minY: y - 0.5 + Number(minY),
+        minZ: z - 0.5 + Number(minZ),
+        maxX: x - 0.5 + Number(maxX),
+        maxY: y - 0.5 + Number(maxY),
+        maxZ: z - 0.5 + Number(maxZ),
+      }))
+    }
+
+    if (this._hasLegacyBlock(block)) {
+      return [{
+        minX: x - 0.5,
+        minY: y - 0.5,
+        minZ: z - 0.5,
+        maxX: x + 0.5,
+        maxY: y + 0.5,
+        maxZ: z + 0.5,
+      }]
+    }
+
+    return []
+  }
+
+  setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties = {}) {
+    return this.minecraftSchematicLayer.setBlock(worldX, worldY, worldZ, blockName, properties)
+  }
+
+  addMinecraftBlockWorld(worldX, worldY, worldZ, blockName, properties = {}, options = {}) {
+    const existing = this.getBlockWorld(worldX, worldY, worldZ)
+    if (existing?.minecraftBlock || this._hasLegacyBlock(existing)) {
+      return false
+    }
+
+    const placed = this.setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties)
+    if (!placed) {
+      return false
+    }
+
+    this.syncMinecraftSchematicLayerState()
+
+    if (options.scheduleSave !== false) {
+      this._scheduleSave()
+    }
+
+    return placed
+  }
+
+  clearImportedMinecraftBlock(worldX, worldY, worldZ) {
+    return this.minecraftSchematicLayer.removeBlock(worldX, worldY, worldZ)
+  }
+
+  syncMinecraftSchematicLayerState({ scheduleSave = false } = {}) {
+    this.persistence?.setWorldState?.({
+      minecraftSchematicLayer: this.minecraftSchematicLayer.exportSnapshot(),
+    })
+
+    if (scheduleSave) {
+      this._scheduleSave()
+    }
+  }
+
+  restoreRuntimeStateFromPersistence() {
+    const worldState = this.persistence?.getWorldState?.() || {}
+    this.minecraftSchematicLayer.importSnapshot(worldState.minecraftSchematicLayer)
   }
 
   // #region 世界坐标删除方块
@@ -217,6 +345,28 @@ export default class ChunkManager {
    * @param {number} z
    */
   removeBlockWorld(x, y, z) {
+    const importedMinecraftBlock = this.minecraftSchematicLayer.getBlock(x, y, z)
+    if (importedMinecraftBlock) {
+      const removed = this.clearImportedMinecraftBlock(x, y, z)
+      if (!removed) {
+        return false
+      }
+
+      this.syncMinecraftSchematicLayerState()
+      this._scheduleSave()
+
+      return {
+        removed: true,
+        source: 'minecraft-schematic',
+        worldBlock: { x, y, z },
+        blockId: blocks.empty.id,
+        minecraftBlock: {
+          name: `minecraft:${importedMinecraftBlock.blockName}`,
+          properties: importedMinecraftBlock.properties,
+        },
+      }
+    }
+
     const chunkX = Math.floor(x / this.chunkWidth)
     const chunkZ = Math.floor(z / this.chunkWidth)
     const chunk = this.getChunk(chunkX, chunkZ)
@@ -234,6 +384,7 @@ export default class ChunkManager {
 
     const blockId = block.id
     const instanceId = block.instanceId
+    const removedMinecraftBlock = this.clearImportedMinecraftBlock(x, y, z)
 
     // 2. 更新数据层
     chunk.container.setBlockId(localX, y, localZ, blocks.empty.id)
@@ -273,9 +424,18 @@ export default class ChunkManager {
 
     // 记录修改（0 表示删除）
     this.persistence.recordModification(x, y, z, blocks.empty.id, this.chunkWidth)
+    if (removedMinecraftBlock) {
+      this.syncMinecraftSchematicLayerState()
+    }
     this._scheduleSave()
 
-    return true
+    return {
+      removed: true,
+      source: 'legacy',
+      worldBlock: { x, y, z },
+      blockId,
+      minecraftBlock: null,
+    }
   }
 
   // #endregion
@@ -300,12 +460,14 @@ export default class ChunkManager {
     const localZ = Math.floor(z - chunkZ * this.chunkWidth)
 
     // 1. 检查目标位是否为空（防止重叠）
+    const existingWorldBlock = this.getBlockWorld(x, y, z)
     const existing = chunk.container.getBlock(localX, y, localZ)
-    if (existing.id !== blocks.empty.id)
+    if (existing.id !== blocks.empty.id || existingWorldBlock?.minecraftBlock)
       return false
 
     // 2. 更新数据层
     chunk.container.setBlockId(localX, y, localZ, blockId)
+    const removedMinecraftBlock = this.clearImportedMinecraftBlock(x, y, z)
 
     // 3. 更新渲染层
     const renderer = chunk.renderer
@@ -348,6 +510,9 @@ export default class ChunkManager {
 
     // 记录修改
     this.persistence.recordModification(x, y, z, blockId, this.chunkWidth)
+    if (removedMinecraftBlock) {
+      this.syncMinecraftSchematicLayerState()
+    }
     this._scheduleSave()
 
     return true
@@ -411,6 +576,11 @@ export default class ChunkManager {
       biomeSource: this.biomeParams.biomeSource,
       forcedBiome: this.biomeParams.forcedBiome,
       schematicOnlyMode: this.schematicOnlyMode,
+      blockVisibilityFilter: (localX, localY, localZ) => this.shouldRenderTerrainBlock(
+        (chunkX * this.chunkWidth) + localX,
+        localY,
+        (chunkZ * this.chunkWidth) + localZ,
+      ),
     })
 
     this.chunks.set(key, chunk)
@@ -1047,5 +1217,6 @@ export default class ChunkManager {
       chunk.dispose()
     })
     this.chunks.clear()
+    this.minecraftSchematicLayer?.clear?.()
   }
 }

@@ -39,6 +39,7 @@ export const PLAYER_CONFIG = {
   physics: {
     tickRate: 20,
     maxTickDelta: 0.25,
+    jumpCoyoteTime: 0.1,
     verticalDrag: 0.98,
     gravityPerTick: 1.6,
     groundFriction: 0.546,
@@ -52,7 +53,7 @@ export const PLAYER_CONFIG = {
     sneakSupportDrop: 0.55,
     snapToGroundDistance: 0.14,
     autoStepHeight: 0.6,
-    jumpClimbHeight: 1.2,
+    jumpClimbHeight: 0.35,
     sprintJumpBoost: 4.0,
     minWorldY: 0,
   },

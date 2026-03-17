@@ -19,8 +19,9 @@ const SETTINGS_MOUSE_SENSITIVITY_BASE = 0.03
 const PLAYER_MOUSE_SENSITIVITY_RATIO = PLAYER_CONFIG.mouseSensitivity / SETTINGS_MOUSE_SENSITIVITY_BASE
 
 export default class Player {
-  constructor() {
-    this.experience = new Experience()
+  constructor(experience = null) {
+    // 使用外部传入的 experience，如果未传入则创建新的（保持向后兼容）
+    this.experience = experience || new Experience()
     this.scene = this.experience.scene
     this.resources = this.experience.resources
     this.time = this.experience.time
@@ -74,10 +75,23 @@ export default class Player {
     // Controllers
     this.movement = new PlayerMovementController(this.config)
 
-    this.setModel()
+    // Only set up model if resource is available
+    if (this.resource) {
+      this.setModel()
+      // Animation Controller needs model
+      this.animation = new PlayerAnimationController(this.model, this.resource.animations)
+    }
+    else {
+      // Create a placeholder model that will be replaced when resources load
+      this.model = new THREE.Group()
+      this.model.name = 'player-placeholder'
+      this.movement.group.add(this.model)
+      this.animation = null
 
-    // Animation Controller needs model
-    this.animation = new PlayerAnimationController(this.model, this.resource.animations)
+      // Listen for core:ready to set up model later (emitted when resources finish loading)
+      this._onCoreReady = this._onCoreReady.bind(this)
+      emitter.once('core:ready', this._onCoreReady)
+    }
 
     this.setupInputListeners()
 
@@ -126,13 +140,54 @@ export default class Player {
    * @returns {object} GLTF resource
    */
   _getModelResource(skinId) {
+    // Check if resources are loaded yet
+    if (!this.resources.items) {
+      console.warn('[Player] Resources not loaded yet, will retry on resources ready')
+      return null
+    }
+
     const skinConfig = SKIN_LIST.find(s => s.id === skinId)
-    if (!skinConfig)
-      return this.resources.items.playerModel
+    if (!skinConfig) {
+      // Try to get playerModel, but handle case where resources aren't loaded
+      const fallback = this.resources.items?.playerModel
+      if (!fallback) {
+        console.warn('[Player] Player model not loaded yet, will retry on resources ready')
+        return null
+      }
+      return fallback
+    }
 
     // 资源名称约定：skinId + 'Model' (如 steveModel, alexModel)
     const resourceName = `${skinId}Model`
-    return this.resources.items[resourceName] || this.resources.items.playerModel
+    const resource = this.resources.items[resourceName] || this.resources.items.playerModel
+    if (!resource) {
+      console.warn('[Player] Model resource not found:', resourceName)
+      return null
+    }
+    return resource
+  }
+
+  /**
+   * Handler for when core is ready (resources loaded) - set up player model
+   */
+  _onCoreReady() {
+    console.log('[Player] Core ready, setting up player model')
+    const skinStore = useSkinStore()
+    this.resource = this._getModelResource(skinStore.currentSkinId)
+
+    if (!this.resource) {
+      console.warn('[Player] Still no resource after core ready, player will use placeholder')
+      return
+    }
+
+    // Remove placeholder
+    if (this.model && this.model.name === 'player-placeholder') {
+      this.movement.group.remove(this.model)
+    }
+
+    this.setModel()
+    this.animation = new PlayerAnimationController(this.model, this.resource.animations)
+    console.log('[Player] Player model set up successfully')
   }
 
   /**
@@ -142,19 +197,32 @@ export default class Player {
   _handleSkinChange({ skinId }) {
     const resource = this._getModelResource(skinId)
 
-    // 移除旧模型
-    this.movement.group.remove(this.model)
+    // 移除旧模型 (only if it's not a placeholder)
+    if (this.model && this.model.name !== 'player-placeholder') {
+      this.movement.group.remove(this.model)
+    }
 
     // 设置新模型资源
     this.resource = resource
+    if (!resource) {
+      console.warn('[Player] Cannot change skin: resource is null')
+      return
+    }
+
     this.setModel()
 
     // 重新初始化动画控制器
-    this.animation.dispose()
+    if (this.animation) {
+      this.animation.dispose()
+    }
     this.animation = new PlayerAnimationController(this.model, this.resource.animations)
   }
 
   setModel() {
+    if (!this.resource) {
+      console.warn('[Player] Cannot setModel: resource is null')
+      return
+    }
     this.model = this.resource.scene
     // 模型始終保持 rotation.y = Math.PI，確保動畫正常播放
     // 整體朝向通過父容器 movement.group 控制
@@ -409,6 +477,11 @@ export default class Player {
   }
 
   update() {
+    // Skip update if animation controller not initialized yet
+    if (!this.animation) {
+      return
+    }
+
     const isCombat = this.animation.stateMachine.currentState?.name === AnimationStates.COMBAT
 
     // Resolve Input (Conflict & Normalize)

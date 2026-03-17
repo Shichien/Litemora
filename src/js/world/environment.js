@@ -132,9 +132,17 @@ export default class Environment {
   }
 
   setEnvironmentMap() {
+    // Check if HDR texture is loaded before setting up environment map
+    const envTexture = this.resources.items?.environmentMapHDRTexture
+    if (!envTexture) {
+      // Graceful degradation: skip environment map if not available
+      console.warn('[Environment] HDR environment map not loaded, skipping environment map setup')
+      return
+    }
+
     this.environmentMap = {}
     this.environmentMap.intensity = 1
-    this.environmentMap.texture = this.resources.items.environmentMapHDRTexture
+    this.environmentMap.texture = envTexture
     this.environmentMap.texture.mapping = THREE.EquirectangularReflectionMapping
     // this.environmentMap.texture.colorSpace = THREE.SRGBColorSpace // RGBELoader usually handles this, or it might be Linear. Let's check standard implementation.
 

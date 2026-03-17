@@ -24,6 +24,7 @@ export class PlayerMovementController {
     this.isInWater = false
     this.isSneaking = false
     this.isSprinting = false
+    this.groundedGraceTimer = 0
     this.flightConfig = {
       speedMultiplier: 2.4,
       ignoreMiningSlowdown: true,
@@ -100,6 +101,7 @@ export class PlayerMovementController {
 
     const rawDt = this.experience.time.delta * 0.001
     const clampedDt = Math.min(Math.max(rawDt, 0), this.maxPhysicsDelta)
+    this.groundedGraceTimer = Math.max(0, this.groundedGraceTimer - clampedDt)
     this.tickAccumulator = Math.min(this.tickAccumulator + clampedDt, this.maxPhysicsDelta * 2)
 
     let stepped = false
@@ -152,7 +154,8 @@ export class PlayerMovementController {
   }
 
   jump(inputState = {}) {
-    if (this.isFlying || !this.isGrounded) {
+    const canUseGroundedGrace = this.groundedGraceTimer > 0
+    if (this.isFlying || (!this.isGrounded && !canUseGroundedGrace)) {
       return
     }
 
@@ -167,6 +170,7 @@ export class PlayerMovementController {
     }
 
     this.isGrounded = false
+    this.groundedGraceTimer = 0
   }
 
   _updateFlightPhysics(inputState, isCombatActive) {
@@ -282,6 +286,12 @@ export class PlayerMovementController {
     }
 
     this.isGrounded = workingGrounded
+    if (this.isGrounded) {
+      this.groundedGraceTimer = Math.max(
+        this.groundedGraceTimer,
+        Number(this.config.physics?.jumpCoyoteTime ?? 0.1),
+      )
+    }
 
     if (this.isGrounded && this.worldVelocity.y < 0) {
       this.worldVelocity.y = 0
@@ -504,8 +514,14 @@ export class PlayerMovementController {
     }
   }
 
+  _getMinWorldY() {
+    const minWorldY = Number(this.config.physics?.minWorldY)
+    return Number.isFinite(minWorldY) ? minWorldY : null
+  }
+
   _applyGroundSampler(playerState) {
     const provider = this.experience.terrainDataManager || this.terrainProvider
+    const minWorldY = this._getMinWorldY()
 
     if (!this.isInWater && !playerState.isGrounded && this.groundSampler) {
       const sampledY = this.groundSampler(
@@ -515,7 +531,9 @@ export class PlayerMovementController {
       )
 
       if (sampledY !== null && sampledY !== undefined && playerState.worldVelocity.y <= 0) {
-        const targetY = sampledY + 0.05
+        const targetY = minWorldY !== null && sampledY <= minWorldY + 1e-4
+          ? minWorldY
+          : sampledY + 0.05
         const dropDistance = playerState.basePosition.y - targetY
 
         if (dropDistance <= 0.6) {
@@ -536,7 +554,9 @@ export class PlayerMovementController {
     ) {
       const topY = provider.getTopSolidYWorld(playerState.basePosition.x, playerState.basePosition.z)
       if (topY !== null && topY !== undefined) {
-        const targetY = topY + 0.55
+        const targetY = minWorldY !== null && topY <= minWorldY + 1e-4
+          ? minWorldY
+          : topY + 0.55
         const penetration = targetY - playerState.basePosition.y
         if (penetration > 0 && penetration <= 0.8) {
           playerState.basePosition.y = targetY
@@ -605,12 +625,14 @@ export class PlayerMovementController {
     const horizontalBlocked = actualHorizontalDistanceSq < desiredHorizontalDistanceSq - 1e-4
 
     const groundedStepHeight = this.config.physics?.autoStepHeight ?? 0.6
-    const jumpClimbHeight = this.config.physics?.jumpClimbHeight ?? 1.2
-    const isJumpingUpward = playerState.worldVelocity.y > 0.12
+    const jumpClimbHeight = this.config.physics?.jumpClimbHeight ?? 0.35
+    const isJumpingUpward = playerState.worldVelocity.y > 0.08
+    const isFalling = playerState.worldVelocity.y < -0.02
     const canUseGroundedStepHeight = (playerState.isGrounded || wasGrounded) && !isJumpingUpward
+    const canUseAirborneStepHeight = !canUseGroundedStepHeight && !isJumpingUpward && !isFalling
     const maxStepHeight = canUseGroundedStepHeight
       ? groundedStepHeight
-      : (playerState.worldVelocity.y > 0.15 ? jumpClimbHeight : 0)
+      : (canUseAirborneStepHeight ? jumpClimbHeight : 0)
 
     if (maxStepHeight <= 0) {
       return false
@@ -658,6 +680,7 @@ export class PlayerMovementController {
       return
     }
 
+    const minWorldY = this._getMinWorldY()
     const supportDrop = this._getSupportDrop(
       playerState.basePosition,
       0,
@@ -668,6 +691,14 @@ export class PlayerMovementController {
     const maxGroundedSupport = (this.config.physics?.snapToGroundDistance ?? 0.14) + 0.02
 
     if (supportDrop === null || supportDrop > maxGroundedSupport) {
+      if (minWorldY !== null && playerState.basePosition.y <= minWorldY + 0.051) {
+        playerState.basePosition.y = minWorldY
+        playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
+        playerState.worldVelocity.y = 0
+        playerState.isGrounded = true
+        return
+      }
+
       playerState.isGrounded = false
       return
     }
@@ -770,6 +801,16 @@ export class PlayerMovementController {
       }
     }
 
+    if (bestDrop === null) {
+      const minWorldY = this._getMinWorldY()
+      if (minWorldY !== null) {
+        const floorDrop = sampleY - minWorldY
+        if (floorDrop >= -0.001 && floorDrop <= maxDrop) {
+          bestDrop = Math.max(0, floorDrop)
+        }
+      }
+    }
+
     return bestDrop
   }
 
@@ -854,6 +895,7 @@ export class PlayerMovementController {
       this.previousPosition.copy(this.position)
       this.renderPosition.copy(this.position)
       this.worldVelocity.set(0, 0, 0)
+      this.groundedGraceTimer = 0
       this._syncMeshCustom()
       this._hasInitializedRespawn = true
     }
@@ -865,6 +907,7 @@ export class PlayerMovementController {
     this.renderPosition.copy(this.position)
     this.worldVelocity.set(0, 0, 0)
     this.isGrounded = false
+    this.groundedGraceTimer = 0
     this.tickAccumulator = 0
     this._syncMeshCustom()
   }
@@ -886,6 +929,7 @@ export class PlayerMovementController {
     this.renderPosition.copy(this.position)
     this.worldVelocity.set(0, 0, 0)
     this.isGrounded = false
+    this.groundedGraceTimer = 0
     this.tickAccumulator = 0
     this._syncMeshCustom()
   }

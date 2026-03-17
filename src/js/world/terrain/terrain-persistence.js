@@ -158,8 +158,11 @@ export default class TerrainPersistence {
     const worldState = snapshot?.worldState || {}
     const modifications = snapshot?.modifications || {}
 
+    // Preserve full worldState including minecraftSchematicLayer for schematic persistence
     this.worldState = {
-      schematicOnlyMode: !!worldState.schematicOnlyMode,
+      ...this.worldState,
+      ...worldState,
+      schematicOnlyMode: worldState.schematicOnlyMode ?? this.worldState?.schematicOnlyMode ?? false,
     }
     this.deserialize(modifications)
 

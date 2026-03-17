@@ -38,6 +38,7 @@ export default class TerrainChunk {
       biomeSource,
       forcedBiome,
       schematicOnlyMode = false,
+      blockVisibilityFilter = null,
     } = options
 
     this._sharedRenderParams = sharedRenderParams
@@ -45,6 +46,19 @@ export default class TerrainChunk {
     this._chunkWidth = chunkWidth
     this._chunkHeight = chunkHeight
     this._schematicOnlyMode = !!schematicOnlyMode
+
+    this._legacyOptions = {
+      seed,
+      terrain,
+      sharedTerrainParams,
+      sharedRenderParams,
+      sharedTreeParams,
+      sharedWaterParams,
+      sharedBiomeGenerator,
+      biomeSource,
+      forcedBiome,
+      blockVisibilityFilter,
+    }
 
     this.experience = new Experience()
     this.resources = this.experience.resources
@@ -86,6 +100,7 @@ export default class TerrainChunk {
       debugEnabled: false,
       listenDataReady: false,
       chunkName: `${this.chunkX}, ${this.chunkZ}`,
+      visibilityFilter: blockVisibilityFilter,
     })
     this.renderer.group.position.set(this.originX, 0, this.originZ)
     this.renderer.group.userData.chunkX = this.chunkX

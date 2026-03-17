@@ -3,6 +3,8 @@
  * 定义可用皮肤列表、默认皮肤以及动画控制按钮配置
  */
 
+import { resolvePublicAssetUrl } from '../utils/public-asset-url.js'
+
 // 可用皮肤列表
 export const SKIN_LIST = [
   {
@@ -29,7 +31,11 @@ export const SKIN_LIST = [
     thumbnail: 'textures/skins/player-thumb.png',
     // 来源: https://www.minecraftskins.com/profile/5521971/holland0519
   },
-]
+].map(skin => ({
+  ...skin,
+  modelPath: resolvePublicAssetUrl(skin.modelPath),
+  thumbnail: resolvePublicAssetUrl(skin.thumbnail),
+}))
 
 // 默认皮肤 ID
 export const DEFAULT_SKIN_ID = 'steve'

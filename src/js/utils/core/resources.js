@@ -11,6 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 
 import Experience from '../../experience.js'
 import emitter from '../event/event-bus.js'
+import { resolvePublicAssetPath } from '../public-asset-url.js'
 
 export default class Resources {
   constructor(sources, options = {}) {
@@ -137,55 +138,57 @@ export default class Resources {
         }, timeoutMs)
       }
 
+      const resourcePath = resolvePublicAssetPath(source.path)
+
       switch (source.type) {
         case 'gltfModel': {
-          this.loaders.gltfLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.gltfLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'texture': {
-          this.loaders.textureLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.textureLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'cubeTexture': {
-          this.loaders.cubeTextureLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.cubeTextureLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'font': {
-          this.loaders.fontLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.fontLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'fbxModel': {
-          this.loaders.fbxLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.fbxLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'audio': {
-          this.loaders.audioLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.audioLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'objModel': {
-          this.loaders.objLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.objLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'hdrTexture': {
-          this.loaders.hdrTextureLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.hdrTextureLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'svg': {
-          this.loaders.svgLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.svgLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'exrTexture': {
-          this.loaders.exrLoader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.exrLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         case 'video': {
-          this.loadVideoTexture(source.path).then((file) => {
+          this.loadVideoTexture(resourcePath).then((file) => {
             finishWithSuccess(file)
           }).catch(finishWithFailure)
           break
         }
         case 'ktx2Texture': {
-          this.loaders.ktx2Loader.load(source.path, finishWithSuccess, undefined, finishWithFailure)
+          this.loaders.ktx2Loader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         default: {
