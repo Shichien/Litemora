@@ -42,3 +42,8 @@ yarn-error.log*
 # Samples
 /bedrock-samples/
 /litematic/
+
+# local artifacts
+/output/
+/progress.md
+/tmp-terrain-renderer-prev.js
