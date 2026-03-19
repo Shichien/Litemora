@@ -50,6 +50,10 @@ export default class BlockMiningController {
     if (!raycaster || !raycaster.current)
       return
 
+    if (raycaster.current?.isImportedMinecraft) {
+      return
+    }
+
     // Start mining
     this.isMining = true
     this.miningStartTime = this.time.elapsed

@@ -62,6 +62,8 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
       sunIntensity: 3,
       ambientIntensity: 0.75,
       fogDensity: 0.01,
+      timeOfDay: 0.25,
+      timeAutoPlay: true,
     },
   },
   ui: {
@@ -136,6 +138,12 @@ function mergeBackendConfig(raw = {}) {
         sunIntensity: toNumber(settings.environment?.sunIntensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.sunIntensity),
         ambientIntensity: toNumber(settings.environment?.ambientIntensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.ambientIntensity),
         fogDensity: toNumber(settings.environment?.fogDensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.fogDensity),
+        timeOfDay: clamp(
+          toNumber(settings.environment?.timeOfDay, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.timeOfDay),
+          0,
+          1,
+        ),
+        timeAutoPlay: settings.environment?.timeAutoPlay ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.timeAutoPlay,
       },
     },
     ui: {

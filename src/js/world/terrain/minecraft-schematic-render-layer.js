@@ -5,13 +5,37 @@ import Experience from '../../experience.js'
 import {
   BUNDLED_MINECRAFT_RESOURCE_PACK_NAME,
   loadBundledMinecraftResourcePackBlob,
+  loadPreferredMinecraftResourcePack,
 } from './minecraft-resource-pack.js'
+import { buildSchematicLighting } from './minecraft-schematic-lighting.js'
 
 const BUILD_BATCH_SIZE = 12
 const INSTANCE_UPLOAD_BATCH_SIZE = 4096
+const STATE_PARTITION_MIN_INSTANCES = 192
+const STATE_PARTITION_CHUNK_SPAN = 2
 const PREVIEW_GAMMA = 0.5
 const PREVIEW_GAMMA_EXPONENT = 1 / PREVIEW_GAMMA
 const VISIBILITY_UPDATE_INTERVAL_MS = 80
+
+function createEmptyBounds() {
+  return {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    minZ: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+    maxZ: Number.NEGATIVE_INFINITY,
+  }
+}
+
+function expandBounds(bounds, x, y, z) {
+  bounds.minX = Math.min(bounds.minX, x - 0.5)
+  bounds.minY = Math.min(bounds.minY, y - 0.5)
+  bounds.minZ = Math.min(bounds.minZ, z - 0.5)
+  bounds.maxX = Math.max(bounds.maxX, x + 0.5)
+  bounds.maxY = Math.max(bounds.maxY, y + 0.5)
+  bounds.maxZ = Math.max(bounds.maxZ, z + 0.5)
+}
 
 function createPreviewSyncedMaterial(material) {
   if (Array.isArray(material)) {
@@ -51,17 +75,6 @@ function createPreviewSyncedMaterial(material) {
   synced.customProgramCacheKey = () => `preview-synced-gamma-${PREVIEW_GAMMA_EXPONENT}`
 
   return synced
-}
-
-function disposeMaterial(material) {
-  if (Array.isArray(material)) {
-    for (const entry of material) {
-      entry?.dispose?.()
-    }
-    return
-  }
-
-  material?.dispose?.()
 }
 
 function buildBlockString(blockName = '', properties = {}) {
@@ -104,56 +117,28 @@ export default class MinecraftSchematicRenderLayer {
       loaded: false,
       source: 'none',
     }
+    this._resourcePackSignature = ''
 
     this._tempTranslation = new THREE.Matrix4()
     this._tempMatrix = new THREE.Matrix4()
+    this._tempColor = new THREE.Color(1, 1, 1)
     this._frustum = new THREE.Frustum()
     this._frustumProjectionMatrix = new THREE.Matrix4()
     this._frustumBox = new THREE.Box3()
   }
 
   async ensureCubane() {
-    if (this._cubane) {
-      return this._cubane
-    }
-
     if (this._cubanePromise) {
-      return this._cubanePromise
+      const cubane = await this._cubanePromise
+      await this._syncCubaneResourcePack(cubane)
+      return cubane
     }
 
     this._cubanePromise = (async () => {
       const { Cubane } = await import('cubane')
       const cubane = new Cubane({ autoRestore: false })
-
-      let loaded = false
-      try {
-        const blob = await loadBundledMinecraftResourcePackBlob()
-        await cubane.removeAllPacks?.()
-        await cubane.loadPackFromBlob(blob, BUNDLED_MINECRAFT_RESOURCE_PACK_NAME)
-        try {
-          await cubane.buildTextureAtlas()
-        }
-        catch (error) {
-          console.warn('[MinecraftSchematicRenderLayer] Failed to rebuild Cubane texture atlas after pack load:', error)
-        }
-
-        loaded = true
-        this._resourcePackStatus = {
-          attempted: true,
-          loaded: true,
-          source: 'built-in',
-        }
-      }
-      catch (error) {
-        console.warn('[MinecraftSchematicRenderLayer] Failed to load bundled resource pack:', error)
-        this._resourcePackStatus = {
-          attempted: true,
-          loaded: false,
-          source: 'none',
-        }
-      }
-
       this._cubane = cubane
+      await this._syncCubaneResourcePack(cubane)
       return cubane
     })().catch((error) => {
       this._cubanePromise = null
@@ -161,6 +146,78 @@ export default class MinecraftSchematicRenderLayer {
     })
 
     return this._cubanePromise
+  }
+
+  async _loadPackIntoCubane(cubane, packRecord) {
+    await cubane.removeAllPacks?.()
+    await cubane.loadPackFromBlob(packRecord.blob, packRecord.name)
+    await cubane.buildTextureAtlas()
+  }
+
+  async _syncCubaneResourcePack(cubane) {
+    if (!cubane) {
+      return
+    }
+
+    const preferredPack = await loadPreferredMinecraftResourcePack()
+    const preferredSignature = [
+      preferredPack.source,
+      preferredPack.key,
+      preferredPack.updatedAt,
+      preferredPack.size,
+    ].join(':')
+
+    if (preferredSignature === this._resourcePackSignature && this._resourcePackStatus.loaded) {
+      return
+    }
+
+    try {
+      await this._loadPackIntoCubane(cubane, preferredPack)
+      this._resourcePackSignature = preferredSignature
+      this._resourcePackStatus = {
+        attempted: true,
+        loaded: true,
+        source: preferredPack.source,
+        name: preferredPack.name,
+      }
+    }
+    catch (error) {
+      if (preferredPack.source === 'custom') {
+        console.warn('[MinecraftSchematicRenderLayer] Failed to load custom resource pack, falling back to bundled pack:', error)
+        const fallbackBlob = await loadBundledMinecraftResourcePackBlob()
+        await this._loadPackIntoCubane(cubane, {
+          blob: fallbackBlob,
+          name: BUNDLED_MINECRAFT_RESOURCE_PACK_NAME,
+        })
+        this._resourcePackSignature = ['built-in', BUNDLED_MINECRAFT_RESOURCE_PACK_NAME, 0, fallbackBlob.size].join(':')
+        this._resourcePackStatus = {
+          attempted: true,
+          loaded: true,
+          source: 'built-in-fallback',
+          name: BUNDLED_MINECRAFT_RESOURCE_PACK_NAME,
+        }
+        return
+      }
+
+      console.warn('[MinecraftSchematicRenderLayer] Failed to load bundled resource pack:', error)
+      this._resourcePackStatus = {
+        attempted: true,
+        loaded: false,
+        source: 'none',
+        name: '',
+      }
+      throw error
+    }
+  }
+
+  invalidateResourcePack() {
+    this._resourcePackSignature = ''
+    this._resourcePackStatus = {
+      attempted: false,
+      loaded: false,
+      source: 'none',
+      name: '',
+    }
   }
 
   getStats() {
@@ -183,12 +240,14 @@ export default class MinecraftSchematicRenderLayer {
     const rebuildToken = ++this._rebuildToken
     const buildStart = performance.now()
 
-    const groupedBlocks = this._groupBlocksByChunkAndState(layer)
+    const stateGroups = this._groupBlocksByState(layer)
+    const { groupedBlocks, groupingStats } = this._buildRenderGroups(stateGroups)
+    const lighting = buildSchematicLighting(layer)
     this.clear()
 
     const descriptorCache = new Map()
     const blockCount = layer?.getStats?.()?.blockCount ?? 0
-    const uniqueStateCount = new Set([...groupedBlocks.values()].map(entry => entry.blockString)).size
+    const uniqueStateCount = stateGroups.size
     let processedStates = 0
     let builtMeshes = 0
     let maxInstancesPerMesh = 0
@@ -209,10 +268,16 @@ export default class MinecraftSchematicRenderLayer {
           descriptorCache.set(blockString, null)
         }
         else {
-          const descriptors = this._extractMeshDescriptors(prototype)
+          const rawDescriptors = this._extractMeshDescriptors(prototype)
+          const descriptors = rawDescriptors.map((descriptor, descriptorIndex) => ({
+            descriptorIndex,
+            relativeMatrix: descriptor.relativeMatrix,
+            sharedGeometry: descriptor.geometry,
+            sharedMaterial: createPreviewSyncedMaterial(descriptor.material),
+          }))
           descriptorCache.set(blockString, descriptors.length ? descriptors : null)
-          if (!this._overlayGeometryCache.has(blockString) && descriptors.length) {
-            const overlayGeometry = this._buildOverlayGeometry(descriptors)
+          if (!this._overlayGeometryCache.has(blockString) && rawDescriptors.length) {
+            const overlayGeometry = this._buildOverlayGeometry(rawDescriptors)
             if (overlayGeometry) {
               this._overlayGeometryCache.set(blockString, overlayGeometry)
             }
@@ -229,13 +294,13 @@ export default class MinecraftSchematicRenderLayer {
 
       for (let descriptorIndex = 0; descriptorIndex < descriptors.length; descriptorIndex++) {
         const descriptor = descriptors[descriptorIndex]
-        const geometry = descriptor.geometry.clone()
-        const material = createPreviewSyncedMaterial(descriptor.material)
+        const geometry = descriptor.sharedGeometry
+        const material = descriptor.sharedMaterial
         const instancedMesh = new THREE.InstancedMesh(geometry, material, instances.length)
         instancedMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage)
         instancedMesh.castShadow = false
         instancedMesh.receiveShadow = false
-        instancedMesh.name = `minecraft-instanced:${blockString}#${descriptorIndex}`
+        instancedMesh.name = `minecraft-instanced:${blockString}#${descriptor.descriptorIndex}`
         instancedMesh.userData.minecraftSchematicLayer = true
         instancedMesh.userData.blockString = blockString
         instancedMesh.userData.previewSyncedMaterial = true
@@ -252,14 +317,23 @@ export default class MinecraftSchematicRenderLayer {
           this._tempTranslation.makeTranslation(instance.x, instance.y, instance.z)
           this._tempMatrix.copy(this._tempTranslation).multiply(descriptor.relativeMatrix)
           instancedMesh.setMatrixAt(index, this._tempMatrix)
+          const brightness = lighting.brightnessByPosition.get(`${instance.x},${instance.y},${instance.z}`) || 1
+          this._tempColor.setScalar(brightness)
+          instancedMesh.setColorAt(index, this._tempColor)
 
           if (index > 0 && index % INSTANCE_UPLOAD_BATCH_SIZE === 0) {
             instancedMesh.instanceMatrix.needsUpdate = true
+            if (instancedMesh.instanceColor) {
+              instancedMesh.instanceColor.needsUpdate = true
+            }
             await this._yieldToMainThread()
           }
         }
 
         instancedMesh.instanceMatrix.needsUpdate = true
+        if (instancedMesh.instanceColor) {
+          instancedMesh.instanceColor.needsUpdate = true
+        }
         instancedMesh.computeBoundingSphere?.()
         instancedMesh.computeBoundingBox?.()
         this.group.add(instancedMesh)
@@ -288,10 +362,12 @@ export default class MinecraftSchematicRenderLayer {
     this._lastBuildProfile = {
       blockCount,
       uniqueBlockStates: uniqueStateCount,
-      chunkStateGroups: groupedBlocks.size,
+      renderGroups: groupedBlocks.size,
+      grouping: groupingStats,
       builtMeshes,
       maxInstancesPerMesh,
       elapsedMs: Number(elapsedMs.toFixed(2)),
+      lighting: lighting.stats,
     }
     console.info('[MinecraftSchematicRenderLayer] Build profile', this._lastBuildProfile)
 
@@ -303,50 +379,88 @@ export default class MinecraftSchematicRenderLayer {
     }
   }
 
-  _groupBlocksByChunkAndState(layer) {
+  _groupBlocksByState(layer) {
     const grouped = new Map()
 
     layer?.forEachBlock?.((position, entry) => {
       const blockString = buildBlockString(entry?.blockName, entry?.properties)
-      const chunkKey = `${position.chunkX},${position.chunkZ}`
-      const groupKey = `${chunkKey}::${blockString}`
 
-      if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, {
+      if (!grouped.has(blockString)) {
+        grouped.set(blockString, {
           blockString,
-          chunkKey,
           instances: [],
-          bounds: {
-            minX: Number.POSITIVE_INFINITY,
-            minY: Number.POSITIVE_INFINITY,
-            minZ: Number.POSITIVE_INFINITY,
-            maxX: Number.NEGATIVE_INFINITY,
-            maxY: Number.NEGATIVE_INFINITY,
-            maxZ: Number.NEGATIVE_INFINITY,
-          },
+          bounds: createEmptyBounds(),
         })
       }
 
-      const bucket = grouped.get(groupKey)
+      const bucket = grouped.get(blockString)
       bucket.instances.push({
         x: position.worldX,
         y: position.worldY,
         z: position.worldZ,
         blockName: entry?.blockName || '',
       })
-      bucket.bounds.minX = Math.min(bucket.bounds.minX, position.worldX - 0.5)
-      bucket.bounds.minY = Math.min(bucket.bounds.minY, position.worldY - 0.5)
-      bucket.bounds.minZ = Math.min(bucket.bounds.minZ, position.worldZ - 0.5)
-      bucket.bounds.maxX = Math.max(bucket.bounds.maxX, position.worldX + 0.5)
-      bucket.bounds.maxY = Math.max(bucket.bounds.maxY, position.worldY + 0.5)
-      bucket.bounds.maxZ = Math.max(bucket.bounds.maxZ, position.worldZ + 0.5)
+      expandBounds(bucket.bounds, position.worldX, position.worldY, position.worldZ)
     })
 
-    return new Map(
-      [...grouped.entries()]
-        .map(([key, value]) => [key, value])
-        .sort((a, b) => b[1].instances.length - a[1].instances.length),
-    )
+    return grouped
+  }
+
+  _buildRenderGroups(stateGroups) {
+    const grouped = new Map()
+    const chunkWidth = Math.max(16, Number(this.chunkManager?.chunkWidth || 64))
+    const partitionWorldSize = chunkWidth * STATE_PARTITION_CHUNK_SPAN
+    let partitionedStateCount = 0
+
+    for (const stateEntry of stateGroups.values()) {
+      const spanX = stateEntry.bounds.maxX - stateEntry.bounds.minX
+      const spanZ = stateEntry.bounds.maxZ - stateEntry.bounds.minZ
+      const shouldPartition = stateEntry.instances.length >= STATE_PARTITION_MIN_INSTANCES
+        && (spanX > partitionWorldSize || spanZ > partitionWorldSize)
+
+      if (!shouldPartition) {
+        grouped.set(`state:${stateEntry.blockString}`, {
+          ...stateEntry,
+          groupKey: `state:${stateEntry.blockString}`,
+        })
+        continue
+      }
+
+      partitionedStateCount += 1
+      for (const instance of stateEntry.instances) {
+        const partitionX = Math.floor(instance.x / partitionWorldSize)
+        const partitionZ = Math.floor(instance.z / partitionWorldSize)
+        const groupKey = `${stateEntry.blockString}::partition:${partitionX},${partitionZ}`
+
+        if (!grouped.has(groupKey)) {
+          grouped.set(groupKey, {
+            blockString: stateEntry.blockString,
+            instances: [],
+            bounds: createEmptyBounds(),
+            groupKey,
+          })
+        }
+
+        const partitionBucket = grouped.get(groupKey)
+        partitionBucket.instances.push(instance)
+        expandBounds(partitionBucket.bounds, instance.x, instance.y, instance.z)
+      }
+    }
+
+    return {
+      groupedBlocks: new Map(
+        [...grouped.entries()].sort((left, right) => right[1].instances.length - left[1].instances.length),
+      ),
+      groupingStats: {
+        sourceStates: stateGroups.size,
+        renderGroups: grouped.size,
+        partitionedStateCount,
+        mergedStateCount: stateGroups.size - partitionedStateCount,
+        partitionWorldSize,
+        partitionChunkSpan: STATE_PARTITION_CHUNK_SPAN,
+        partitionMinInstances: STATE_PARTITION_MIN_INSTANCES,
+      },
+    }
   }
 
   getRaycastTargets(origin = null, maxDistance = Number.POSITIVE_INFINITY) {
@@ -522,10 +636,28 @@ export default class MinecraftSchematicRenderLayer {
   }
 
   clear() {
+    const disposedGeometries = new Set()
+    const disposedMaterials = new Set()
+
     for (const mesh of this._meshEntries) {
       this.group.remove(mesh)
-      mesh.geometry?.dispose?.()
-      disposeMaterial(mesh.material)
+      if (mesh.geometry && !disposedGeometries.has(mesh.geometry)) {
+        disposedGeometries.add(mesh.geometry)
+        mesh.geometry.dispose?.()
+      }
+
+      if (Array.isArray(mesh.material)) {
+        for (const entry of mesh.material) {
+          if (entry && !disposedMaterials.has(entry)) {
+            disposedMaterials.add(entry)
+            entry.dispose?.()
+          }
+        }
+      }
+      else if (mesh.material && !disposedMaterials.has(mesh.material)) {
+        disposedMaterials.add(mesh.material)
+        mesh.material.dispose?.()
+      }
     }
 
     this._meshEntries = []
@@ -542,5 +674,6 @@ export default class MinecraftSchematicRenderLayer {
     this.scene.remove(this.group)
     this._cubane?.dispose?.()
     this._cubane = null
+    this._cubanePromise = null
   }
 }

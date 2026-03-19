@@ -88,8 +88,36 @@ function resolveProjectionPreview(item) {
   }
 }
 
+function getProjectionRouteId(item) {
+  return String(item?.projectionSlug || item?.id || '').trim()
+}
+
+function openProjectionSettings(item) {
+  const routeId = getProjectionRouteId(item)
+  if (!routeId || !props.spaceName) {
+    return
+  }
+
+  navigateToUrl(`${buildSpaceProjectionUrl(props.spaceName, routeId)}#admin-config`)
+}
+
+function resolveProjectionThumbnailAsset(item) {
+  const imageUrl = String(item?.thumbnailDataUrl || '').trim()
+  if (imageUrl) {
+    return {
+      imageUrl,
+      generated: null,
+    }
+  }
+
+  return {
+    imageUrl: '',
+    generated: generateProjectionThumbnailSvg(item),
+  }
+}
+
 // 根据 projection 的 bounds 生成预览 SVG
-function generateProjectionThumbnail(item) {
+function generateProjectionThumbnailSvg(item) {
   const preview = resolveProjectionPreview(item)
   const bounds = preview?.bounds
   if (!bounds) {
@@ -270,18 +298,8 @@ function enterProjection(itemId) {
 
 function handleAuthChanged(event) {
   authSession.value = event?.detail?.session || loadAdminAuthSession()
-  if (authSession.value) {
-    void loadWorlds()
-    return
-  }
-
-  galleryProfile.value = null
-  galleryItems.value = []
-  galleryViewer.value = {
-    authenticated: false,
-    account: null,
-    canManage: false,
-  }
+  authMenuOpen.value = false
+  void loadWorlds()
 }
 
 function handleGalleryChanged(event) {
@@ -479,10 +497,22 @@ onBeforeUnmount(() => {
               @click="enterProjection(item.projectionSlug || item.id)"
             >
               <div class="world-card-thumb">
-                <!-- 动态生成的缩略图（基于 bounds） -->
-                <div class="thumb-placeholder" :class="{ 'has-custom-thumb': generateProjectionThumbnail(item) }">
-                  <template v-if="generateProjectionThumbnail(item)">
-                    <div class="custom-thumb" v-html="generateProjectionThumbnail(item).svg" />
+                <div
+                  class="thumb-placeholder"
+                  :class="{
+                    'has-custom-thumb': !!resolveProjectionThumbnailAsset(item).generated,
+                    'has-image-thumb': !!resolveProjectionThumbnailAsset(item).imageUrl,
+                  }"
+                >
+                  <template v-if="resolveProjectionThumbnailAsset(item).imageUrl">
+                    <img
+                      class="thumb-image"
+                      :src="resolveProjectionThumbnailAsset(item).imageUrl"
+                      :alt="`${item.title} preview`"
+                    >
+                  </template>
+                  <template v-else-if="resolveProjectionThumbnailAsset(item).generated">
+                    <div class="custom-thumb" v-html="resolveProjectionThumbnailAsset(item).generated.svg" />
                   </template>
                   <template v-else>
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" class="thumb-icon">
@@ -494,7 +524,16 @@ onBeforeUnmount(() => {
                   </template>
                 </div>
                 <div class="thumb-overlay">
-                  <span class="tag-badge version-tag">.LITEMATIC</span>
+                  <div class="thumb-badges">
+                    <span class="tag-badge version-tag">.LITEMATIC</span>
+                    <span
+                      v-if="canManageProjections"
+                      class="tag-badge visibility-tag"
+                      :class="{ private: item.visibility === 'private' }"
+                    >
+                      {{ item.visibility === 'private' ? '私有' : '公开' }}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -514,6 +553,15 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div v-if="canManageProjections" class="world-actions" @click.stop>
+                  <button
+                    type="button"
+                    class="btn-settings"
+                    title="世界设置"
+                    @click="openProjectionSettings(item)"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82 2 2 0 1 1-2.83 2.83 1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 2 2 0 1 1-4 0 1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33 2 2 0 1 1-2.83-2.83 1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 2 2 0 1 1 0-4 1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82 2 2 0 1 1 2.83-2.83 1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 2.6a2 2 0 1 1 4 0 1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33 2 2 0 1 1 2.83 2.83 1.65 1.65 0 0 0-.33 1.82v.01A1.65 1.65 0 0 0 21.4 10a2 2 0 1 1 0 4 1.65 1.65 0 0 0-1.51 1Z"></path></svg>
+                    <span>设置</span>
+                  </button>
                   <button
                     v-if="pendingDeleteItemId !== item.id"
                     type="button"
@@ -1070,6 +1118,20 @@ onBeforeUnmount(() => {
   background: radial-gradient(circle at 30% 30%, #2a3f50, #0d1419);
 }
 
+.thumb-placeholder.has-image-thumb {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(126, 189, 228, 0.24), transparent 32%),
+    linear-gradient(180deg, #091018 0%, #0c1620 100%);
+}
+
+.thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.5s ease;
+}
+
 .custom-thumb {
   width: 100%;
   height: 100%;
@@ -1087,6 +1149,10 @@ onBeforeUnmount(() => {
   transform: scale(1.05);
 }
 
+.world-card:hover .thumb-image {
+  transform: scale(1.04);
+}
+
 .thumb-icon {
   width: 72px;
   height: 72px;
@@ -1100,6 +1166,12 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
+}
+
+.thumb-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .tag-badge {
@@ -1118,6 +1190,18 @@ onBeforeUnmount(() => {
   background: rgba(121, 203, 167, 0.2);
   color: #bbf4d9;
   border: 1px solid rgba(121, 203, 167, 0.1);
+}
+
+.visibility-tag {
+  background: rgba(119, 175, 255, 0.16);
+  color: #cfe0ff;
+  border: 1px solid rgba(119, 175, 255, 0.18);
+}
+
+.visibility-tag.private {
+  background: rgba(255, 159, 67, 0.16);
+  color: #ffd7a8;
+  border: 1px solid rgba(255, 159, 67, 0.2);
 }
 
 .world-card-content {
@@ -1180,18 +1264,41 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 
+.btn-settings,
+.btn-delete {
+  background: rgba(18, 30, 40, 0.82);
+  color: #d7e7ef;
+  border: 1px solid rgba(126, 189, 228, 0.2);
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(12px);
+}
+
+.btn-settings {
+  gap: 0.4rem;
+  padding: 0 0.72rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.btn-settings:hover {
+  background: rgba(28, 44, 57, 0.95);
+  color: #f4fbff;
+  border-color: rgba(126, 189, 228, 0.36);
+}
+
 .btn-delete {
   background: rgba(220, 53, 69, 0.1);
   color: #ff6b7b;
   border: 1px solid rgba(220, 53, 69, 0.2);
   width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
+  padding: 0;
+  backdrop-filter: blur(12px);
 }
 
 .btn-delete:hover {
@@ -1412,6 +1519,10 @@ onBeforeUnmount(() => {
 
   .hero-meta {
     grid-template-columns: 1fr;
+  }
+
+  .world-actions {
+    opacity: 1;
   }
 }
 </style>

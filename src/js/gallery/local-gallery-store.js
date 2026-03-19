@@ -21,6 +21,10 @@ function normalizeSpaceName(value = '') {
   return String(value || '').trim().toLowerCase()
 }
 
+function normalizeProjectionVisibility(value = '') {
+  return String(value || '').trim().toLowerCase() === 'private' ? 'private' : 'public'
+}
+
 function profileKey(spaceName) {
   return `gallery:space:${normalizeSpaceName(spaceName)}:profile`
 }
@@ -258,6 +262,8 @@ export async function createLocalGalleryItem({
   schematic = null,
   previewModel = null,
   placement = null,
+  visibility = 'public',
+  thumbnailDataUrl = '',
   projectionName = '',
 }) {
   const normalizedSpaceName = normalizeSpaceName(spaceName)
@@ -281,13 +287,14 @@ export async function createLocalGalleryItem({
     projectionDisplayName,
     Array.isArray(nextManifest.items) ? nextManifest.items : [],
   )
+  const normalizedVisibility = normalizeProjectionVisibility(visibility)
 
   const summary = {
     id: itemId,
     title: projectionDisplayName,
     projectionSlug,
     description: String(description || '').trim(),
-    visibility: 'public',
+    visibility: normalizedVisibility,
     fileName: sourceFile.fileName,
     schematic: schematic || null,
     placement: placement || null,
@@ -298,6 +305,7 @@ export async function createLocalGalleryItem({
       sampled: !!previewModel?.sampled,
       bounds: previewModel?.bounds || null,
     },
+    thumbnailDataUrl: String(thumbnailDataUrl || '').trim(),
     localOnly: true,
   }
 
@@ -306,8 +314,10 @@ export async function createLocalGalleryItem({
     space: normalizedSpaceName,
     mimeType: sourceFile.mimeType,
     sourceFile,
+    thumbnailDataUrl: String(thumbnailDataUrl || '').trim(),
     previewModel: previewModel || null,
     placement: placement || null,
+    visibility: normalizedVisibility,
     owner: {
       id: LOCAL_DEV_ACCOUNT.id,
       name: LOCAL_DEV_ACCOUNT.name,

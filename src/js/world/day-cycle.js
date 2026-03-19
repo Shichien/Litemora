@@ -420,6 +420,23 @@ export default class DayCycle {
     this._updateLightingAndFog(environment)
   }
 
+  setTimeOfDay(value, options = {}) {
+    const clamped = THREE.MathUtils.clamp(Number(value), 0, 1)
+    if (!Number.isFinite(clamped)) {
+      return
+    }
+
+    this.params.timeOfDay = clamped
+    if (options.syncHud !== false) {
+      this.hud.updateGameTime(this.params.timeOfDay)
+      this._lastHudTimeOfDay = this.params.timeOfDay
+    }
+  }
+
+  setAutoPlay(value) {
+    this.params.autoPlay = !!value
+  }
+
   getCelestialOffsets() {
     return {
       sun: this._sunOffset.clone(),

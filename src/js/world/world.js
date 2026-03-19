@@ -312,9 +312,11 @@ export default class World {
     this._minecraftRenderLayerSyncTimer = null
     this._onMinecraftBlockBreakComplete = this._onMinecraftBlockBreakComplete.bind(this)
     this._onMinecraftBlockPlace = this._onMinecraftBlockPlace.bind(this)
+    this._onMinecraftBlockUse = this._onMinecraftBlockUse.bind(this)
 
     emitter.on('game:block-break-complete', this._onMinecraftBlockBreakComplete)
     emitter.on('game:block-place', this._onMinecraftBlockPlace)
+    emitter.on('game:block-use', this._onMinecraftBlockUse)
 
     // Listen for resource loading errors to help diagnose issues
     emitter.on('core:resource-error', (error) => {
@@ -356,6 +358,16 @@ export default class World {
           ok: false,
           error: error?.message || 'Unknown schematic apply error',
         })
+      }
+    })
+
+    emitter.on('minecraft:resource-pack-changed', async () => {
+      try {
+        this.minecraftSchematicRenderLayer?.invalidateResourcePack?.()
+        await this._syncMinecraftSchematicRenderLayer()
+      }
+      catch (error) {
+        console.warn('[World] Failed to refresh Minecraft resource pack:', error)
       }
     })
   }
@@ -595,6 +607,10 @@ export default class World {
       settings.setEnvAmbientIntensity(environment.ambientIntensity)
     if (environment.fogDensity !== undefined)
       settings.setEnvFogDensity(environment.fogDensity)
+    if (environment.timeOfDay !== undefined)
+      settings.setEnvTimeOfDay(environment.timeOfDay)
+    if (environment.timeAutoPlay !== undefined)
+      settings.setEnvTimeAutoPlay(environment.timeAutoPlay)
   }
 
   _cloneSimple(value) {
@@ -744,6 +760,12 @@ export default class World {
 
   _onMinecraftBlockPlace() {
     if (this.chunkManager?.minecraftRenderOverlayActive) {
+      this._scheduleMinecraftSchematicRenderLayerSync()
+    }
+  }
+
+  _onMinecraftBlockUse(payload = {}) {
+    if (payload?.source === 'minecraft-schematic' || this.chunkManager?.minecraftRenderOverlayActive) {
       this._scheduleMinecraftSchematicRenderLayerSync()
     }
   }
@@ -1052,6 +1074,7 @@ export default class World {
     }
     emitter.off('game:block-break-complete', this._onMinecraftBlockBreakComplete)
     emitter.off('game:block-place', this._onMinecraftBlockPlace)
+    emitter.off('game:block-use', this._onMinecraftBlockUse)
 
     // Destroy child components
     this.blockMiningOverlay?.dispose()

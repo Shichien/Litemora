@@ -5,6 +5,7 @@ const SPACE_REGEX = /^[a-z0-9-]{3,63}$/
 const MAX_TEXT_LENGTH = 4000
 const MAX_FILE_BASE64_LENGTH = 20 * 1024 * 1024
 const MAX_PREVIEW_BLOCKS = 40000
+const MAX_THUMBNAIL_DATA_URL_LENGTH = 1.5 * 1024 * 1024
 
 function toNumber(value, fallback = 0) {
   const numberValue = Number(value)
@@ -17,6 +18,23 @@ function sanitizeText(value, maxLength = 240) {
 
 function sanitizeLongText(value) {
   return sanitizeText(value, MAX_TEXT_LENGTH)
+}
+
+function sanitizeThumbnailDataUrl(value = '') {
+  const normalized = trimString(value)
+  if (!normalized) {
+    return ''
+  }
+
+  if (normalized.length > MAX_THUMBNAIL_DATA_URL_LENGTH) {
+    return ''
+  }
+
+  if (!/^data:image\/(jpeg|jpg|png|webp);base64,/iu.test(normalized)) {
+    return ''
+  }
+
+  return normalized
 }
 
 export function normalizeSpaceName(value = '') {
@@ -124,6 +142,21 @@ function normalizeVisibility(value) {
   return value === 'private' ? 'private' : 'public'
 }
 
+function normalizePlacement(value = null) {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const offset = value.offset && typeof value.offset === 'object' ? value.offset : {}
+  return {
+    offset: {
+      x: toNumber(offset.x),
+      y: toNumber(offset.y),
+      z: toNumber(offset.z),
+    },
+  }
+}
+
 function normalizeBounds(bounds = {}) {
   const min = bounds?.min || {}
   const max = bounds?.max || {}
@@ -194,6 +227,7 @@ export function buildGalleryItemSummary(item) {
     visibility: normalizeVisibility(item?.visibility),
     fileName: sanitizeText(item?.fileName, 240),
     schematic: normalizeSchematicSummary(item?.schematic),
+    placement: normalizePlacement(item?.placement),
     createdAt: Math.round(toNumber(item?.createdAt, Date.now())),
     updatedAt: Math.round(toNumber(item?.updatedAt, Date.now())),
     preview: {
@@ -201,6 +235,7 @@ export function buildGalleryItemSummary(item) {
       sampled: !!item?.previewModel?.sampled,
       bounds: normalizeBounds(item?.previewModel?.bounds),
     },
+    thumbnailDataUrl: sanitizeThumbnailDataUrl(item?.thumbnailDataUrl),
   }
 }
 
@@ -246,6 +281,8 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
     sourceFile,
     schematic,
     previewModel,
+    placement: normalizePlacement(body?.placement),
+    thumbnailDataUrl: sanitizeThumbnailDataUrl(body?.thumbnailDataUrl),
     owner: {
       id: trimString(profile?.ownerAccountId || account?.id),
       name: sanitizeText(profile?.ownerName || account?.name || account?.email || spaceName, 120),

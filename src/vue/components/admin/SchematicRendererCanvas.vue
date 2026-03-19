@@ -2,6 +2,7 @@
 import {
   BUNDLED_MINECRAFT_RESOURCE_PACK_NAME,
   loadBundledMinecraftResourcePackBlob,
+  loadPreferredMinecraftResourcePack,
 } from '@three/world/terrain/minecraft-resource-pack.js'
 import * as THREE from 'three'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -32,6 +33,10 @@ const props = defineProps({
     type: String,
     default: '暂无可渲染的投影文件',
   },
+  resourcePackSignature: {
+    type: String,
+    default: '',
+  },
 })
 const emit = defineEmits(['block-picked'])
 
@@ -49,6 +54,7 @@ let rendererReadyPromise = null
 let rendererReadyResolve = null
 let rendererReadyReject = null
 let resourcePackReadyPromise = null
+let loadedResourcePackSignature = ''
 let stopCanvasResize = null
 let stopCanvasWheelPassthrough = null
 let canvasBlockPickListener = null
@@ -417,7 +423,7 @@ async function ensureRenderer() {
   )
 }
 
-async function ensureBuiltInResourcePack(renderer) {
+async function ensurePreferredResourcePack(renderer) {
   if (!renderer?.packs) {
     throw new Error('resource_pack_manager_unavailable')
   }
@@ -427,20 +433,38 @@ async function ensureBuiltInResourcePack(renderer) {
   }
 
   resourcePackReadyPromise = (async () => {
-    const existingPacks = renderer.packs.getAllPacks?.() || []
-    if (
-      existingPacks.length === 1
-      && existingPacks[0]?.name === BUNDLED_MINECRAFT_RESOURCE_PACK_NAME
-    ) {
-      return existingPacks[0].id
+    const selectedPack = await loadPreferredMinecraftResourcePack()
+    const nextSignature = [
+      selectedPack.source,
+      selectedPack.key,
+      selectedPack.updatedAt,
+      selectedPack.size,
+      props.resourcePackSignature,
+    ].join(':')
+
+    if (loadedResourcePackSignature === nextSignature) {
+      return nextSignature
     }
 
-    const packBlob = await loadBundledMinecraftResourcePackBlob()
     if (renderer.packs.getPackCount?.() > 0) {
       await renderer.packs.removeAllPacks()
     }
 
-    return renderer.packs.loadPackFromBlob(packBlob, BUNDLED_MINECRAFT_RESOURCE_PACK_NAME)
+    try {
+      await renderer.packs.loadPackFromBlob(selectedPack.blob, selectedPack.name)
+      loadedResourcePackSignature = nextSignature
+      return nextSignature
+    }
+    catch (error) {
+      if (selectedPack.source === 'custom') {
+        const fallbackBlob = await loadBundledMinecraftResourcePackBlob()
+        await renderer.packs.removeAllPacks?.()
+        await renderer.packs.loadPackFromBlob(fallbackBlob, BUNDLED_MINECRAFT_RESOURCE_PACK_NAME)
+        loadedResourcePackSignature = ['built-in-fallback', BUNDLED_MINECRAFT_RESOURCE_PACK_NAME, props.resourcePackSignature].join(':')
+        return loadedResourcePackSignature
+      }
+      throw error
+    }
   })().catch((error) => {
     resourcePackReadyPromise = null
     throw error
@@ -578,6 +602,50 @@ function setupPreviewBlockPicking(renderer) {
   canvasRef.value.addEventListener('dblclick', canvasBlockPickListener)
 }
 
+async function capturePreviewThumbnail(options = {}) {
+  const sourceCanvas = canvasRef.value
+  if (!sourceCanvas) {
+    return ''
+  }
+
+  const targetWidth = Math.max(1, Math.round(Number(options.width || 640)))
+  const targetHeight = Math.max(1, Math.round(Number(options.height || 360)))
+  const quality = Math.min(0.95, Math.max(0.5, Number(options.quality || 0.82)))
+
+  rendererInstance?.renderManager?.requestRender?.()
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+
+  const sourceWidth = Number(sourceCanvas.width || sourceCanvas.clientWidth || 0)
+  const sourceHeight = Number(sourceCanvas.height || sourceCanvas.clientHeight || 0)
+  if (!sourceWidth || !sourceHeight) {
+    return ''
+  }
+
+  const exportCanvas = document.createElement('canvas')
+  exportCanvas.width = targetWidth
+  exportCanvas.height = targetHeight
+  const context = exportCanvas.getContext('2d')
+  if (!context) {
+    return ''
+  }
+
+  context.fillStyle = '#081219'
+  context.fillRect(0, 0, targetWidth, targetHeight)
+
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight)
+  const drawWidth = sourceWidth * scale
+  const drawHeight = sourceHeight * scale
+  const offsetX = (targetWidth - drawWidth) * 0.5
+  const offsetY = (targetHeight - drawHeight) * 0.5
+
+  context.drawImage(sourceCanvas, 0, 0, sourceWidth, sourceHeight, offsetX, offsetY, drawWidth, drawHeight)
+  return exportCanvas.toDataURL('image/jpeg', quality)
+}
+
+defineExpose({
+  capturePreviewThumbnail,
+})
+
 async function renderCurrentSchematic() {
   const token = ++renderToken
   errorMessage.value = ''
@@ -620,10 +688,10 @@ async function renderCurrentSchematic() {
 
     setPreparingState(
       '正在装载 Minecraft 资源包',
-      '预览会强制使用内置资源包，避免旧缓存或浏览器扩展干扰。',
+      '预览会优先使用当前空间或投影的自定义资源包。',
       '开始加载资源包',
     )
-    await ensureBuiltInResourcePack(renderer)
+    await ensurePreferredResourcePack(renderer)
 
     if (token !== renderToken) {
       return
@@ -720,6 +788,7 @@ function disposeRenderer() {
   rendererReadyResolve = null
   rendererReadyReject = null
   resourcePackReadyPromise = null
+  loadedResourcePackSignature = ''
 }
 
 watch(
@@ -737,6 +806,15 @@ watch(
   ],
   () => {
     applyPreviewOffset()
+  },
+)
+
+watch(
+  () => props.resourcePackSignature,
+  () => {
+    resourcePackReadyPromise = null
+    loadedResourcePackSignature = ''
+    void renderCurrentSchematic()
   },
 )
 

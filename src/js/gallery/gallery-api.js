@@ -58,6 +58,10 @@ function normalizeProjectionIdentifier(value = '') {
   return String(value || '').trim().toLowerCase()
 }
 
+function normalizeProjectionVisibility(value = '') {
+  return String(value || '').trim().toLowerCase() === 'private' ? 'private' : 'public'
+}
+
 function getProjectionIdentity(item = null) {
   const slug = normalizeProjectionIdentifier(item?.projectionSlug)
   if (slug) {
@@ -139,6 +143,7 @@ function buildProjectionListItem(item = null) {
     schematic: item.schematic || null,
     placement: item.placement || null,
     preview,
+    thumbnailDataUrl: String(item.thumbnailDataUrl || '').trim(),
     createdAt: Number(item.createdAt || 0),
     updatedAt: Number(item.updatedAt || 0),
     localOnly: !!item.localOnly,
@@ -313,6 +318,9 @@ function buildProjectionCacheItem({
   description = '',
   schematic = null,
   previewModel = null,
+  placement = null,
+  visibility = 'public',
+  thumbnailDataUrl = '',
   fileName = '',
   mimeType = '',
   fileBase64 = '',
@@ -325,14 +333,16 @@ function buildProjectionCacheItem({
     space: String(spaceName || safeItem.space || '').trim(),
     title: String(safeItem.title || title || schematic?.name || fileName || 'World').trim(),
     description: String(safeItem.description || description || '').trim(),
+    visibility: normalizeProjectionVisibility(safeItem.visibility || visibility),
     schematic: safeItem.schematic || schematic || null,
-    placement: safeItem.placement || null,
+    placement: safeItem.placement || placement || null,
     preview: buildProjectionPreview({
       item: safeItem,
       preview: safeItem.preview,
       previewModel,
       schematic,
     }),
+    thumbnailDataUrl: String(safeItem.thumbnailDataUrl || thumbnailDataUrl || '').trim(),
     previewModel: safeItem.previewModel || previewModel || null,
     sourceFile: safeItem.sourceFile || {
       fileName: String(fileName || safeItem.fileName || 'uploaded.litematic').trim(),
@@ -472,6 +482,8 @@ export async function createGalleryItem({
   schematic,
   previewModel,
   placement = null,
+  visibility = 'public',
+  thumbnailDataUrl = '',
   projectionName = '',
   session = null,
 }) {
@@ -487,6 +499,8 @@ export async function createGalleryItem({
       schematic,
       previewModel,
       placement,
+      visibility,
+      thumbnailDataUrl,
       projectionName,
     })
     : await (async () => {
@@ -500,13 +514,14 @@ export async function createGalleryItem({
           title,
           description,
           projectionName,
-          visibility: 'public',
+          visibility,
           fileName: file?.name || 'uploaded.litematic',
           mimeType: file?.type || 'application/octet-stream',
           fileBase64,
           schematic,
           previewModel,
           placement,
+          thumbnailDataUrl,
         }),
       })
     })()
@@ -519,6 +534,8 @@ export async function createGalleryItem({
     schematic,
     previewModel,
     placement,
+    visibility,
+    thumbnailDataUrl,
     fileName: file?.name || 'uploaded.litematic',
     mimeType: file?.type || 'application/octet-stream',
     fileBase64,

@@ -157,6 +157,14 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       if (g)
         groups.push(g)
     }
+
+    const playerPosition = this.experience.world?.player?.getPosition?.() || null
+    const schematicTargets = this.experience.world?.minecraftSchematicRenderLayer?.getRaycastTargets?.(
+      playerPosition,
+      this.params.maxDistance,
+    ) || []
+    groups.push(...schematicTargets)
+
     return groups
   }
 
@@ -172,6 +180,17 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     const instanceId = hit.instanceId
     if (instanceId === undefined || instanceId === null)
       return null
+
+    if (mesh?.userData?.minecraftSchematicLayer && mesh?.userData?.instanceToWorldBlock) {
+      return this._buildMinecraftSchematicHitInfo(hit)
+    }
+
+    return this._buildLegacyHitInfo(hit)
+  }
+
+  _buildLegacyHitInfo(hit) {
+    const mesh = hit.object
+    const instanceId = hit.instanceId
 
     // chunk 信息：由 TerrainChunk 写入 group.userData
     const group = mesh.parent
@@ -206,7 +225,7 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     // 4) 方块数据：优先用容器查询（避免 mesh.userData 在未来变化时失真）
     const block = this.chunkManager.getBlockWorld(worldBlockX, worldBlockY, worldBlockZ)
     const blockId = block?.id ?? mesh.userData?.blockId ?? blocks.empty.id
-    const blockName = mesh.userData?.blockName
+    const blockName = block?.minecraftBlock?.name || mesh.userData?.blockName
 
     return {
       // chunk 信息
@@ -232,6 +251,73 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       point: hit.point?.clone?.() ?? null,
       face: hit.face ?? null,
       distance: hit.distance ?? null,
+
+      source: block?.source || 'legacy',
+      minecraftBlock: block?.minecraftBlock || null,
+      isImportedMinecraft: !!block?.isImportedMinecraft,
+      collisionBoxes: block?.collisionBoxes || null,
+      blockString: null,
+    }
+  }
+
+  _buildMinecraftSchematicHitInfo(hit) {
+    const mesh = hit.object
+    const instanceId = hit.instanceId
+    const instanceMap = mesh?.userData?.instanceToWorldBlock
+    const offset = instanceId * 3
+
+    if (!instanceMap || offset < 0 || (offset + 2) >= instanceMap.length) {
+      return null
+    }
+
+    const worldBlockX = Number(instanceMap[offset])
+    const worldBlockY = Number(instanceMap[offset + 1])
+    const worldBlockZ = Number(instanceMap[offset + 2])
+    if (!Number.isFinite(worldBlockX) || !Number.isFinite(worldBlockY) || !Number.isFinite(worldBlockZ)) {
+      return null
+    }
+
+    const chunkWidth = this.chunkManager?.chunkWidth ?? 64
+    const chunkX = Math.floor(worldBlockX / chunkWidth)
+    const chunkZ = Math.floor(worldBlockZ / chunkWidth)
+    const originX = chunkX * chunkWidth
+    const originZ = chunkZ * chunkWidth
+    const localX = Math.floor(worldBlockX - originX)
+    const localZ = Math.floor(worldBlockZ - originZ)
+
+    mesh.getMatrixAt(instanceId, this._instanceMatrix)
+    this._worldMatrix.multiplyMatrices(mesh.matrixWorld, this._instanceMatrix)
+    this._worldPos.setFromMatrixPosition(this._worldMatrix)
+
+    const block = this.chunkManager?.getBlockWorld?.(worldBlockX, worldBlockY, worldBlockZ) || null
+    const blockId = block?.id ?? blocks.empty.id
+    const blockName = block?.minecraftBlock?.name || mesh?.userData?.blockName || 'minecraft:unknown'
+
+    return {
+      chunkX,
+      chunkZ,
+      origin: { x: originX, z: originZ },
+
+      instanceId,
+      blockId,
+      blockName,
+
+      local: { x: localX, y: worldBlockY, z: localZ },
+      worldBlock: { x: worldBlockX, y: worldBlockY, z: worldBlockZ },
+      worldPosition: this._worldPos.clone(),
+
+      renderScale: 1,
+      heightScale: 1,
+
+      point: hit.point?.clone?.() ?? null,
+      face: hit.face ?? null,
+      distance: hit.distance ?? null,
+
+      source: block?.source || 'minecraft-schematic',
+      minecraftBlock: block?.minecraftBlock || null,
+      isImportedMinecraft: true,
+      collisionBoxes: block?.collisionBoxes || null,
+      blockString: String(mesh?.userData?.blockString || ''),
     }
   }
 

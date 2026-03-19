@@ -67,6 +67,12 @@ export default class Environment {
         this.params.fogDensity = patch.fogDensity
         this.updateFog()
       }
+      if (patch.timeOfDay !== undefined) {
+        this.dayCycle?.setTimeOfDay?.(patch.timeOfDay)
+      }
+      if (patch.timeAutoPlay !== undefined) {
+        this.dayCycle?.setAutoPlay?.(patch.timeAutoPlay)
+      }
     })
   }
 

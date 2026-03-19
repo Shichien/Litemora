@@ -45,6 +45,8 @@ const DEFAULT_SETTINGS = {
   envSunIntensity: 3,
   envAmbientIntensity: 0.75,
   envFogDensity: 0.01,
+  envTimeOfDay: 0.25,
+  envTimeAutoPlay: true,
 
   // Chunks
   chunkViewDistance: 2,
@@ -79,6 +81,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const envSunIntensity = ref(DEFAULT_SETTINGS.envSunIntensity)
   const envAmbientIntensity = ref(DEFAULT_SETTINGS.envAmbientIntensity)
   const envFogDensity = ref(DEFAULT_SETTINGS.envFogDensity)
+  const envTimeOfDay = ref(DEFAULT_SETTINGS.envTimeOfDay)
+  const envTimeAutoPlay = ref(DEFAULT_SETTINGS.envTimeAutoPlay)
 
   // Chunk settings
   const chunkViewDistance = ref(DEFAULT_SETTINGS.chunkViewDistance)
@@ -126,6 +130,10 @@ export const useSettingsStore = defineStore('settings', () => {
           envAmbientIntensity.value = parsed.envAmbientIntensity
         if (parsed.envFogDensity !== undefined)
           envFogDensity.value = parsed.envFogDensity
+        if (parsed.envTimeOfDay !== undefined)
+          envTimeOfDay.value = parsed.envTimeOfDay
+        if (parsed.envTimeAutoPlay !== undefined)
+          envTimeAutoPlay.value = parsed.envTimeAutoPlay
         if (parsed.chunkViewDistance !== undefined)
           chunkViewDistance.value = parsed.chunkViewDistance
         if (parsed.chunkUnloadPadding !== undefined)
@@ -155,6 +163,8 @@ export const useSettingsStore = defineStore('settings', () => {
         envSunIntensity: envSunIntensity.value,
         envAmbientIntensity: envAmbientIntensity.value,
         envFogDensity: envFogDensity.value,
+        envTimeOfDay: envTimeOfDay.value,
+        envTimeAutoPlay: envTimeAutoPlay.value,
         chunkViewDistance: chunkViewDistance.value,
         chunkUnloadPadding: chunkUnloadPadding.value,
       }
@@ -270,6 +280,18 @@ export const useSettingsStore = defineStore('settings', () => {
     saveSettings()
   }
 
+  function setEnvTimeOfDay(value) {
+    envTimeOfDay.value = value
+    emitter.emit('settings:environment-changed', { timeOfDay: value })
+    saveSettings()
+  }
+
+  function setEnvTimeAutoPlay(value) {
+    envTimeAutoPlay.value = !!value
+    emitter.emit('settings:environment-changed', { timeAutoPlay: envTimeAutoPlay.value })
+    saveSettings()
+  }
+
   // ----------------------------------------
   // Actions - Chunk settings
   // ----------------------------------------
@@ -298,6 +320,8 @@ export const useSettingsStore = defineStore('settings', () => {
       sunIntensity: envSunIntensity.value,
       ambientIntensity: envAmbientIntensity.value,
       fogDensity: envFogDensity.value,
+      timeOfDay: envTimeOfDay.value,
+      timeAutoPlay: envTimeAutoPlay.value,
     })
   }
 
@@ -322,6 +346,8 @@ export const useSettingsStore = defineStore('settings', () => {
     envSunIntensity.value = ENV_DEFAULTS.sunIntensity
     envAmbientIntensity.value = ENV_DEFAULTS.ambientIntensity
     envFogDensity.value = ENV_DEFAULTS.fogDensity
+    envTimeOfDay.value = DEFAULT_SETTINGS.envTimeOfDay
+    envTimeAutoPlay.value = DEFAULT_SETTINGS.envTimeAutoPlay
 
     // Reset chunks
     chunkViewDistance.value = CHUNK_DEFAULTS.viewDistance
@@ -393,6 +419,8 @@ export const useSettingsStore = defineStore('settings', () => {
     envSunIntensity,
     envAmbientIntensity,
     envFogDensity,
+    envTimeOfDay,
+    envTimeAutoPlay,
 
     // State - Chunks
     chunkViewDistance,
@@ -417,6 +445,8 @@ export const useSettingsStore = defineStore('settings', () => {
     setEnvSunIntensity,
     setEnvAmbientIntensity,
     setEnvFogDensity,
+    setEnvTimeOfDay,
+    setEnvTimeAutoPlay,
     applyAllEnvironment,
 
     // Actions - Chunks

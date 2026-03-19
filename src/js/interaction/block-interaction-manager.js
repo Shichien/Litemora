@@ -8,6 +8,7 @@ import {
   isStairBlockType,
   isWallBlockType,
 } from '../world/terrain/block-behaviors.js'
+import { buildMinecraftInteractableToggleUpdates } from '../world/terrain/minecraft-interactive-blocks.js'
 import { ensureDynamicBlockType, getBlockTypeById } from '../world/terrain/blocks-config.js'
 
 /**
@@ -83,6 +84,11 @@ export default class BlockInteractionManager {
   }
 
   _onMouseDown(event) {
+    if (event.button === 2) {
+      this._useBlock(this.raycaster?.current)
+      return
+    }
+
     // Left click (0) only
     if (event.button !== 0)
       return
@@ -96,6 +102,61 @@ export default class BlockInteractionManager {
       return
 
     this._placeBlock(this.raycaster.current)
+  }
+
+  _useBlock(target) {
+    if (!target?.worldBlock || !this.chunkManager) {
+      return false
+    }
+
+    const minecraftBlock = target?.minecraftBlock
+    const updates = buildMinecraftInteractableToggleUpdates({
+      worldX: target.worldBlock.x,
+      worldY: target.worldBlock.y,
+      worldZ: target.worldBlock.z,
+      blockName: minecraftBlock?.name || target.blockName,
+      properties: minecraftBlock?.properties || {},
+      getBlockAt: (x, y, z) => this.chunkManager?.minecraftSchematicLayer?.getBlock?.(x, y, z),
+    })
+
+    if (!updates.length) {
+      return false
+    }
+
+    let changed = false
+    for (const update of updates) {
+      const nextEntry = this.chunkManager.setImportedMinecraftBlock(
+        update.x,
+        update.y,
+        update.z,
+        update.blockName,
+        update.properties,
+      )
+      changed = changed || !!nextEntry
+    }
+
+    if (!changed) {
+      return false
+    }
+
+    this.chunkManager.syncMinecraftSchematicLayerState({ scheduleSave: true })
+    emitter.emit('game:block-use', {
+      source: 'minecraft-schematic',
+      worldBlock: { ...target.worldBlock },
+      minecraftBlock: {
+        name: minecraftBlock?.name || target.blockName || '',
+        properties: updates[0]?.properties || {},
+      },
+      updates: updates.map(update => ({
+        x: update.x,
+        y: update.y,
+        z: update.z,
+        blockName: update.blockName,
+        properties: { ...update.properties },
+      })),
+    })
+
+    return true
   }
 
   _onMiningComplete(payload = {}) {

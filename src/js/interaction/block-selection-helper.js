@@ -131,6 +131,27 @@ export default class BlockSelectionHelper {
       return
     }
 
+    const minecraftBlockString = String(info?.blockString || '')
+    if (minecraftBlockString) {
+      const cacheKey = `minecraft:${minecraftBlockString}`
+      if (!this._geometryCache.has(cacheKey)) {
+        const overlayGeometry = this.experience.world?.minecraftSchematicRenderLayer?.getOverlayGeometryForBlockString?.(minecraftBlockString)
+        if (overlayGeometry) {
+          const highlightGeometry = overlayGeometry.clone()
+          highlightGeometry.scale(1.01, 1.01, 1.01)
+          this._geometryCache.set(cacheKey, highlightGeometry)
+        }
+      }
+
+      const geometry = this._geometryCache.get(cacheKey)
+      if (geometry) {
+        if (this.object.geometry !== geometry) {
+          this.object.geometry = geometry
+        }
+        return
+      }
+    }
+
     const blockType = getBlockTypeById(info?.blockId)
     if (!blockType) {
       if (this.object.geometry !== this.geometry) {

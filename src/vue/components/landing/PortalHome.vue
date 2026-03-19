@@ -6,7 +6,10 @@ import {
   loadAdminAuthSession,
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
-import { checkSpaceNameAvailability } from '@three/gallery/gallery-api.js'
+import {
+  checkSpaceNameAvailability,
+  claimGallerySpace,
+} from '@three/gallery/gallery-api.js'
 import { buildSpaceUrl, isValidSpaceName, normalizeSpaceName } from '@three/utils/space-context.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -144,6 +147,12 @@ async function handleSubmit() {
       errorText.value = t('home.create.error.duplicate')
       return
     }
+
+    await claimGallerySpace({
+      spaceName: normalizedSpaceName.value,
+      displayName: normalizedSpaceName.value,
+      session: authSession.value,
+    })
 
     const targetUrl = buildSpaceUrl(normalizedSpaceName.value)
     window.location.href = targetUrl
@@ -500,6 +509,7 @@ header, section, footer {
   align-items: center;
   padding-top: 2rem;
   padding-bottom: 2rem;
+  z-index: 20;
 }
 
 .header-left {

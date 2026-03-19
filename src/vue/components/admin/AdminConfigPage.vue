@@ -29,6 +29,11 @@ import {
   loadAdminSchematicFile,
   saveAdminSchematicFile,
 } from '@three/world/terrain/admin-schematic-storage.js'
+import {
+  clearMinecraftResourcePack,
+  loadMinecraftResourcePack,
+  saveMinecraftResourcePackFile,
+} from '@three/world/terrain/minecraft-resource-pack-storage.js'
 import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
 
@@ -65,15 +70,23 @@ const schematicSourceFile = ref(null)
 const schematicObject = ref(null)
 const schematicPreview = ref(null)
 const schematicProjectionName = ref('')
+const schematicVisibility = ref('public')
 const isParsingSchematic = ref(false)
 const schematicOffsetY = ref(0)
 const schematicSpawnLift = ref(2)
 const schematicApplyProgress = ref(null)
 const schematicImportLogs = ref([])
+const resourcePackInfo = ref(null)
+const isSavingResourcePack = ref(false)
+const schematicRendererCanvasRef = ref(null)
 
 const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const skyModeOptions = ['DayCycle', 'HDR']
+const projectionVisibilityOptions = [
+  { value: 'public', label: '公开' },
+  { value: 'private', label: '私有' },
+]
 const languageOptions = [
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
@@ -116,6 +129,19 @@ const schematicPlacedBounds = computed(() => {
 })
 
 const sanitizedProjectionName = computed(() => sanitizeProjectionNameInput(schematicProjectionName.value))
+const resourcePackSignature = computed(() => {
+  const info = resourcePackInfo.value
+  if (!info) {
+    return 'built-in'
+  }
+
+  return [
+    info.key || 'custom',
+    info.fileName || 'resource-pack.zip',
+    info.updatedAt || 0,
+    info.size || 0,
+  ].join(':')
+})
 
 const schematicProgressPercent = computed(() => {
   if (!schematicApplyProgress.value) {
@@ -149,6 +175,13 @@ function onSchematicApplyProgress(payload) {
 function setStatus(message, type = 'neutral') {
   statusText.value = message
   statusType.value = type
+}
+
+function getCurrentRouteScope() {
+  return {
+    spaceName: getActiveSpaceName(),
+    projectionId: getActiveProjectionId(),
+  }
 }
 
 function markSaved(config) {
@@ -211,6 +244,7 @@ async function hydrateCurrentAccountData() {
 
   await loadCurrentConfig()
   await restorePersistedSchematic()
+  await loadCurrentResourcePackInfo()
 }
 
 async function handleProviderAuth(provider) {
@@ -269,6 +303,49 @@ async function loadCurrentConfig() {
   const loaded = await loadBackendWorldConfig(currentAccountId.value)
   markSaved(loaded)
   setStatus('已读取当前生效配置', 'success')
+}
+
+function formatTimeOfDayLabel(value) {
+  const normalized = Math.min(1, Math.max(0, Number(value) || 0))
+  const totalMinutes = Math.round(normalized * 24 * 60) % (24 * 60)
+  const hours = String(Math.floor(totalMinutes / 60)).padStart(2, '0')
+  const minutes = String(totalMinutes % 60).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+async function loadCurrentResourcePackInfo() {
+  resourcePackInfo.value = await loadMinecraftResourcePack(getCurrentRouteScope())
+}
+
+async function handleResourcePackFileSelect(event) {
+  const file = event.target?.files?.[0]
+  if (!file) {
+    return
+  }
+
+  isSavingResourcePack.value = true
+  try {
+    resourcePackInfo.value = await saveMinecraftResourcePackFile(file, getCurrentRouteScope())
+    emitter.emit('minecraft:resource-pack-changed', {
+      ...getCurrentRouteScope(),
+      fileName: resourcePackInfo.value?.fileName || file.name,
+    })
+    setStatus(`已激活资源包: ${resourcePackInfo.value?.fileName || file.name}`, 'success')
+  }
+  catch (error) {
+    setStatus(`资源包导入失败: ${error?.message || 'unknown_error'}`, 'warning')
+  }
+  finally {
+    isSavingResourcePack.value = false
+    event.target.value = ''
+  }
+}
+
+async function clearCurrentResourcePack() {
+  await clearMinecraftResourcePack(getCurrentRouteScope())
+  await loadCurrentResourcePackInfo()
+  emitter.emit('minecraft:resource-pack-changed', getCurrentRouteScope())
+  setStatus('已恢复内置 Minecraft 资源包', 'neutral')
 }
 
 function setAdminLanguage(lang) {
@@ -368,6 +445,7 @@ function clearSchematicFile({ withStatus = true } = {}) {
   schematicObject.value = null
   schematicPreview.value = null
   schematicProjectionName.value = ''
+  schematicVisibility.value = 'public'
   schematicOffsetY.value = 0
   schematicSpawnLift.value = 2
   clearAdminSchematicFile(currentAccountId.value || '')
@@ -420,6 +498,18 @@ async function applySchematic() {
     isApplying.value = true
 
     try {
+      let thumbnailDataUrl = ''
+      try {
+        thumbnailDataUrl = await schematicRendererCanvasRef.value?.capturePreviewThumbnail?.({
+          width: 640,
+          height: 360,
+          quality: 0.82,
+        }) || ''
+      }
+      catch {
+        thumbnailDataUrl = ''
+      }
+
       // 创建 Gallery Item
       const payload = await createGalleryItem({
         spaceName,
@@ -435,6 +525,8 @@ async function applySchematic() {
             z: 0,
           },
         },
+        visibility: schematicVisibility.value,
+        thumbnailDataUrl,
         projectionName: sanitizedProjectionName.value,
         session,
       })
@@ -653,6 +745,7 @@ onMounted(async () => {
   emitter.on('schematic:apply-progress', onSchematicApplyProgress)
 
   await restorePersistedSchematic()
+  await loadCurrentResourcePackInfo()
 
   if (isAuthenticated.value) {
     await loadCurrentConfig()
@@ -836,10 +929,10 @@ onBeforeUnmount(() => {
               </div>
             </label>
             <label>
-              环境光
+              当前时间
               <div class="range-wrap">
-                <input v-model.number="configDraft.settings.environment.ambientIntensity" min="0" max="3" step="0.05" type="range">
-                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.ambientIntensity, 3, 2) }}</span>
+                <input v-model.number="configDraft.settings.environment.timeOfDay" min="0" max="1" step="0.001" type="range">
+                <span class="slider-value">{{ formatTimeOfDayLabel(configDraft.settings.environment.timeOfDay) }}</span>
               </div>
             </label>
             <label>
@@ -848,6 +941,23 @@ onBeforeUnmount(() => {
                 <input v-model.number="configDraft.settings.environment.fogDensity" min="0" max="0.05" step="0.001" type="range">
                 <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.fogDensity, 0.05, 3) }}</span>
               </div>
+            </label>
+          </div>
+          <div class="setting-row grid-three">
+            <label>
+              环境光
+              <div class="range-wrap">
+                <input v-model.number="configDraft.settings.environment.ambientIntensity" min="0" max="3" step="0.05" type="range">
+                <span class="slider-value">{{ formatSliderDisplay(configDraft.settings.environment.ambientIntensity, 3, 2) }}</span>
+              </div>
+            </label>
+            <label class="toggle-field">
+              时间流逝
+              <span><input v-model="configDraft.settings.environment.timeAutoPlay" type="checkbox"> 自动推进昼夜循环</span>
+            </label>
+            <label>
+              天空模式
+              <input :value="configDraft.settings.environment.skyMode" readonly type="text">
             </label>
           </div>
           <div class="setting-row setting-row-spacer-top">
@@ -889,6 +999,34 @@ onBeforeUnmount(() => {
                 @click="configDraft.settings.environment.skyMode = option"
               >
                 {{ option }}
+              </button>
+            </div>
+          </div>
+
+          <div class="subsection-title">
+            Minecraft 资源包
+          </div>
+          <div class="setting-row">
+            <input
+              :disabled="isSavingResourcePack"
+              accept=".zip,.mcpack,.pack"
+              type="file"
+              @change="handleResourcePackFileSelect"
+            >
+          </div>
+          <div class="setting-row resource-pack-row">
+            <div class="resource-pack-card">
+              <strong>{{ resourcePackInfo?.fileName || '当前使用内置 Minecraft 资源包' }}</strong>
+              <span v-if="resourcePackInfo">
+                {{ ((resourcePackInfo.size || 0) / 1024 / 1024).toFixed(2) }} MB · {{ new Date(resourcePackInfo.updatedAt || Date.now()).toLocaleString('zh-CN', { hour12: false }) }}
+              </span>
+              <span v-else>
+                上传后会同时影响管理页预览和进入世界后的建筑材质。
+              </span>
+            </div>
+            <div class="preview-actions-right">
+              <button class="btn ghost" :disabled="!resourcePackInfo" @click="clearCurrentResourcePack">
+                恢复内置资源包
               </button>
             </div>
           </div>
@@ -964,6 +1102,21 @@ onBeforeUnmount(() => {
               </label>
             </div>
 
+            <div class="setting-row">
+              <span class="row-label">创建后可见性</span>
+              <div class="option-group">
+                <button
+                  v-for="option in projectionVisibilityOptions"
+                  :key="`projection-visibility-${option.value}`"
+                  class="option-btn"
+                  :class="{ active: schematicVisibility === option.value }"
+                  @click="schematicVisibility = option.value"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+
             <div class="setting-row grid-three">
               <label>投影 Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
               <label>投影 Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
@@ -972,7 +1125,9 @@ onBeforeUnmount(() => {
 
             <div class="setting-row schematic-preview-row">
               <SchematicRendererCanvas
+                ref="schematicRendererCanvasRef"
                 v-if="schematicObject"
+                :resource-pack-signature="resourcePackSignature"
                 :schematic="schematicObject"
                 :source-file="schematicSourceFile"
                 :preview-offset="{ x: 0, y: schematicOffsetY, z: 0 }"
@@ -983,6 +1138,10 @@ onBeforeUnmount(() => {
                 {{ isParsingSchematic ? '正在解析原理图...' : '暂无可渲染的原理图' }}
               </div>
             </div>
+
+            <p class="schematic-preview-hint">
+              {{ schematicVisibility === 'private' ? '私有投影仅当前 Space 管理者可见。' : '公开投影在退出登录后仍然可见。' }}
+            </p>
 
             <p class="schematic-preview-hint">
               鼠标移到高亮方块后双击，可直接把该方块上方设置为出生点；选中的方块会保持绿色半透明标记。
@@ -1516,6 +1675,40 @@ input::placeholder {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.toggle-field span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #e2e8f0;
+}
+
+.resource-pack-row {
+  align-items: stretch;
+}
+
+.resource-pack-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 68px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.resource-pack-card strong {
+  color: #e5e7eb;
+  font-size: 14px;
+}
+
+.resource-pack-card span {
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 @media (max-width: 980px) {
