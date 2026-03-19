@@ -674,10 +674,6 @@ async function renderCurrentSchematic() {
       throw new Error('真实渲染需要原始投影文件，请重新上传或重新打开带源文件的作品。')
     }
 
-    if (/\.schem$/iu.test(sourcePayload.name)) {
-      throw new Error('当前真实预览暂只支持 .litematic；.schem 文件仍可上传并进入世界。')
-    }
-
     setPreparingState(
       '正在启动渲染器',
       `${sourcePayload.name} 已就绪，正在初始化 schematic-renderer。`,
