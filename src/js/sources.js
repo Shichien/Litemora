@@ -298,52 +298,52 @@ const sources = [
   {
     name: 'destroy_stage_0',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_0.png',
+      path: 'textures/destroy/destroy_stage_0.webp',
   },
   {
     name: 'destroy_stage_1',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_1.png',
+      path: 'textures/destroy/destroy_stage_1.webp',
   },
   {
     name: 'destroy_stage_2',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_2.png',
+      path: 'textures/destroy/destroy_stage_2.webp',
   },
   {
     name: 'destroy_stage_3',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_3.png',
+      path: 'textures/destroy/destroy_stage_3.webp',
   },
   {
     name: 'destroy_stage_4',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_4.png',
+      path: 'textures/destroy/destroy_stage_4.webp',
   },
   {
     name: 'destroy_stage_5',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_5.png',
+      path: 'textures/destroy/destroy_stage_5.webp',
   },
   {
     name: 'destroy_stage_6',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_6.png',
+      path: 'textures/destroy/destroy_stage_6.webp',
   },
   {
     name: 'destroy_stage_7',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_7.png',
+      path: 'textures/destroy/destroy_stage_7.webp',
   },
   {
     name: 'destroy_stage_8',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_8.png',
+      path: 'textures/destroy/destroy_stage_8.webp',
   },
   {
     name: 'destroy_stage_9',
     type: 'texture',
-    path: 'textures/destroy/destroy_stage_9.png',
+      path: 'textures/destroy/destroy_stage_9.webp',
   },
 ]
 

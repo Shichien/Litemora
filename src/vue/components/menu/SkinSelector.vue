@@ -341,7 +341,7 @@ watch(
 .anim-icon {
   width: 32px;
   height: 32px;
-  background-image: url('/textures/btns/buttons.png');
+  background-image: url('/textures/btns/buttons.webp');
   background-repeat: no-repeat;
   background-size: 900% 100%;
   image-rendering: pixelated;

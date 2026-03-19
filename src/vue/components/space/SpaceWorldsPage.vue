@@ -11,7 +11,7 @@ import {
   fetchGallery,
 } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
-import { buildSpaceProjectionUrl } from '@three/utils/space-context.js'
+import { buildSpaceProjectionUrl, buildSpaceWorldsAdminUrl } from '@three/utils/space-context.js'
 import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -44,7 +44,11 @@ const authMenuOpen = ref(false)
 const authMenuRef = ref(null)
 
 function openAdminConfigPage() {
-  window.location.hash = '#admin-config'
+  if (!props.spaceName) {
+    return
+  }
+
+  navigateToUrl(buildSpaceWorldsAdminUrl(props.spaceName))
 }
 
 const viewerDisplayName = computed(() => {
@@ -98,7 +102,7 @@ function openProjectionSettings(item) {
     return
   }
 
-  navigateToUrl(`${buildSpaceProjectionUrl(props.spaceName, routeId)}#admin-config`)
+  navigateToUrl(buildSpaceWorldsAdminUrl(props.spaceName, routeId))
 }
 
 function resolveProjectionThumbnailAsset(item) {
@@ -464,8 +468,8 @@ onBeforeUnmount(() => {
                 </svg>
               </div>
               <div class="world-card-content">
-                <h3 class="world-title">添加第一个投影</h3>
-                <p class="world-desc">点击进入管理员配置页，导入 .litematic 或 .schem 并创建第一个世界</p>
+                <h3 class="world-title">创建新的投影</h3>
+                <p class="world-desc">点击开始上传 .litematic 或 .schem，并创建这个 Space 的第一个投影</p>
               </div>
             </article>
           </div>
@@ -485,8 +489,8 @@ onBeforeUnmount(() => {
                 </svg>
               </div>
               <div class="world-card-content">
-                <h3 class="world-title">管理员配置</h3>
-                <p class="world-desc">点击打开完整的管理员配置页面</p>
+                <h3 class="world-title">创建新的投影</h3>
+                <p class="world-desc">点击上传新的原理图投影，并为它配置公开性与世界参数</p>
               </div>
             </article>
 
@@ -557,7 +561,7 @@ onBeforeUnmount(() => {
                     type="button"
                     class="btn-settings"
                     title="世界设置"
-                    @click="openProjectionSettings(item)"
+                    @click.stop.prevent="openProjectionSettings(item)"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82 2 2 0 1 1-2.83 2.83 1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 2 2 0 1 1-4 0 1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33 2 2 0 1 1-2.83-2.83 1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 2 2 0 1 1 0-4 1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82 2 2 0 1 1 2.83-2.83 1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 2.6a2 2 0 1 1 4 0 1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33 2 2 0 1 1 2.83 2.83 1.65 1.65 0 0 0-.33 1.82v.01A1.65 1.65 0 0 0 21.4 10a2 2 0 1 1 0 4 1.65 1.65 0 0 0-1.51 1Z"></path></svg>
                     <span>设置</span>
@@ -567,7 +571,7 @@ onBeforeUnmount(() => {
                     type="button"
                     class="btn-delete"
                     title="删除"
-                    @click="pendingDeleteItemId = item.id"
+                    @click.stop.prevent="pendingDeleteItemId = item.id"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                   </button>
@@ -575,7 +579,7 @@ onBeforeUnmount(() => {
                     v-else
                     type="button"
                     class="btn-delete-confirm"
-                    @click="handleDeleteProjection(item)"
+                    @click.stop.prevent="handleDeleteProjection(item)"
                   >
                     确认删除
                   </button>

@@ -102,12 +102,21 @@ export function getSpaceProjectionIdFromPathname(pathname = window.location.path
   return String(decodeURIComponent(segments[2] || '')).trim()
 }
 
+export function getWorldsProjectionIdFromSearch(search = window.location.search, pathname = window.location.pathname) {
+  if (!isSpaceWorldsRoute(pathname)) {
+    return ''
+  }
+
+  const projectionId = String(new URLSearchParams(search).get('projection') || '').trim()
+  return projectionId
+}
+
 export function isSpaceProjectionRoute(pathname = window.location.pathname) {
   return !!getSpaceProjectionIdFromPathname(pathname)
 }
 
-export function getActiveProjectionId() {
-  return getSpaceProjectionIdFromPathname()
+export function getActiveProjectionId(pathname = window.location.pathname, search = window.location.search) {
+  return getSpaceProjectionIdFromPathname(pathname) || getWorldsProjectionIdFromSearch(search, pathname)
 }
 
 export function getActiveSpaceName() {
@@ -146,6 +155,16 @@ export function buildSpaceWorldsUrl(spaceName) {
   const url = new URL(window.location.origin)
   url.pathname = `/${normalized}/worlds`
   url.search = ''
+  return url.toString()
+}
+
+export function buildSpaceWorldsAdminUrl(spaceName, projectionId = '') {
+  const url = new URL(buildSpaceWorldsUrl(spaceName))
+  const normalizedProjectionId = String(projectionId || '').trim()
+  if (normalizedProjectionId) {
+    url.searchParams.set('projection', normalizedProjectionId)
+  }
+  url.hash = 'admin-config'
   return url.toString()
 }
 

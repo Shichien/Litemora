@@ -12,7 +12,7 @@ export const SKIN_LIST = [
     name: 'Steve',
     nameKey: 'skin.steve', // i18n key
     modelPath: 'models/character/steve.glb',
-    thumbnail: 'textures/skins/steve-thumb.png',
+    thumbnail: 'textures/skins/steve-thumb.webp',
     // 来源: https://www.planetminecraft.com/member/hibiki_ekko/
   },
   {
@@ -20,7 +20,7 @@ export const SKIN_LIST = [
     name: 'Alex',
     nameKey: 'skin.alex',
     modelPath: 'models/character/alex.glb',
-    thumbnail: 'textures/skins/alex-thumb.png',
+    thumbnail: 'textures/skins/alex-thumb.webp',
     // 来源: https://www.planetminecraft.com/member/hibiki_ekko/
   },
   {
@@ -28,7 +28,7 @@ export const SKIN_LIST = [
     name: 'Classic',
     nameKey: 'skin.player',
     modelPath: 'models/character/player.glb',
-    thumbnail: 'textures/skins/player-thumb.png',
+    thumbnail: 'textures/skins/player-thumb.webp',
     // 来源: https://www.minecraftskins.com/profile/5521971/holland0519
   },
 ].map(skin => ({

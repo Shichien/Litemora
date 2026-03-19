@@ -6,7 +6,14 @@ import {
   signInWithPassword,
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
-import { getActiveProjectionId, getActiveSpaceName, buildSpaceProjectionUrl } from '@three/utils/space-context.js'
+import {
+  buildSpaceProjectionUrl,
+  buildSpaceWorldsAdminUrl,
+  buildSpaceWorldsUrl,
+  getActiveProjectionId,
+  getActiveSpaceName,
+  isSpaceProjectionRoute,
+} from '@three/utils/space-context.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
 import {
   checkProjectionNameAvailability,
@@ -41,6 +48,8 @@ import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanva
 
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
+const DEFAULT_PROJECTION_SPAWN_LIFT = 2
+
 const authProviders = getAuthProviders()
 const authSession = ref(loadAdminAuthSession())
 const isAuthenticating = ref(false)
@@ -71,9 +80,7 @@ const schematicProjectionName = ref('')
 const schematicVisibility = ref('public')
 const isParsingSchematic = ref(false)
 const schematicOffsetY = ref(0)
-const schematicSpawnLift = ref(2)
 const schematicApplyProgress = ref(null)
-const schematicImportLogs = ref([])
 const resourcePackInfo = ref(null)
 const isSavingResourcePack = ref(false)
 const schematicRendererCanvasRef = ref(null)
@@ -100,16 +107,8 @@ const isDirty = computed(() => {
   return normalizedSnapshot.value !== lastSavedSnapshot.value
 })
 
-const schematicYStats = computed(() => {
-  return schematicPreview.value?.yStats || null
-})
-
-const schematicBounds = computed(() => {
-  return schematicPreview.value?.bounds || null
-})
-
 const schematicPlacedBounds = computed(() => {
-  const bounds = schematicBounds.value
+  const bounds = schematicPreview.value?.bounds
   if (!bounds || bounds.minX === null || bounds.maxX === null) {
     return null
   }
@@ -120,6 +119,18 @@ const schematicPlacedBounds = computed(() => {
     minY: bounds.minY + yOffset,
     maxY: bounds.maxY + yOffset,
   }
+})
+
+const formattedProjectionSpawnPoint = computed(() => {
+  const spawnPoint = configDraft.value?.player?.spawnPoint || {}
+  const parts = ['x', 'y', 'z'].map((axis) => {
+    const value = Number(spawnPoint[axis])
+    if (!Number.isFinite(value)) {
+      return '0'
+    }
+    return Number(value.toFixed(2)).toString()
+  })
+  return `(${parts.join(', ')})`
 })
 
 const sanitizedProjectionName = computed(() => sanitizeProjectionNameInput(schematicProjectionName.value))
@@ -184,6 +195,12 @@ function markSaved(config) {
 }
 
 function backToGame() {
+  const spaceName = getActiveSpaceName()
+  if (spaceName && !isSpaceProjectionRoute()) {
+    navigateToUrl(buildSpaceWorldsUrl(spaceName), { replace: true })
+    return
+  }
+
   window.location.hash = ''
 }
 
@@ -294,7 +311,7 @@ function logout() {
 }
 
 async function loadCurrentConfig() {
-  const loaded = await loadBackendWorldConfig(currentAccountId.value)
+  const loaded = await loadBackendWorldConfig(currentAccountId.value, getCurrentRouteScope())
   markSaved(loaded)
   setStatus('已读取当前生效配置', 'success')
 }
@@ -352,11 +369,11 @@ async function applyConfig() {
   let saved = null
 
   try {
-    saved = await saveBackendWorldConfigRemote(configDraft.value, currentAccountId.value)
+    saved = await saveBackendWorldConfigRemote(configDraft.value, currentAccountId.value, getCurrentRouteScope())
     setStatus('已保存并应用（服务端已持久化）', 'success')
   }
   catch {
-    saved = saveAdminWorldConfig(configDraft.value, currentAccountId.value)
+    saved = saveAdminWorldConfig(configDraft.value, currentAccountId.value, getCurrentRouteScope())
     setStatus('服务端保存失败，已回退到本地保存并应用', 'warning')
   }
 
@@ -432,27 +449,10 @@ function clearSchematicFile({ withStatus = true } = {}) {
   schematicProjectionName.value = ''
   schematicVisibility.value = 'public'
   schematicOffsetY.value = 0
-  schematicSpawnLift.value = 2
   clearAdminSchematicFile(currentAccountId.value || '')
   if (withStatus) {
     setStatus('已清除原理图', 'neutral')
   }
-}
-
-function appendSchematicImportLog(entry) {
-  const logEntry = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-    ...entry,
-  }
-  schematicImportLogs.value.unshift(logEntry)
-  if (schematicImportLogs.value.length > 30) {
-    schematicImportLogs.value.length = 30
-  }
-}
-
-function clearSchematicImportLogs() {
-  schematicImportLogs.value = []
 }
 
 async function applySchematic() {
@@ -464,7 +464,13 @@ async function applySchematic() {
   // 检查是否在投影视图中
   const spaceName = getActiveSpaceName()
   const projectionId = getActiveProjectionId()
-  const isInProjection = !!(spaceName && projectionId)
+  const isInProjection = isSpaceProjectionRoute()
+
+  if (!isInProjection && spaceName && projectionId) {
+    setStatus('当前在投影设置页，正在进入该投影以应用原理图...', 'neutral')
+    navigateToUrl(`${buildSpaceProjectionUrl(spaceName, projectionId)}#admin-config`)
+    return
+  }
 
   // 如果不在投影视图，先创建 Gallery Item 然后跳转
   if (!isInProjection) {
@@ -554,9 +560,8 @@ async function applySchematic() {
           markSaved(savedProjectionConfig)
         }
 
-        setStatus('投影已创建，正在进入...', 'success')
-        // 跳转到新创建的投影视图（直接进入游戏，World 会在 bootstrap 时自动应用原理图）
-        const targetUrl = buildSpaceProjectionUrl(spaceName, projectionRouteId)
+        setStatus('投影已创建，可继续设置或稍后进入世界。', 'success')
+        const targetUrl = buildSpaceWorldsAdminUrl(spaceName, projectionRouteId)
         navigateToUrl(targetUrl)
         return
       }
@@ -631,18 +636,6 @@ async function applySchematic() {
         `应用完成：放置 ${result.placed}，替换 ${result.replaced}，跳过 ${result.skipped}（其中越界 ${result.skippedOutOfHeight || 0}），渲染模式 ${renderMode}，注意最小Y=${minPlacedY} 低于 0`,
         'warning',
       )
-      appendSchematicImportLog({
-        level: 'warning',
-        summary: `导入完成（Y 越界警告）: ${renderMode}`,
-        details: {
-          placed: result.placed,
-          replaced: result.replaced,
-          skipped: result.skipped,
-          skippedOutOfHeight: result.skippedOutOfHeight || 0,
-          touchedChunks: result.touchedChunks,
-          importedChunkCount,
-        },
-      })
       return
     }
 
@@ -662,26 +655,9 @@ async function applySchematic() {
     if (!persistenceSaved) {
       setStatus('应用完成但远端持久化失败（请检查 KV 写入限制/绑定）', 'warning')
     }
-    appendSchematicImportLog({
-      level: 'success',
-      summary: `导入完成: ${renderMode}`,
-      details: {
-        placed: result.placed,
-        replaced: result.replaced,
-        skipped: result.skipped,
-        touchedChunks: result.touchedChunks,
-        importedChunkCount,
-        spawnPoint: result?.spawnPoint || null,
-      },
-    })
   }
   catch (error) {
     setStatus(`应用失败: ${error.message}`, 'warning')
-    appendSchematicImportLog({
-      level: 'error',
-      summary: `导入失败: ${error.message}`,
-      details: null,
-    })
   }
   finally {
     isApplying.value = false
@@ -708,10 +684,9 @@ function setProjectionSpawnPreset() {
     return
   }
 
-  const lift = Number(schematicSpawnLift.value) || 0
   const spawnPoint = {
     x: Number((((bounds.minX + bounds.maxX) * 0.5)).toFixed(2)),
-    y: Number((bounds.maxY + 0.5 + lift).toFixed(2)),
+    y: Number((bounds.maxY + 0.5 + DEFAULT_PROJECTION_SPAWN_LIFT).toFixed(2)),
     z: Number((((bounds.minZ + bounds.maxZ) * 0.5)).toFixed(2)),
   }
 
@@ -729,11 +704,10 @@ function setProjectionSpawnFromPreviewBlock(payload) {
     return
   }
 
-  const lift = Number(schematicSpawnLift.value) || 0
   const yOffset = Number(schematicOffsetY.value) || 0
   const spawnPoint = {
     x: Number(x.toFixed(2)),
-    y: Number((y + yOffset + 0.5 + lift).toFixed(2)),
+    y: Number((y + yOffset + 0.5 + DEFAULT_PROJECTION_SPAWN_LIFT).toFixed(2)),
     z: Number(z.toFixed(2)),
   }
 
@@ -857,11 +831,6 @@ onBeforeUnmount(() => {
 
         <section class="setting-section">
           <h3>玩家设置</h3>
-          <div class="setting-row grid-three">
-            <label>Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
-            <label>Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
-            <label>Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
-          </div>
           <div class="setting-row">
             <label class="full">
               视距
@@ -1047,48 +1016,11 @@ onBeforeUnmount(() => {
                 >
               </div>
               <div v-if="schematicPreview">
-                <strong>名称:</strong> {{ schematicPreview.name }}
-              </div>
-              <div v-if="schematicPreview">
                 <strong>作者:</strong> {{ schematicPreview.author }}
-              </div>
-              <div v-if="schematicPreview">
-                <strong>大小:</strong> {{ schematicPreview.size.x }} × {{ schematicPreview.size.y }} × {{ schematicPreview.size.z }}
               </div>
               <div v-if="schematicPreview">
                 <strong>方块数:</strong> {{ schematicPreview.blockCount }}
               </div>
-              <div v-if="schematicYStats">
-                <strong>Y 范围:</strong> {{ schematicYStats.minY ?? '-' }} ~ {{ schematicYStats.maxY ?? '-' }}
-              </div>
-              <div v-if="schematicYStats?.hasBlocksBelowZero">
-                <strong>Y &lt; 0 方块:</strong> {{ schematicYStats.blocksBelowZero }}
-              </div>
-            </div>
-
-            <div class="setting-row grid-three">
-              <label>
-                偏移 Y
-                <div class="range-wrap">
-                  <input v-model.number="schematicOffsetY" min="-64" max="128" step="1" type="range">
-                  <span class="slider-value">{{ formatSliderDisplay(schematicOffsetY, 128) }}</span>
-                </div>
-              </label>
-              <label>
-                出生点抬升
-                <div class="range-wrap">
-                  <input v-model.number="schematicSpawnLift" min="0" max="24" step="0.5" type="range">
-                  <span class="slider-value">{{ formatSliderDisplay(schematicSpawnLift, 24, 1) }}</span>
-                </div>
-              </label>
-              <label>
-                当前投影边界
-                <input
-                  :value="schematicPlacedBounds ? `X ${schematicPlacedBounds.minX} ~ ${schematicPlacedBounds.maxX} / Y ${schematicPlacedBounds.minY} ~ ${schematicPlacedBounds.maxY} / Z ${schematicPlacedBounds.minZ} ~ ${schematicPlacedBounds.maxZ}` : '等待可渲染原理图'"
-                  readonly
-                  type="text"
-                >
-              </label>
             </div>
 
             <div class="setting-row">
@@ -1106,25 +1038,42 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="setting-row grid-three">
-              <label>投影 Spawn X <input v-model.number="configDraft.player.spawnPoint.x" type="number"></label>
-              <label>投影 Spawn Y <input v-model.number="configDraft.player.spawnPoint.y" type="number"></label>
-              <label>投影 Spawn Z <input v-model.number="configDraft.player.spawnPoint.z" type="number"></label>
+            <div class="setting-row">
+              <label class="full">
+                SpawnPoint
+                <input :value="formattedProjectionSpawnPoint" readonly type="text">
+              </label>
             </div>
 
             <div class="setting-row schematic-preview-row">
-              <SchematicRendererCanvas
-                ref="schematicRendererCanvasRef"
-                v-if="schematicObject"
-                :resource-pack-signature="resourcePackSignature"
-                :schematic="schematicObject"
-                :source-file="schematicSourceFile"
-                :preview-offset="{ x: 0, y: schematicOffsetY, z: 0 }"
-                empty-label="真实渲染预览会显示在这里"
-                @block-picked="setProjectionSpawnFromPreviewBlock"
-              />
-              <div v-else class="schematic-preview-placeholder">
-                {{ isParsingSchematic ? '正在解析原理图...' : '暂无可渲染的原理图' }}
+              <div class="schematic-preview-stage">
+                <div class="preview-offset-overlay">
+                  <span class="preview-offset-label">偏移 Y</span>
+                  <div class="preview-offset-slider">
+                    <input
+                      v-model.number="schematicOffsetY"
+                      class="vertical-range"
+                      min="-64"
+                      max="128"
+                      step="1"
+                      type="range"
+                    >
+                    <span class="preview-offset-value">{{ formatSliderValue(schematicOffsetY) }}</span>
+                  </div>
+                </div>
+                <SchematicRendererCanvas
+                  ref="schematicRendererCanvasRef"
+                  v-if="schematicObject"
+                  :resource-pack-signature="resourcePackSignature"
+                  :schematic="schematicObject"
+                  :source-file="schematicSourceFile"
+                  :preview-offset="{ x: 0, y: schematicOffsetY, z: 0 }"
+                  empty-label="真实渲染预览会显示在这里"
+                  @block-picked="setProjectionSpawnFromPreviewBlock"
+                />
+                <div v-else class="schematic-preview-placeholder">
+                  {{ isParsingSchematic ? '正在解析原理图...' : '暂无可渲染的原理图' }}
+                </div>
               </div>
             </div>
 
@@ -1158,42 +1107,6 @@ onBeforeUnmount(() => {
               </div>
               <div class="schematic-progress-meta">
                 {{ schematicApplyProgress.processedBlocks || 0 }} / {{ schematicApplyProgress.totalBlocks || 0 }}
-              </div>
-            </div>
-
-            <div class="schematic-console">
-              <div class="schematic-console-head">
-                <strong>导入控制台</strong>
-                <div class="preview-actions-right">
-                  <span class="schematic-console-count">{{ schematicImportLogs.length }} 条</span>
-                  <button class="btn ghost" @click="clearSchematicImportLogs">
-                    清空日志
-                  </button>
-                </div>
-              </div>
-
-              <div v-if="!schematicImportLogs.length" class="schematic-console-empty">
-                还没有导入日志，应用原理图后会在这里显示导入结果。
-              </div>
-
-              <div v-else class="schematic-console-list">
-                <div
-                  v-for="log in schematicImportLogs"
-                  :key="log.id"
-                  class="schematic-console-item"
-                  :class="`is-${log.level}`"
-                >
-                  <div class="schematic-console-item-head">
-                    <span class="time">{{ log.timestamp }}</span>
-                    <span class="level">{{ log.level }}</span>
-                  </div>
-                  <div class="summary">
-                    {{ log.summary }}
-                  </div>
-                  <div v-if="log.details" class="details">
-                    放置 {{ log.details.placed || 0 }} · 替换 {{ log.details.replaced || 0 }} · 跳过 {{ log.details.skipped || 0 }} · 区块 {{ log.details.touchedChunks || 0 }}
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -1732,6 +1645,57 @@ input::placeholder {
   margin-top: 12px;
 }
 
+.schematic-preview-stage {
+  position: relative;
+  width: min(100%, 960px);
+  margin: 0 auto;
+}
+
+.preview-offset-overlay {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.preview-offset-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+
+.preview-offset-slider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.preview-offset-slider input[type='range'].vertical-range {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 22px;
+  height: 180px;
+  flex: none;
+}
+
+.preview-offset-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+}
+
 .schematic-progress {
   margin-top: 10px;
   padding: 8px 10px;
@@ -1777,9 +1741,8 @@ input::placeholder {
   align-items: center;
   justify-content: center;
   min-height: 320px;
-  width: 50%;
-  min-width: 320px;
-  margin: 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .schematic-preview-hint {
@@ -1794,105 +1757,6 @@ input::placeholder {
   padding: 8px 12px;
   border-radius: 6px;
   border: 1px solid rgba(251, 191, 36, 0.2);
-}
-
-.schematic-console {
-  margin-top: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.45);
-  padding: 10px;
-}
-
-.schematic-console-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #e2e8f0;
-}
-
-.schematic-console-count {
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-.schematic-console-empty {
-  margin-top: 8px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.schematic-console-list {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 260px;
-  overflow: auto;
-  padding-right: 4px;
-}
-
-.schematic-console-item {
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 8px;
-  padding: 8px;
-  background: rgba(30, 41, 59, 0.45);
-}
-
-.schematic-console-item.is-success {
-  border-color: rgba(34, 197, 94, 0.45);
-}
-
-.schematic-console-item.is-warning {
-  border-color: rgba(245, 158, 11, 0.55);
-}
-
-.schematic-console-item.is-error {
-  border-color: rgba(239, 68, 68, 0.55);
-}
-
-.schematic-console-item-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.schematic-console-item-head .level {
-  text-transform: uppercase;
-}
-
-.schematic-console-item .summary {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #e2e8f0;
-}
-
-.schematic-console-item .details {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-.schematic-console-item .textures {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #cbd5e1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.texture-chip {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.5);
-  border-radius: 999px;
-  padding: 2px 8px;
 }
 
 input[type='file'] {

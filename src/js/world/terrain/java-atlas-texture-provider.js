@@ -3,7 +3,7 @@ import { javaAtlasBlockTextureRects } from '../../generated/java-atlas-textures.
 import emitter from '../../utils/event/event-bus.js'
 
 const ATLAS_VIRTUAL_PREFIX = 'atlas:'
-const ATLAS_IMAGE_URL = '/textures/litematic/atlas.png'
+const ATLAS_IMAGE_URL = '/textures/litematic/atlas.webp'
 
 const LEGACY_TEXTURE_ALIAS_TO_ATLAS_RECT = {
   allium_plant_Texture: 'block/allium',

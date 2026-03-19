@@ -285,7 +285,7 @@ const discoverSpaces = [
     <!-- Hero Content -->
     <section class="hero-content">
       <h1 class="hero-title">
-        <img src="/logo.png" alt="" class="hero-title-icon" />
+                <img src="/logo.webp" alt="" class="hero-title-icon" />
         Litemora
       </h1>
       <p class="hero-subtitle">{{ t('home.hero.subtitle') }}</p>
