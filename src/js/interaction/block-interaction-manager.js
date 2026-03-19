@@ -11,6 +11,30 @@ import {
 import { buildMinecraftInteractableToggleUpdates } from '../world/terrain/minecraft-interactive-blocks.js'
 import { ensureDynamicBlockType, getBlockTypeById } from '../world/terrain/blocks-config.js'
 
+function buildMinecraftBlockString(blockName = '', properties = {}) {
+  const normalizedBlockName = String(blockName || '')
+    .trim()
+    .replace(/^minecraft:/u, '')
+
+  const entries = Object.entries(properties || {})
+    .filter(([key, value]) => key && value !== undefined && value !== null && String(value).trim())
+    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+
+  if (!normalizedBlockName) {
+    return ''
+  }
+
+  if (!entries.length) {
+    return `minecraft:${normalizedBlockName}`
+  }
+
+  const serialized = entries
+    .map(([key, value]) => `${key}=${String(value).trim()}`)
+    .join(',')
+
+  return `minecraft:${normalizedBlockName}[${serialized}]`
+}
+
 /**
  * BlockInteractionManager
  * - Manages the current interaction mode (Add vs Remove)
@@ -116,7 +140,7 @@ export default class BlockInteractionManager {
       worldZ: target.worldBlock.z,
       blockName: minecraftBlock?.name || target.blockName,
       properties: minecraftBlock?.properties || {},
-      getBlockAt: (x, y, z) => this.chunkManager?.minecraftSchematicLayer?.getBlock?.(x, y, z),
+      getBlockAt: (x, y, z) => this.chunkManager?.getImportedMinecraftBlockWorld?.(x, y, z),
     })
 
     if (!updates.length) {
@@ -124,7 +148,18 @@ export default class BlockInteractionManager {
     }
 
     let changed = false
+    const affectedBlockStates = new Set()
+    const appliedUpdates = []
     for (const update of updates) {
+      const previousEntry = this.chunkManager?.getImportedMinecraftBlockWorld?.(
+        update.x,
+        update.y,
+        update.z,
+        { includeTransientRemoved: true },
+      )
+      const previousBlockString = buildMinecraftBlockString(previousEntry?.blockName, previousEntry?.properties)
+      const nextBlockString = buildMinecraftBlockString(update.blockName, update.properties)
+
       const nextEntry = this.chunkManager.setImportedMinecraftBlock(
         update.x,
         update.y,
@@ -133,6 +168,21 @@ export default class BlockInteractionManager {
         update.properties,
       )
       changed = changed || !!nextEntry
+      if (previousBlockString) {
+        affectedBlockStates.add(previousBlockString)
+      }
+      if (nextBlockString) {
+        affectedBlockStates.add(nextBlockString)
+      }
+      appliedUpdates.push({
+        x: update.x,
+        y: update.y,
+        z: update.z,
+        blockName: update.blockName,
+        properties: { ...update.properties },
+        previousBlockString,
+        nextBlockString,
+      })
     }
 
     if (!changed) {
@@ -147,13 +197,8 @@ export default class BlockInteractionManager {
         name: minecraftBlock?.name || target.blockName || '',
         properties: updates[0]?.properties || {},
       },
-      updates: updates.map(update => ({
-        x: update.x,
-        y: update.y,
-        z: update.z,
-        blockName: update.blockName,
-        properties: { ...update.properties },
-      })),
+      updates: appliedUpdates,
+      affectedBlockStates: [...affectedBlockStates],
     })
 
     return true

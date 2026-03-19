@@ -142,6 +142,19 @@ function normalizeVisibility(value) {
   return value === 'private' ? 'private' : 'public'
 }
 
+function normalizeProjectionSlug(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
+    .slice(0, 63)
+}
+
+function resolveProjectionSlug(value = '', fallback = '') {
+  return normalizeProjectionSlug(value) || normalizeProjectionSlug(fallback)
+}
+
 function normalizePlacement(value = null) {
   if (!value || typeof value !== 'object') {
     return null
@@ -223,6 +236,7 @@ export function buildGalleryItemSummary(item) {
   return {
     id: trimString(item?.id),
     title: sanitizeText(item?.title, 160),
+    projectionSlug: sanitizeText(item?.projectionSlug, 80),
     description: sanitizeLongText(item?.description),
     visibility: normalizeVisibility(item?.visibility),
     fileName: sanitizeText(item?.fileName, 240),
@@ -257,7 +271,7 @@ export function normalizeFilePayload(body = {}) {
   }
 
   return {
-    fileName: sanitizeText(body?.fileName, 240) || 'uploaded.litematic',
+    fileName: sanitizeText(body?.fileName, 240) || 'uploaded.schematic',
     mimeType: sanitizeText(body?.mimeType, 120) || 'application/octet-stream',
     fileBase64,
   }
@@ -269,11 +283,13 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
   const schematic = normalizeSchematicSummary(body?.schematic)
   const previewModel = normalizePreviewModel(body?.previewModel)
   const title = sanitizeText(body?.title, 160) || schematic.name || sourceFile.fileName
+  const projectionSlug = resolveProjectionSlug(body?.projectionName, title)
 
   return {
     id: itemId,
     space: spaceName,
     title,
+    projectionSlug,
     description: sanitizeLongText(body?.description),
     visibility: normalizeVisibility(body?.visibility),
     fileName: sourceFile.fileName,
@@ -291,6 +307,19 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
     createdAt: now,
     updatedAt: now,
   }
+}
+
+export function galleryManifestHasProjectionName(manifest, projectionSlug = '') {
+  const normalizedProjectionSlug = normalizeProjectionSlug(projectionSlug)
+  if (!normalizedProjectionSlug) {
+    return false
+  }
+
+  const items = Array.isArray(manifest?.items) ? manifest.items : []
+  return items.some((item) => {
+    const itemSlug = resolveProjectionSlug(item?.projectionSlug, item?.title)
+    return !!itemSlug && itemSlug === normalizedProjectionSlug
+  })
 }
 
 export async function requireGalleryAccount(context) {

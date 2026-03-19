@@ -11,29 +11,14 @@ import {
   claimGallerySpace,
 } from '@three/gallery/gallery-api.js'
 import { buildSpaceUrl, isValidSpaceName, normalizeSpaceName } from '@three/utils/space-context.js'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const authProviders = getAuthProviders()
 const authMenuOpen = ref(false)
 const authSession = ref(loadAdminAuthSession())
 const authMenuRef = ref(null)
-
-// Load saved settings
-onMounted(() => {
-  const saved = localStorage.getItem('mc-game-settings')
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      if (parsed.language) {
-        locale.value = parsed.language
-      }
-    } catch (e) {
-      console.warn('Failed to parse settings', e)
-    }
-  }
-})
 
 function syncAuthSession(event = null) {
   authSession.value = event?.detail?.session || loadAdminAuthSession()
@@ -54,21 +39,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('admin-auth-changed', syncAuthSession)
   document.removeEventListener('click', handleDocumentClick)
 })
-
-// Save settings when they change
-const saveSettings = () => {
-  const saved = localStorage.getItem('mc-game-settings')
-  let parsed = {}
-  if (saved) {
-    try {
-      parsed = JSON.parse(saved)
-    } catch(e){}
-  }
-  parsed.language = locale.value
-  localStorage.setItem('mc-game-settings', JSON.stringify(parsed))
-}
-
-watch(locale, () => { saveSettings() })
 
 // Auth State
 const isAuthenticating = ref(false)
@@ -114,10 +84,6 @@ function logout() {
 
 function toggleAuthMenu() {
   authMenuOpen.value = !authMenuOpen.value
-}
-
-function toggleLanguage() {
-  locale.value = locale.value === 'en' ? 'zh' : 'en'
 }
 
 const inputSpaceName = ref('')
@@ -175,13 +141,24 @@ function providerLabel(provider) {
   return `使用 ${provider.label} 登录`
 }
 
+const heroTiles = [
+  { id: 'sunrise', gradient: 'radial-gradient(circle at 24% 18%, rgba(255, 220, 171, 0.55), transparent 34%), linear-gradient(145deg, #5a3f36 0%, #c07b58 52%, #f8c283 100%)' },
+  { id: 'noon', gradient: 'radial-gradient(circle at 70% 20%, rgba(255, 255, 255, 0.35), transparent 28%), linear-gradient(145deg, #12324a 0%, #4688d0 55%, #c5ebff 100%)' },
+  { id: 'afternoon', gradient: 'radial-gradient(circle at 18% 22%, rgba(255, 210, 150, 0.26), transparent 30%), linear-gradient(145deg, #20364b 0%, #6188a4 52%, #cfb68d 100%)' },
+  { id: 'sunset', gradient: 'radial-gradient(circle at 70% 30%, rgba(255, 180, 115, 0.45), transparent 30%), linear-gradient(145deg, #2f2337 0%, #8b4e42 45%, #f59b5f 100%)' },
+  { id: 'dusk', gradient: 'radial-gradient(circle at 25% 18%, rgba(255, 138, 92, 0.18), transparent 28%), linear-gradient(145deg, #131b2b 0%, #334d6b 44%, #8c5b52 100%)' },
+  { id: 'midnight', gradient: 'radial-gradient(circle at 72% 18%, rgba(162, 194, 255, 0.18), transparent 24%), linear-gradient(145deg, #04070d 0%, #10213c 42%, #22385f 100%)' },
+  { id: 'forest', gradient: 'radial-gradient(circle at 20% 24%, rgba(183, 222, 143, 0.2), transparent 28%), linear-gradient(145deg, #12261f 0%, #355844 48%, #7ea26c 100%)' },
+  { id: 'embers', gradient: 'radial-gradient(circle at 74% 26%, rgba(255, 161, 108, 0.18), transparent 26%), linear-gradient(145deg, #1a1415 0%, #5b342c 46%, #b86b47 100%)' },
+]
+
 const discoverSpaces = [
-  { title: 'Brutalist Library', author: 'By Shichien', url: 'brutalist-library', img: '/textures/background/afternoon.png' },
-  { title: 'Cyberpunk City', author: 'By Litemora Community', url: 'cyber-city', img: '/textures/background/midnight.png' },
-  { title: 'Medieval Castle', author: 'By BuilderXYZ', url: 'medieval', img: '/textures/background/sunset.png' },
-  { title: 'Zen Garden', author: 'By ArchD', url: 'zen-garden', img: '/textures/background/morning.png' },
-  { title: 'Sky Island', author: 'By Aeria', url: 'sky-island', img: '/textures/background/noon.png' },
-  { title: 'Deep Dark City', author: 'By Miner123', url: 'deep-dark', img: '/textures/background/dusk.png' },
+  { title: 'Brutalist Library', author: 'By Shichien', url: 'brutalist-library', gradient: 'linear-gradient(145deg, #1b2734 0%, #43596b 48%, #d8c8aa 100%)' },
+  { title: 'Cyberpunk City', author: 'By Litemora Community', url: 'cyber-city', gradient: 'linear-gradient(145deg, #060b15 0%, #1f3260 44%, #3bc6d8 100%)' },
+  { title: 'Medieval Castle', author: 'By BuilderXYZ', url: 'medieval', gradient: 'linear-gradient(145deg, #1b1616 0%, #6d4531 40%, #d79b61 100%)' },
+  { title: 'Zen Garden', author: 'By ArchD', url: 'zen-garden', gradient: 'linear-gradient(145deg, #12251e 0%, #426e54 44%, #c4d8a7 100%)' },
+  { title: 'Sky Island', author: 'By Aeria', url: 'sky-island', gradient: 'linear-gradient(145deg, #0d2240 0%, #4f86db 48%, #d8f2ff 100%)' },
+  { title: 'Deep Dark City', author: 'By Miner123', url: 'deep-dark', gradient: 'linear-gradient(145deg, #06080c 0%, #24354a 48%, #596d92 100%)' },
 ]
 </script>
 
@@ -190,43 +167,40 @@ const discoverSpaces = [
     <!-- Hero Grid Background -->
     <div class="hero-grid-bg">
       <div class="grid-layer" :style="{ opacity: 0.4 }">
-        <img src="/textures/background/morning.png" class="grid-img img-1" />
-        <img src="/textures/background/noon.png" class="grid-img img-2" />
-        <img src="/textures/background/afternoon.png" class="grid-img img-3" />
-        <img src="/textures/background/sunset.png" class="grid-img img-4" />
-        <img src="/textures/background/dusk.png" class="grid-img img-5" />
-        <img src="/textures/background/midnight.png" class="grid-img img-6" />
-        <img src="/textures/background/sunrise.png" class="grid-img img-7" />
-        <img src="/textures/background/afternoon.png" class="grid-img img-8" />
+        <div
+          v-for="tile in heroTiles"
+          :key="tile.id"
+          class="grid-tile"
+          :style="{ '--tile-gradient': tile.gradient }"
+        />
       </div>
       <div class="gradient-overlay"></div>
     </div>
 
     <!-- Header -->
     <header class="home-header">
-      <div class="header-left">
-        <button @click="toggleLanguage" class="icon-btn lang-btn" title="Toggle Language">
-          {{ locale === 'en' ? '中' : 'EN' }}
-        </button>
-      </div>
+      <div class="header-spacer"></div>
 
       <nav ref="authMenuRef" class="nav-links">
-        <a href="https://github.com/shichien/Litemora" target="_blank" rel="noopener noreferrer" class="icon-btn github-link" title="GitHub">
-          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-          </svg>
-        </a>
-        <div class="divider"></div>
         <div class="auth-popover">
-          <button class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
+          <button type="button" class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
+            <span class="auth-rail" aria-hidden="true">
+              <span class="auth-rail-block wide"></span>
+              <span class="auth-rail-block"></span>
+              <span class="auth-rail-block"></span>
+              <span class="auth-rail-block narrow"></span>
+            </span>
+            <span class="auth-trigger-divider" aria-hidden="true"></span>
             <template v-if="isLoggedIn">
-              <span class="auth-avatar">
-                <img v-if="currentAccountAvatar" :src="currentAccountAvatar" :alt="currentAccountName">
-                <span v-else>{{ currentAccountInitial }}</span>
-              </span>
-              <span class="auth-copy">
-                <strong>{{ currentAccountName }}</strong>
-                <small>{{ currentAccountRole }}</small>
+              <span class="auth-account">
+                <span class="auth-avatar">
+                  <img v-if="currentAccountAvatar" :src="currentAccountAvatar" :alt="currentAccountName">
+                  <span v-else>{{ currentAccountInitial }}</span>
+                </span>
+                <span class="auth-copy">
+                  <strong>{{ currentAccountName }}</strong>
+                  <small>{{ currentAccountRole }}</small>
+                </span>
               </span>
             </template>
             <template v-else>
@@ -243,10 +217,6 @@ const discoverSpaces = [
           <div v-if="authMenuOpen" class="auth-menu">
             <template v-if="isLoggedIn">
               <div class="auth-menu-header">
-                <div class="menu-avatar">
-                  <img v-if="currentAccountAvatar" :src="currentAccountAvatar" :alt="currentAccountName">
-                  <span v-else>{{ currentAccountInitial }}</span>
-                </div>
                 <div class="menu-account-copy">
                   <strong>{{ currentAccountName }}</strong>
                   <span>{{ currentAccountEmail }}</span>
@@ -404,7 +374,7 @@ const discoverSpaces = [
       
       <div class="discover-grid">
         <a v-for="space in discoverSpaces" :key="space.url" :href="`/${space.url}`" class="discover-card">
-          <img :src="space.img" :alt="space.title" class="discover-img" />
+          <div class="discover-art" :style="{ '--discover-gradient': space.gradient }"></div>
           <div class="discover-info">
             <div class="avatar-placeholder"></div>
             <div class="author-info">
@@ -476,11 +446,23 @@ h1, h2, h3, h4, .hero-title, .logo, .step-num {
   transition: opacity 0.4s ease;
 }
 
-.grid-img {
+.grid-tile {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  filter: grayscale(60%) brightness(0.4) saturate(0.8);
+  background: var(--tile-gradient);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  filter: saturate(0.82) brightness(0.52);
+  position: relative;
+  overflow: hidden;
+}
+
+.grid-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    linear-gradient(0deg, rgba(5, 9, 14, 0.46), rgba(5, 9, 14, 0.12));
 }
 
 .gradient-overlay {
@@ -505,17 +487,15 @@ header, section, footer {
 /* Header */
 .home-header {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   padding-top: 2rem;
   padding-bottom: 2rem;
   z-index: 20;
 }
 
-.header-left {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
+.header-spacer {
+  min-height: 1px;
 }
 
 .logo-container {
@@ -541,11 +521,9 @@ header, section, footer {
 
 .nav-links {
   display: flex;
-  gap: 1.5rem;
   align-items: center;
   justify-content: flex-end;
-  justify-self: end;
-  grid-column: 3;
+  gap: 0.8rem;
 }
 
 .nav-links button,
@@ -588,55 +566,21 @@ header, section, footer {
   background-color: #24292e !important;
 }
 
-.divider {
-  width: 1px;
-  height: 16px;
-  background-color: var(--line-color);
-  margin: 0 0.2rem;
-}
-
-.icon-btn {
-  font-size: 1.2rem !important;
-  color: var(--text-main) !important;
-  padding: 0.2rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.github-link {
-  color: var(--text-muted) !important;
-  transition: color 0.3s;
-}
-
-.github-link:hover {
-  color: var(--text-main) !important;
-}
-
-.lang-btn {
-  font-weight: 500;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.95rem !important;
-}
-
 .auth-popover {
   position: relative;
 }
 
 .auth-trigger {
-  min-width: 132px;
+  min-width: 280px;
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.3rem 0.38rem 0.3rem 0.45rem;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  background: rgba(17, 22, 29, 0.84) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  justify-content: flex-start;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0;
+  border: 1px solid rgba(54, 109, 122, 0.2) !important;
+  background: rgba(16, 24, 30, 0.84) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 0 0 1px rgba(11, 39, 46, 0.18);
   color: var(--text-main) !important;
   text-transform: none !important;
   letter-spacing: 0 !important;
@@ -645,13 +589,51 @@ header, section, footer {
 
 .auth-trigger:hover,
 .auth-trigger.active {
-  background: rgba(25, 31, 39, 0.96) !important;
-  border-color: rgba(126, 188, 211, 0.22) !important;
+  background: rgba(19, 31, 38, 0.96) !important;
+  border-color: rgba(94, 151, 165, 0.36) !important;
 }
 
 .auth-trigger-label {
   font-size: 0.92rem;
   font-weight: 500;
+  flex: 1;
+  text-align: left;
+}
+
+.auth-rail {
+  display: inline-grid;
+  grid-template-columns: 1.4fr 1fr 1fr 0.52fr;
+  gap: 0.55rem;
+  align-items: center;
+  min-width: 134px;
+}
+
+.auth-rail-block {
+  height: 3.1rem;
+  border-radius: 0.45rem;
+  background: linear-gradient(180deg, rgba(46, 54, 63, 0.92) 0%, rgba(28, 34, 42, 0.96) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.auth-rail-block.wide {
+  min-width: 4.6rem;
+}
+
+.auth-rail-block.narrow {
+  min-width: 1.3rem;
+}
+
+.auth-trigger-divider {
+  width: 1px;
+  height: 4.3rem;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.auth-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.95rem;
+  min-width: 0;
 }
 
 .auth-trigger-arrow {
@@ -1058,18 +1040,24 @@ header, section, footer {
 .discover-card:hover {
   transform: translateY(-5px);
   background: var(--card-hover-bg);
+  position: relative;
 }
 
-.discover-img {
+.discover-art {
   width: 100%;
   height: 200px;
-  object-fit: cover;
-  filter: grayscale(20%);
-  transition: filter 0.3s ease;
+  background: var(--discover-gradient);
+  position: relative;
+  overflow: hidden;
 }
 
-.discover-card:hover .discover-img {
-  filter: grayscale(0%);
+.discover-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.1), transparent 34%),
+    linear-gradient(180deg, transparent 0%, rgba(10, 14, 18, 0.22) 100%);
 }
 
 .discover-info {
@@ -1129,26 +1117,29 @@ header, section, footer {
 
 @media (max-width: 768px) {
   .home-header {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
     row-gap: 1rem;
   }
 
   .nav-links {
-    grid-column: 2;
-    gap: 0.8rem;
-  }
-
-  .divider,
-  .github-link {
-    display: none;
+    justify-self: stretch;
   }
 
   .auth-trigger {
-    min-width: 0;
+    min-width: 100%;
   }
 
-  .auth-copy {
-    display: none;
+  .auth-rail {
+    min-width: 100px;
+    gap: 0.35rem;
+  }
+
+  .auth-rail-block {
+    height: 2.7rem;
+  }
+
+  .auth-trigger-divider {
+    height: 3.6rem;
   }
 
   .auth-menu {

@@ -202,9 +202,12 @@ function propagateLight(queue, lightMap, bounds, blockEntries, directions = LIGH
 }
 
 function computeBrightness(lightLevel, exposedFaces, emissionLevel, selfLightLevel) {
-  const normalizedLight = clamp(lightLevel / 15, 0, 1)
+  const exposureRatio = clamp(exposedFaces / 6, 0, 1)
+  const ambientFloor = exposedFaces > 0 ? (2 + Math.round(exposureRatio * 3)) : 0
+  const effectiveLightLevel = Math.max(lightLevel, ambientFloor)
+  const normalizedLight = clamp(effectiveLightLevel / 15, 0, 1)
   const curved = Math.pow(normalizedLight, 1.35)
-  const exposureBoost = clamp(exposedFaces / 6, 0, 1) * 0.08
+  const exposureBoost = exposureRatio * 0.08
   const emissiveBoost = emissionLevel > 0 ? 0.06 : 0
   const selfBoost = selfLightLevel > 0 ? 0.05 : 0
   return clamp(0.18 + (curved * 0.74) + exposureBoost + emissiveBoost + selfBoost, 0.16, 1)
@@ -247,7 +250,7 @@ export function buildSchematicLighting(layer) {
   const lightBounds = {
     minX: blockBounds.minX - 1,
     maxX: blockBounds.maxX + 1,
-    minY: Math.max(0, blockBounds.minY - 1),
+    minY: blockBounds.minY - 1,
     maxY: blockBounds.maxY + 1,
     minZ: blockBounds.minZ - 1,
     maxZ: blockBounds.maxZ + 1,

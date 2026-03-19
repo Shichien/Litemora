@@ -38,10 +38,9 @@ export default class DayCycle {
       timeSpeed: 1.0, // 调试用倍速
     }
 
-    // 时段配置（与贴图对应，共 7 个时段）
+    // 时段配置（程序化天空，共 7 个时段）
     this.phaseConfig = {
       sunrise: {
-        texture: 'sky_sunriseTexture',
         sunIntensity: 0.65,
         sunColor: '#ffb98a',
         ambientIntensity: 0.45,
@@ -53,7 +52,6 @@ export default class DayCycle {
       },
 
       morning: {
-        texture: 'sky_morningTexture',
         sunIntensity: 1.05,
         sunColor: '#fff1d6',
         ambientIntensity: 0.65,
@@ -65,7 +63,6 @@ export default class DayCycle {
       },
 
       noon: {
-        texture: 'sky_noonTexture',
         sunIntensity: 1.55,
         sunColor: '#ffffff',
         ambientIntensity: 0.75,
@@ -77,7 +74,6 @@ export default class DayCycle {
       },
 
       afternoon: {
-        texture: 'sky_afternoonTexture',
         sunIntensity: 1.35,
         sunColor: '#fff4e0',
         ambientIntensity: 0.7,
@@ -89,7 +85,6 @@ export default class DayCycle {
       },
 
       sunset: {
-        texture: 'sky_sunsetTexture',
         sunIntensity: 0.85,
         sunColor: '#ff9a63',
         ambientIntensity: 0.45,
@@ -101,7 +96,6 @@ export default class DayCycle {
       },
 
       dusk: {
-        texture: 'sky_duskTexture',
         sunIntensity: 0.35,
         sunColor: '#9b8bb0',
         ambientIntensity: 0.4,
@@ -113,7 +107,6 @@ export default class DayCycle {
       },
 
       midnight: {
-        texture: 'sky_midnightTexture',
         sunIntensity: 0.12,
         sunColor: '#334466',
         ambientIntensity: 0.75,
@@ -255,12 +248,16 @@ export default class DayCycle {
     const sunHeight = Math.sin(orbitAngle)
     const daylight = this._smoothstep(-0.14, 0.18, sunHeight)
     const twilight = (1 - this._smoothstep(0.05, 0.42, Math.abs(sunHeight))) * (1 - daylight * 0.55)
+    const sunsetGlow = this._smoothstep(0.66, 0.73, this.params.timeOfDay) * (1 - this._smoothstep(0.79, 0.86, this.params.timeOfDay))
+    const duskGlow = this._smoothstep(0.76, 0.82, this.params.timeOfDay) * (1 - this._smoothstep(0.87, 0.93, this.params.timeOfDay))
     const starsStrength = (1 - daylight) * (1 - twilight * 0.8)
     return {
       orbitAngle,
       sunHeight,
       daylight,
       twilight,
+      sunsetGlow,
+      duskGlow,
       starsStrength,
     }
   }
@@ -309,14 +306,18 @@ export default class DayCycle {
     if (!this.skyDome)
       return
 
-    const { daylight, twilight, starsStrength } = this._getCelestialState()
+    const { daylight, twilight, sunsetGlow, duskGlow, starsStrength } = this._getCelestialState()
     const sunDirection = this._sunOffset.clone().normalize()
     const moonDirection = this._moonOffset.clone().normalize()
 
-    const horizonDay = this._lerpColor('#dcecff', '#ffb56f', twilight * 0.82)
-    const zenithDay = this._lerpColor('#78b4ff', '#f3a067', twilight * 0.22)
-    const horizonNight = this._lerpColor('#182744', '#4a2f34', twilight * 0.22)
-    const zenithNight = this._lerpColor('#061120', '#0f1523', twilight * 0.08)
+    const warmTwilight = THREE.MathUtils.clamp((twilight * 0.45) + (sunsetGlow * 0.95), 0, 1)
+    const duskCool = THREE.MathUtils.clamp((twilight * 0.2) + (duskGlow * 0.92), 0, 1)
+    const horizonDay = this._lerpColor('#dcecff', '#ff9354', warmTwilight)
+    const zenithDay = this._lerpColor('#78b4ff', '#f2a35b', warmTwilight * 0.34)
+    const horizonNight = this._lerpColor('#182744', '#5d2f33', duskCool * 0.75)
+    const zenithNight = this._lerpColor('#061120', '#15233a', duskCool * 0.42)
+    const sunColor = this._lerpColor('#fff7d6', '#ff9356', warmTwilight)
+      .lerp(this._lerpColor('#ff9356', '#f07bb3', duskCool * 0.38), duskCool * 0.32)
 
     this.skyDome.setSkyState({
       zenithDayColor: `#${zenithDay.getHexString()}`,
@@ -325,7 +326,7 @@ export default class DayCycle {
       horizonNightColor: `#${horizonNight.getHexString()}`,
       sunDirection,
       moonDirection,
-      sunColor: `#${this._lerpColor('#fff7d6', '#ff9f5c', twilight * 0.9).getHexString()}`,
+      sunColor: `#${sunColor.getHexString()}`,
       moonColor: this.params.moonColor,
       dayFactor: daylight,
       twilightFactor: twilight,
@@ -344,25 +345,31 @@ export default class DayCycle {
     if (!environment)
       return
 
-    const { daylight, twilight } = this._getCelestialState()
-    const warmTint = twilight * 0.88
-    const sunIntensity = this._lerp(0.04, 1.65, daylight) + (twilight * 0.18)
-    const sunColor = this._lerpColor('#ffffff', '#ffab6b', warmTint)
+    const { daylight, twilight, sunsetGlow, duskGlow } = this._getCelestialState()
+    const warmTint = THREE.MathUtils.clamp((twilight * 0.52) + (sunsetGlow * 0.96), 0, 1)
+    const coolTwilight = THREE.MathUtils.clamp(duskGlow * 0.82, 0, 1)
+    const sunIntensity = this._lerp(0.04, 1.65, daylight) + (twilight * 0.14) + (sunsetGlow * 0.2) - (duskGlow * 0.08)
+    const sunColor = this._lerpColor('#ffffff', '#ff9a58', warmTint)
+      .lerp(new THREE.Color('#e58ab7'), coolTwilight * 0.24)
 
     environment.params.sunIntensity = sunIntensity
     environment.sunLight.intensity = sunIntensity
     environment.sunLight.color.copy(sunColor)
 
-    const ambientIntensity = this._lerp(0.16, 0.72, daylight) + (twilight * 0.08)
+    const ambientIntensity = this._lerp(0.16, 0.72, daylight) + (twilight * 0.06) + (sunsetGlow * 0.05)
     const ambientColor = this._lerpColor('#455a78', '#ffffff', daylight)
+      .lerp(new THREE.Color('#ffbb84'), sunsetGlow * 0.22)
+      .lerp(new THREE.Color('#6a7fb1'), duskGlow * 0.24)
 
     environment.params.ambientIntensity = ambientIntensity
     environment.ambientLight.intensity = ambientIntensity
     environment.ambientLight.color.copy(ambientColor)
 
-    const fogDensity = this._lerp(0.022, 0.008, daylight)
+    const fogDensity = this._lerp(0.022, 0.008, daylight) + (duskGlow * 0.002)
     const baseFog = this._lerpColor('#141820', '#9fd0ff', daylight)
-    const fogColor = baseFog.lerp(new THREE.Color('#ffab6b'), twilight * 0.35)
+    const fogColor = baseFog
+      .lerp(new THREE.Color('#ff9153'), warmTint * 0.4)
+      .lerp(new THREE.Color('#5b4770'), duskGlow * 0.45)
 
     environment.params.fogDensity = fogDensity
     environment.params.fogColor = `#${fogColor.getHexString()}`

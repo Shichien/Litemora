@@ -4,6 +4,17 @@ import blockDefinitions from 'minecraft-data/minecraft-data/data/pc/1.21.4/block
 const blocksByName = new Map(blockDefinitions.map(block => [block.name, block]))
 const defaultStateValueCache = new Map()
 const collisionProfileCache = new Map()
+const CLIMBABLE_BLOCK_NAMES = new Set([
+  'ladder',
+  'scaffolding',
+  'vine',
+  'twisting_vines',
+  'twisting_vines_plant',
+  'weeping_vines',
+  'weeping_vines_plant',
+  'cave_vines',
+  'cave_vines_plant',
+])
 
 export function normalizeMinecraftBlockName(blockName = '') {
   return String(blockName || '')
@@ -34,6 +45,28 @@ export function normalizeMinecraftBlockProperties(properties = {}) {
     })
 
   return normalized
+}
+
+export function isMinecraftBlockClimbable(blockName = '', properties = {}) {
+  const normalizedBlockName = normalizeMinecraftBlockName(blockName)
+  if (!normalizedBlockName) {
+    return false
+  }
+
+  if (CLIMBABLE_BLOCK_NAMES.has(normalizedBlockName)) {
+    return true
+  }
+
+  if (normalizedBlockName.endsWith('_vines') || normalizedBlockName.endsWith('_vines_plant')) {
+    return true
+  }
+
+  if (normalizedBlockName.endsWith('_trapdoor')) {
+    const normalizedProperties = normalizeMinecraftBlockProperties(properties)
+    return normalizedProperties.open === 'true' && normalizedProperties.half === 'top'
+  }
+
+  return false
 }
 
 function buildVariantKey(properties = {}) {
@@ -184,6 +217,7 @@ export function getMinecraftBlockCollisionProfile(blockName = '', properties = {
       boundingBox: 'empty',
       hasCollision: false,
       isKnownBlock: true,
+      isClimbable: false,
     }
     collisionProfileCache.set(cacheKey, emptyProfile)
     return emptyProfile
@@ -200,6 +234,7 @@ export function getMinecraftBlockCollisionProfile(blockName = '', properties = {
       boundingBox: null,
       hasCollision: null,
       isKnownBlock: false,
+      isClimbable: isMinecraftBlockClimbable(normalizedBlockName, normalizedProperties),
     }
     collisionProfileCache.set(cacheKey, fallbackProfile)
     return fallbackProfile
@@ -238,6 +273,7 @@ export function getMinecraftBlockCollisionProfile(blockName = '', properties = {
     boundingBox: block.boundingBox || 'block',
     hasCollision: Array.isArray(collisionBoxes) ? collisionBoxes.length > 0 : null,
     isKnownBlock: true,
+    isClimbable: isMinecraftBlockClimbable(normalizedBlockName, normalizedProperties),
   }
 
   collisionProfileCache.set(cacheKey, profile)

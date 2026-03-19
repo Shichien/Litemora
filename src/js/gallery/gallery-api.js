@@ -1,5 +1,9 @@
 import { getAdminAuthToken } from '../auth/admin-auth.js'
 import {
+  ensureProjectionDisplayName,
+  normalizeProjectionSlug,
+} from '../utils/projection-name.js'
+import {
   claimLocalGallerySpace,
   createLocalGalleryItem,
   deleteLocalGalleryItem,
@@ -345,11 +349,19 @@ function buildProjectionCacheItem({
     thumbnailDataUrl: String(safeItem.thumbnailDataUrl || thumbnailDataUrl || '').trim(),
     previewModel: safeItem.previewModel || previewModel || null,
     sourceFile: safeItem.sourceFile || {
-      fileName: String(fileName || safeItem.fileName || 'uploaded.litematic').trim(),
+      fileName: String(fileName || safeItem.fileName || 'uploaded.schematic').trim(),
       mimeType: String(mimeType || safeItem.mimeType || 'application/octet-stream').trim(),
       fileBase64: String(fileBase64 || '').trim(),
     },
   }
+}
+
+function normalizeProjectionNameCandidate(projectionName = '', title = '', schematic = null, file = null) {
+  const displayName = ensureProjectionDisplayName(
+    projectionName || title || schematic?.name || file?.name || '',
+    'World',
+  )
+  return normalizeProjectionSlug(displayName)
 }
 
 async function requestJson(url, options = {}) {
@@ -474,6 +486,35 @@ export async function claimGallerySpace({ spaceName, displayName = '', bio = '',
   return payload
 }
 
+export async function checkProjectionNameAvailability(spaceName, projectionName, session = null) {
+  const candidateSlug = normalizeProjectionNameCandidate(projectionName)
+  if (!candidateSlug) {
+    return {
+      available: false,
+      reason: 'invalid_projection_name',
+    }
+  }
+
+  try {
+    const payload = await fetchGallery(spaceName, session)
+    const items = Array.isArray(payload?.items) ? payload.items : []
+    const duplicate = items.some((item) => {
+      const itemSlug = normalizeProjectionNameCandidate(item?.projectionSlug || item?.title || '')
+      return !!itemSlug && itemSlug === candidateSlug
+    })
+    return {
+      available: !duplicate,
+      reason: duplicate ? 'projection_name_exists' : '',
+    }
+  }
+  catch {
+    return {
+      available: true,
+      reason: '',
+    }
+  }
+}
+
 export async function createGalleryItem({
   spaceName,
   title = '',
@@ -487,6 +528,11 @@ export async function createGalleryItem({
   projectionName = '',
   session = null,
 }) {
+  const projectionSlug = normalizeProjectionNameCandidate(projectionName, title, schematic, file)
+  if (!projectionSlug) {
+    throw new Error('invalid_projection_name')
+  }
+
   const fileBuffer = await file.arrayBuffer()
   const fileBase64 = toBase64(fileBuffer)
 
@@ -515,7 +561,7 @@ export async function createGalleryItem({
           description,
           projectionName,
           visibility,
-          fileName: file?.name || 'uploaded.litematic',
+          fileName: file?.name || 'uploaded.schematic',
           mimeType: file?.type || 'application/octet-stream',
           fileBase64,
           schematic,
@@ -536,7 +582,7 @@ export async function createGalleryItem({
     placement,
     visibility,
     thumbnailDataUrl,
-    fileName: file?.name || 'uploaded.litematic',
+    fileName: file?.name || 'uploaded.schematic',
     mimeType: file?.type || 'application/octet-stream',
     fileBase64,
   }))

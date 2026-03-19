@@ -6,6 +6,7 @@ import {
   createGalleryItemId,
   createGalleryManifest,
   createGalleryProfile,
+  galleryManifestHasProjectionName,
   galleryItemKey,
   galleryManifestKey,
   galleryProfileKey,
@@ -48,6 +49,9 @@ export async function onRequestPost(context) {
       spaceName: state.spaceName,
       itemId,
     })
+    if (galleryManifestHasProjectionName(manifest, item.projectionSlug)) {
+      return sendError(409, 'projection_name_exists', 'A projection with the same name already exists in this space')
+    }
     const summary = buildGalleryItemSummary(item)
 
     const nextItems = [
@@ -79,8 +83,11 @@ export async function onRequestPost(context) {
     })
   }
   catch (error) {
+    if (error?.message === 'projection_name_exists') {
+      return sendError(409, 'projection_name_exists', 'A projection with the same name already exists in this space')
+    }
     if (error?.message === 'missing_file_base64') {
-      return sendError(400, 'missing_file_base64', 'The uploaded .litematic file data is required')
+      return sendError(400, 'missing_file_base64', 'The uploaded schematic file data is required')
     }
     if (error?.message === 'file_too_large_for_kv') {
       return sendError(413, 'file_too_large', 'The current gallery storage can only accept files up to roughly 15 MB raw size')

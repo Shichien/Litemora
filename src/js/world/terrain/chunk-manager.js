@@ -12,6 +12,30 @@ import { blocks, resources } from './blocks-config.js'
 import TerrainChunk from './terrain-chunk.js'
 import TerrainPersistence from './terrain-persistence.js'
 
+function buildMinecraftBlockString(blockName = '', properties = {}) {
+  const normalizedBlockName = String(blockName || '')
+    .trim()
+    .replace(/^minecraft:/u, '')
+
+  const entries = Object.entries(properties || {})
+    .filter(([key, value]) => key && value !== undefined && value !== null && String(value).trim())
+    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+
+  if (!normalizedBlockName) {
+    return ''
+  }
+
+  if (!entries.length) {
+    return `minecraft:${normalizedBlockName}`
+  }
+
+  const serialized = entries
+    .map(([key, value]) => `${key}=${String(value).trim()}`)
+    .join(',')
+
+  return `minecraft:${normalizedBlockName}[${serialized}]`
+}
+
 export default class ChunkManager {
   constructor(options = {}) {
     this.experience = new Experience()
@@ -49,6 +73,7 @@ export default class ChunkManager {
     this._lastPlayerChunkZ = null
     this.schematicOnlyMode = false
     this.minecraftRenderOverlayActive = false
+    this._transientRemovedMinecraftBlocks = new Map()
 
     this.persistence = new TerrainPersistence({
       worldName: options.worldName || CHUNK_BASIC_CONFIG.worldName,
@@ -71,6 +96,10 @@ export default class ChunkManager {
 
   _key(chunkX, chunkZ) {
     return `${chunkX},${chunkZ}`
+  }
+
+  _worldBlockKey(worldX, worldY, worldZ) {
+    return `${Math.floor(worldX)},${Math.floor(worldY)},${Math.floor(worldZ)}`
   }
 
   _createEmptyBlockRecord() {
@@ -223,7 +252,7 @@ export default class ChunkManager {
       ? chunk.container.getBlock(localX, y, localZ)
       : this._createEmptyBlockRecord()
 
-    const importedMinecraftBlock = this.minecraftSchematicLayer.getBlock(x, y, z)
+    const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(x, y, z)
     const hasImportedMinecraftBlock = !!importedMinecraftBlock
     const hasImportedCollision = Array.isArray(importedMinecraftBlock?.collisionBoxes)
     const hasCollision = hasImportedCollision
@@ -246,6 +275,7 @@ export default class ChunkManager {
       collisionSource: importedMinecraftBlock?.collisionSource || null,
       hasCollision,
       stateId: importedMinecraftBlock?.stateId ?? null,
+      isClimbable: !!importedMinecraftBlock?.isClimbable,
     }
   }
 
@@ -254,7 +284,7 @@ export default class ChunkManager {
       return true
     }
 
-    return !this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+    return !this.getImportedMinecraftBlockWorld(worldX, worldY, worldZ)
   }
 
   setMinecraftRenderOverlayActive(enabled = true) {
@@ -295,7 +325,11 @@ export default class ChunkManager {
   }
 
   setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties = {}) {
-    return this.minecraftSchematicLayer.setBlock(worldX, worldY, worldZ, blockName, properties)
+    const placed = this.minecraftSchematicLayer.setBlock(worldX, worldY, worldZ, blockName, properties)
+    if (placed) {
+      this._transientRemovedMinecraftBlocks.delete(this._worldBlockKey(worldX, worldY, worldZ))
+    }
+    return placed
   }
 
   addMinecraftBlockWorld(worldX, worldY, worldZ, blockName, properties = {}, options = {}) {
@@ -319,7 +353,59 @@ export default class ChunkManager {
   }
 
   clearImportedMinecraftBlock(worldX, worldY, worldZ) {
+    this._transientRemovedMinecraftBlocks.delete(this._worldBlockKey(worldX, worldY, worldZ))
     return this.minecraftSchematicLayer.removeBlock(worldX, worldY, worldZ)
+  }
+
+  getImportedMinecraftBlockWorld(worldX, worldY, worldZ, options = {}) {
+    const entry = this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+    if (!entry) {
+      return null
+    }
+
+    if (options.includeTransientRemoved) {
+      return entry
+    }
+
+    return this._transientRemovedMinecraftBlocks.has(this._worldBlockKey(worldX, worldY, worldZ))
+      ? null
+      : entry
+  }
+
+  isImportedMinecraftBlockTransientlyRemoved(worldX, worldY, worldZ) {
+    return this._transientRemovedMinecraftBlocks.has(this._worldBlockKey(worldX, worldY, worldZ))
+  }
+
+  clearImportedMinecraftBlockTransient(worldX, worldY, worldZ) {
+    const importedMinecraftBlock = this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+    if (!importedMinecraftBlock) {
+      return false
+    }
+
+    const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
+    if (this._transientRemovedMinecraftBlocks.has(blockKey)) {
+      return false
+    }
+
+    this._transientRemovedMinecraftBlocks.set(blockKey, {
+      blockName: importedMinecraftBlock.blockName,
+      properties: { ...(importedMinecraftBlock.properties || {}) },
+    })
+
+    return {
+      removed: true,
+      source: 'minecraft-schematic',
+      worldBlock: { x: worldX, y: worldY, z: worldZ },
+      blockId: null,
+      minecraftBlock: {
+        name: `minecraft:${importedMinecraftBlock.blockName}`,
+        properties: importedMinecraftBlock.properties,
+      },
+      affectedBlockStates: [
+        buildMinecraftBlockString(importedMinecraftBlock.blockName, importedMinecraftBlock.properties),
+      ].filter(Boolean),
+      transient: true,
+    }
   }
 
   syncMinecraftSchematicLayerState({ scheduleSave = false } = {}) {
@@ -334,6 +420,7 @@ export default class ChunkManager {
 
   restoreRuntimeStateFromPersistence() {
     const worldState = this.persistence?.getWorldState?.() || {}
+    this._transientRemovedMinecraftBlocks.clear()
     this.minecraftSchematicLayer.importSnapshot(worldState.minecraftSchematicLayer)
   }
 
@@ -345,7 +432,7 @@ export default class ChunkManager {
    * @param {number} z
    */
   removeBlockWorld(x, y, z) {
-    const importedMinecraftBlock = this.minecraftSchematicLayer.getBlock(x, y, z)
+    const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(x, y, z)
     if (importedMinecraftBlock) {
       const removed = this.clearImportedMinecraftBlock(x, y, z)
       if (!removed) {
@@ -384,7 +471,9 @@ export default class ChunkManager {
 
     const blockId = block.id
     const instanceId = block.instanceId
-    const removedMinecraftBlock = this.clearImportedMinecraftBlock(x, y, z)
+    const removedMinecraftBlock = this.getImportedMinecraftBlockWorld(x, y, z)
+      ? this.clearImportedMinecraftBlock(x, y, z)
+      : null
 
     // 2. 更新数据层
     chunk.container.setBlockId(localX, y, localZ, blocks.empty.id)
@@ -467,7 +556,9 @@ export default class ChunkManager {
 
     // 2. 更新数据层
     chunk.container.setBlockId(localX, y, localZ, blockId)
-    const removedMinecraftBlock = this.clearImportedMinecraftBlock(x, y, z)
+    const removedMinecraftBlock = this.getImportedMinecraftBlockWorld(x, y, z)
+      ? this.clearImportedMinecraftBlock(x, y, z)
+      : null
 
     // 3. 更新渲染层
     const renderer = chunk.renderer

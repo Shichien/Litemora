@@ -87,8 +87,8 @@ function readFallbackRecord(accountId = '') {
     }
     const buffer = fromDataUrlBase64(parsed.base64)
     return {
-      file: createFileFromBuffer(buffer, parsed.fileName || 'uploaded.litematic', parsed.mimeType),
-      fileName: parsed.fileName || 'uploaded.litematic',
+      file: createFileFromBuffer(buffer, parsed.fileName || 'uploaded.schematic', parsed.mimeType),
+      fileName: parsed.fileName || 'uploaded.schematic',
       updatedAt: parsed.updatedAt || 0,
     }
   }
@@ -99,7 +99,7 @@ function readFallbackRecord(accountId = '') {
 
 export async function saveAdminSchematicFile({ accountId = '', file }) {
   const key = buildSchematicKey(accountId)
-  const fileName = file?.name || 'uploaded.litematic'
+  const fileName = file?.name || 'uploaded.schematic'
   const mimeType = file?.type || 'application/octet-stream'
   const buffer = await file.arrayBuffer()
 
@@ -156,8 +156,8 @@ export async function loadAdminSchematicFile(accountId = '') {
     }
 
     return {
-      file: createFileFromBuffer(record.buffer, record.fileName || 'uploaded.litematic', record.mimeType),
-      fileName: record.fileName || 'uploaded.litematic',
+      file: createFileFromBuffer(record.buffer, record.fileName || 'uploaded.schematic', record.mimeType),
+      fileName: record.fileName || 'uploaded.schematic',
       updatedAt: record.updatedAt || 0,
     }
   }

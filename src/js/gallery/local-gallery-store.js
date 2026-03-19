@@ -1,5 +1,4 @@
 import {
-  createUniqueProjectionSlug,
   ensureProjectionDisplayName,
   normalizeProjectionSlug,
 } from '../utils/projection-name.js'
@@ -274,7 +273,7 @@ export async function createLocalGalleryItem({
   const itemId = createItemId()
   const fileBuffer = await file.arrayBuffer()
   const sourceFile = {
-    fileName: file?.name || 'uploaded.litematic',
+    fileName: file?.name || 'uploaded.schematic',
     mimeType: file?.type || 'application/octet-stream',
     fileBase64: toBase64(fileBuffer),
   }
@@ -283,10 +282,18 @@ export async function createLocalGalleryItem({
     projectionName || title || schematic?.name || sourceFile.fileName,
     `World${Date.now().toString(36)}`,
   )
-  const projectionSlug = createUniqueProjectionSlug(
-    projectionDisplayName,
-    Array.isArray(nextManifest.items) ? nextManifest.items : [],
-  )
+  const projectionSlug = normalizeProjectionSlug(projectionDisplayName)
+  const hasDuplicateProjection = Array.isArray(nextManifest.items) && nextManifest.items.some((entry) => {
+    if (!entry) {
+      return false
+    }
+
+    const entrySlug = normalizeProjectionSlug(entry.projectionSlug || entry.title || '')
+    return !!entrySlug && entrySlug === projectionSlug
+  })
+  if (!projectionSlug || hasDuplicateProjection) {
+    throw new Error('projection_name_exists')
+  }
   const normalizedVisibility = normalizeProjectionVisibility(visibility)
 
   const summary = {

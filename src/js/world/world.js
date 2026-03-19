@@ -741,10 +741,15 @@ export default class World {
     }
   }
 
-  _scheduleMinecraftSchematicRenderLayerSync(delayMs = 60) {
+  _cancelMinecraftSchematicRenderLayerSync() {
     if (this._minecraftRenderLayerSyncTimer) {
       clearTimeout(this._minecraftRenderLayerSyncTimer)
+      this._minecraftRenderLayerSyncTimer = null
     }
+  }
+
+  _scheduleMinecraftSchematicRenderLayerSync(delayMs = 60) {
+    this._cancelMinecraftSchematicRenderLayerSync()
 
     this._minecraftRenderLayerSyncTimer = setTimeout(() => {
       this._minecraftRenderLayerSyncTimer = null
@@ -752,7 +757,42 @@ export default class World {
     }, delayMs)
   }
 
-  _onMinecraftBlockBreakComplete() {
+  async _syncMinecraftSchematicRenderLayerBlockStates(blockStates = [], options = {}) {
+    const normalizedBlockStates = [...new Set(
+      (Array.isArray(blockStates) ? blockStates : [])
+        .map(blockState => String(blockState || '').trim())
+        .filter(Boolean),
+    )]
+    if (!normalizedBlockStates.length) {
+      return null
+    }
+
+    const schematicLayer = this.chunkManager?.minecraftSchematicLayer
+    const stats = schematicLayer?.getStats?.() || { blockCount: 0 }
+    if (!stats.blockCount) {
+      this.chunkManager?.setMinecraftRenderOverlayActive?.(false)
+      this.minecraftSchematicRenderLayer?.clear?.()
+      return null
+    }
+
+    if (!this.chunkManager?.minecraftRenderOverlayActive || !this.minecraftSchematicRenderLayer?.getStats?.()?.meshCount) {
+      return this._syncMinecraftSchematicRenderLayer(options)
+    }
+
+    const renderLayer = await this._ensureMinecraftSchematicRenderLayer()
+    const result = await renderLayer.syncBlockStatesFromLayer(schematicLayer, normalizedBlockStates, options)
+    this.chunkManager?.setMinecraftRenderOverlayActive?.(true)
+    return result
+  }
+
+  _onMinecraftBlockBreakComplete(payload = {}) {
+    const affectedBlockStates = Array.isArray(payload?.affectedBlockStates) ? payload.affectedBlockStates : []
+    if (payload?.source === 'minecraft-schematic' && affectedBlockStates.length) {
+      this._cancelMinecraftSchematicRenderLayerSync()
+      void this._syncMinecraftSchematicRenderLayerBlockStates(affectedBlockStates)
+      return
+    }
+
     if (this.chunkManager?.minecraftRenderOverlayActive) {
       this._scheduleMinecraftSchematicRenderLayerSync()
     }
@@ -765,6 +805,13 @@ export default class World {
   }
 
   _onMinecraftBlockUse(payload = {}) {
+    const affectedBlockStates = Array.isArray(payload?.affectedBlockStates) ? payload.affectedBlockStates : []
+    if (payload?.source === 'minecraft-schematic' && affectedBlockStates.length) {
+      this._cancelMinecraftSchematicRenderLayerSync()
+      void this._syncMinecraftSchematicRenderLayerBlockStates(affectedBlockStates)
+      return
+    }
+
     if (payload?.source === 'minecraft-schematic' || this.chunkManager?.minecraftRenderOverlayActive) {
       this._scheduleMinecraftSchematicRenderLayerSync()
     }
@@ -1068,10 +1115,7 @@ export default class World {
   }
 
   destroy() {
-    if (this._minecraftRenderLayerSyncTimer) {
-      clearTimeout(this._minecraftRenderLayerSyncTimer)
-      this._minecraftRenderLayerSyncTimer = null
-    }
+    this._cancelMinecraftSchematicRenderLayerSync()
     emitter.off('game:block-break-complete', this._onMinecraftBlockBreakComplete)
     emitter.off('game:block-place', this._onMinecraftBlockPlace)
     emitter.off('game:block-use', this._onMinecraftBlockUse)

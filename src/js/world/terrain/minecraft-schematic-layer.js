@@ -154,6 +154,7 @@ export default class MinecraftSchematicLayer {
       boundingBox: profile.boundingBox,
       hasCollision: profile.hasCollision,
       isKnownBlock: profile.isKnownBlock,
+      isClimbable: profile.isClimbable,
     }
 
     chunk.set(blockKey, entry)

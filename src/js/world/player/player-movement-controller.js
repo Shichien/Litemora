@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { MOVEMENT_CONSTANTS, MOVEMENT_DIRECTION_WEIGHTS } from '../../config/player-config.js'
 import Experience from '../../experience.js'
+import { isMinecraftBlockClimbable } from '../terrain/minecraft-block-data.js'
 import { LocomotionProfiles } from './animation-config.js'
 import PlayerCollisionSystem from './player-collision.js'
 
@@ -22,6 +23,7 @@ export class PlayerMovementController {
     this.isGrounded = false
     this.isFlying = false
     this.isInWater = false
+    this.isClimbing = false
     this.isSneaking = false
     this.isSprinting = false
     this.groundedGraceTimer = 0
@@ -93,6 +95,7 @@ export class PlayerMovementController {
   update(inputState, isCombatActive) {
     if (this.isFlying) {
       this.isInWater = false
+      this.isClimbing = false
       this._updateFlightPhysics(inputState, isCombatActive)
       return
     }
@@ -217,6 +220,7 @@ export class PlayerMovementController {
     this.isSneaking = this.currentPoseKey === 'crouching'
     this.isSprinting = movementProfile === 'run'
     this.isInWater = this._isPositionInWater(this.position)
+    this.isClimbing = !this.isInWater && this._isTouchingClimbable(this.position)
 
     this._updateHorizontalVelocity(inputState, movementProfile, isCombatActive)
 
@@ -240,8 +244,14 @@ export class PlayerMovementController {
     for (let stepIndex = 0; stepIndex < subStepCount; stepIndex++) {
       const previousBasePosition = this._tmpPreviousBase.copy(this.position)
 
+      const canClimb = !this.isInWater && this._isTouchingClimbable(this.position)
+      this.isClimbing = canClimb
+
       if (this.isInWater) {
         this._updateWaterVerticalVelocity(inputState)
+      }
+      else if (canClimb) {
+        this._updateClimbVerticalVelocity(inputState)
       }
       else if (!workingGrounded) {
         this.worldVelocity.y = (this.worldVelocity.y - gravityPerSubStep) * verticalDragPerSubStep
@@ -262,7 +272,7 @@ export class PlayerMovementController {
 
       this._applyGroundSampler(playerState)
 
-      if (!this.isInWater && !playerState.isGrounded && playerState.worldVelocity.y <= 0) {
+      if (!this.isInWater && !canClimb && !playerState.isGrounded && playerState.worldVelocity.y <= 0) {
         this._snapToGround(playerState)
       }
 
@@ -270,7 +280,7 @@ export class PlayerMovementController {
         this._applySneakEdgeClamp(previousBasePosition, playerState)
       }
 
-      if (!this.isInWater && !didStepUp) {
+      if (!this.isInWater && !canClimb && !didStepUp) {
         this._refreshGroundedState(playerState)
       }
 
@@ -286,6 +296,7 @@ export class PlayerMovementController {
     }
 
     this.isGrounded = workingGrounded
+    this.isClimbing = !this.isInWater && this._isTouchingClimbable(this.position)
     if (this.isGrounded) {
       this.groundedGraceTimer = Math.max(
         this.groundedGraceTimer,
@@ -315,6 +326,14 @@ export class PlayerMovementController {
       const response = this.config.physics?.response?.walk ?? 0.34
       this.worldVelocity.x = THREE.MathUtils.lerp(this.worldVelocity.x, targetVelocityX * 0.9, response)
       this.worldVelocity.z = THREE.MathUtils.lerp(this.worldVelocity.z, targetVelocityZ * 0.9, response)
+      return
+    }
+
+    if (this.isClimbing) {
+      const climbStrafeSpeed = Math.min(this.config.speed.walk * 0.4, 1.55)
+      const response = this.config.physics?.response?.walk ?? 0.34
+      this.worldVelocity.x = THREE.MathUtils.lerp(this.worldVelocity.x, worldX * climbStrafeSpeed, response)
+      this.worldVelocity.z = THREE.MathUtils.lerp(this.worldVelocity.z, worldZ * climbStrafeSpeed, response)
       return
     }
 
@@ -362,6 +381,23 @@ export class PlayerMovementController {
     if (surfaceY !== null && this.position.y < surfaceY - 0.45 && verticalInput === 0) {
       this.worldVelocity.y = Math.max(this.worldVelocity.y, 0.6)
     }
+  }
+
+  _updateClimbVerticalVelocity(inputState) {
+    const climbSpeed = Math.max(this.config.speed.walk * 0.9, 1.6)
+    const ascend = inputState.space || inputState.forward ? 1 : 0
+    const descend = inputState.sneak || inputState.shift || inputState.v || inputState.backward ? 1 : 0
+    const verticalInput = ascend - descend
+
+    if (verticalInput === 0) {
+      this.worldVelocity.y = THREE.MathUtils.lerp(this.worldVelocity.y, 0, 0.72)
+      if (Math.abs(this.worldVelocity.y) < 0.02) {
+        this.worldVelocity.y = 0
+      }
+      return
+    }
+
+    this.worldVelocity.y = THREE.MathUtils.lerp(this.worldVelocity.y, verticalInput * climbSpeed, 0.58)
   }
 
   _createPoseProfiles() {
@@ -989,5 +1025,75 @@ export class PlayerMovementController {
     }
 
     return position.y <= surfaceY + 0.3
+  }
+
+  _isTouchingClimbable(basePosition) {
+    const provider = this.experience.terrainDataManager || this.terrainProvider
+    if (!provider?.getBlockWorld) {
+      return false
+    }
+
+    const bodyHeight = (this.capsule.halfHeight * 2) + (this.capsule.radius * 2)
+    const probePadding = this.capsule.radius + 0.12
+    const minBlockX = Math.floor(basePosition.x - probePadding + 0.5) - 1
+    const maxBlockX = Math.floor(basePosition.x + probePadding + 0.5) + 1
+    const minBlockY = Math.floor(basePosition.y + 0.1 + 0.5) - 1
+    const maxBlockY = Math.floor(basePosition.y + bodyHeight - 0.1 + 0.5) + 1
+    const minBlockZ = Math.floor(basePosition.z - probePadding + 0.5) - 1
+    const maxBlockZ = Math.floor(basePosition.z + probePadding + 0.5) + 1
+
+    for (let worldX = minBlockX; worldX <= maxBlockX; worldX += 1) {
+      for (let worldY = minBlockY; worldY <= maxBlockY; worldY += 1) {
+        for (let worldZ = minBlockZ; worldZ <= maxBlockZ; worldZ += 1) {
+          const block = provider.getBlockWorld(worldX, worldY, worldZ)
+          const blockName = block?.minecraftBlock?.name || ''
+          const blockProperties = block?.minecraftBlock?.properties || {}
+          const isClimbable = block?.isClimbable || isMinecraftBlockClimbable(blockName, blockProperties)
+          if (!isClimbable) {
+            continue
+          }
+
+          if (this._isClimbableBlockOverlapping(basePosition, worldX, worldY, worldZ, block, bodyHeight)) {
+            return true
+          }
+        }
+      }
+    }
+
+    return false
+  }
+
+  _isClimbableBlockOverlapping(basePosition, worldX, worldY, worldZ, block, bodyHeight) {
+    const playerMinX = basePosition.x - this.capsule.radius
+    const playerMaxX = basePosition.x + this.capsule.radius
+    const playerMinY = basePosition.y
+    const playerMaxY = basePosition.y + bodyHeight
+    const playerMinZ = basePosition.z - this.capsule.radius
+    const playerMaxZ = basePosition.z + this.capsule.radius
+    const sourceBoxes = Array.isArray(block?.collisionBoxes) && block.collisionBoxes.length
+      ? block.collisionBoxes
+      : [[0, 0, 0, 1, 1, 1]]
+
+    for (const [minX, minY, minZ, maxX, maxY, maxZ] of sourceBoxes) {
+      const boxMinX = (worldX - 0.5 + Number(minX)) - 0.08
+      const boxMaxX = (worldX - 0.5 + Number(maxX)) + 0.08
+      const boxMinY = worldY - 0.5 + Number(minY)
+      const boxMaxY = worldY - 0.5 + Number(maxY)
+      const boxMinZ = (worldZ - 0.5 + Number(minZ)) - 0.08
+      const boxMaxZ = (worldZ - 0.5 + Number(maxZ)) + 0.08
+
+      const intersects = playerMaxX >= boxMinX
+        && playerMinX <= boxMaxX
+        && playerMaxY >= boxMinY
+        && playerMinY <= boxMaxY
+        && playerMaxZ >= boxMinZ
+        && playerMinZ <= boxMaxZ
+
+      if (intersects) {
+        return true
+      }
+    }
+
+    return false
   }
 }

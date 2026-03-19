@@ -152,13 +152,6 @@ export default class Environment {
     this.environmentMap.texture.mapping = THREE.EquirectangularReflectionMapping
     // this.environmentMap.texture.colorSpace = THREE.SRGBColorSpace // RGBELoader usually handles this, or it might be Linear. Let's check standard implementation.
 
-    // 背景贴图（保留引用，但不设置 scene.background，由 SkyDome 管理）
-    this.backgroundTexture = this.resources.items.backgroundTexture
-    if (this.backgroundTexture) {
-      this.backgroundTexture.colorSpace = THREE.SRGBColorSpace
-      this.backgroundTexture.mapping = THREE.EquirectangularReflectionMapping
-    }
-
     this.scene.environment = this.environmentMap.texture
     // 注意：不再调用 updateBackground()，天空由 DayCycle 的 SkyDome 管理
   }

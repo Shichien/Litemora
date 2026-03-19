@@ -479,28 +479,28 @@ async function resolveSourcePayload() {
   if (source instanceof Blob) {
     return {
       buffer: await source.arrayBuffer(),
-      name: source.name || props.schematic?.name || 'uploaded.litematic',
+      name: source.name || props.schematic?.name || 'uploaded.schematic',
     }
   }
 
   if (source?.buffer instanceof ArrayBuffer) {
     return {
       buffer: source.buffer,
-      name: source.fileName || source.name || props.schematic?.name || 'uploaded.litematic',
+      name: source.fileName || source.name || props.schematic?.name || 'uploaded.schematic',
     }
   }
 
   if (source?.fileBase64) {
     return {
       buffer: decodeBase64ToArrayBuffer(source.fileBase64),
-      name: source.fileName || source.name || props.schematic?.name || 'uploaded.litematic',
+      name: source.fileName || source.name || props.schematic?.name || 'uploaded.schematic',
     }
   }
 
   if (source?.base64) {
     return {
       buffer: decodeBase64ToArrayBuffer(source.base64),
-      name: source.fileName || source.name || props.schematic?.name || 'uploaded.litematic',
+      name: source.fileName || source.name || props.schematic?.name || 'uploaded.schematic',
     }
   }
 
@@ -671,7 +671,11 @@ async function renderCurrentSchematic() {
     }
 
     if (!sourcePayload) {
-      throw new Error('真实渲染需要原始 .litematic 文件，请重新上传或重新打开带源文件的作品。')
+      throw new Error('真实渲染需要原始投影文件，请重新上传或重新打开带源文件的作品。')
+    }
+
+    if (/\.schem$/iu.test(sourcePayload.name)) {
+      throw new Error('当前真实预览暂只支持 .litematic；.schem 文件仍可上传并进入世界。')
     }
 
     setPreparingState(
@@ -710,7 +714,7 @@ async function renderCurrentSchematic() {
 
     setPreparingState(
       '正在导入投影文件',
-      'schematic-renderer 正在解析 .litematic 并构建真实方块网格。',
+      'schematic-renderer 正在解析投影文件并构建真实方块网格。',
       '开始导入投影',
       sourcePayload.name,
     )

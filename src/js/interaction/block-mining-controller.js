@@ -50,10 +50,6 @@ export default class BlockMiningController {
     if (!raycaster || !raycaster.current)
       return
 
-    if (raycaster.current?.isImportedMinecraft) {
-      return
-    }
-
     // Start mining
     this.isMining = true
     this.miningStartTime = this.time.elapsed
@@ -84,12 +80,30 @@ export default class BlockMiningController {
    * Capture current mining target info
    */
   _captureTarget(raycastInfo) {
+    const faceNormal = raycastInfo.face?.normal?.clone?.() || null
     return {
       chunkX: raycastInfo.chunkX,
       chunkZ: raycastInfo.chunkZ,
       worldBlock: { ...raycastInfo.worldBlock },
       instanceId: raycastInfo.instanceId,
       blockId: raycastInfo.blockId,
+      source: raycastInfo.source || 'legacy',
+      isImportedMinecraft: !!raycastInfo.isImportedMinecraft,
+      blockString: String(raycastInfo.blockString || ''),
+      minecraftBlock: raycastInfo.minecraftBlock
+        ? {
+            name: raycastInfo.minecraftBlock.name,
+            properties: { ...(raycastInfo.minecraftBlock.properties || {}) },
+          }
+        : null,
+      worldPosition: raycastInfo.worldPosition?.clone?.() || null,
+      point: raycastInfo.point?.clone?.() || null,
+      face: raycastInfo.face
+        ? {
+            ...raycastInfo.face,
+            normal: faceNormal,
+          }
+        : null,
     }
   }
 
@@ -127,19 +141,33 @@ export default class BlockMiningController {
 
     const { worldBlock, blockId } = this.currentTarget
     const chunkManager = this.experience.terrainDataManager
+    let removalResult = null
 
     if (chunkManager) {
-      chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
+      removalResult = this.currentTarget.isImportedMinecraft
+        ? chunkManager.clearImportedMinecraftBlockTransient(worldBlock.x, worldBlock.y, worldBlock.z)
+        : chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
+    }
+
+    if (!removalResult) {
+      this._resetMining()
+      emitter.emit('game:mining-cancel')
+      return
     }
 
     // Emit complete event with blockId and position for pickup animator
     emitter.emit('game:block-break-complete', {
-      blockId,
+      blockId: removalResult.blockId ?? blockId,
       worldPos: { x: worldBlock.x, y: worldBlock.y, z: worldBlock.z },
+      source: removalResult.source || this.currentTarget.source || 'legacy',
+      minecraftBlock: removalResult.minecraftBlock || this.currentTarget.minecraftBlock || null,
+      affectedBlockStates: [...(removalResult.affectedBlockStates || [])],
+      suppressPickup: !!removalResult.transient,
     })
 
     emitter.emit('game:mining-complete', {
       target: this.currentTarget,
+      result: removalResult,
     })
 
     this._resetMining()

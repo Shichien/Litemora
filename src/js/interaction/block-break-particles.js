@@ -115,13 +115,13 @@ export default class BlockBreakParticles {
     if (!this.params.enabled)
       return
 
-    const raycaster = this.experience.world?.blockRaycaster
-    if (!raycaster?.current)
+    const finalTarget = _target || this.experience.world?.blockRaycaster?.current
+    if (!finalTarget)
       return
 
     // 最终爆发：生成更多粒子
     for (let i = 0; i < 3; i++) {
-      this._spawnParticles(raycaster.current)
+      this._spawnParticles(finalTarget)
     }
   }
 

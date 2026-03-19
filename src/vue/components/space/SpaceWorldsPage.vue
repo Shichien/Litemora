@@ -465,7 +465,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="world-card-content">
                 <h3 class="world-title">添加第一个投影</h3>
-                <p class="world-desc">点击进入管理员配置页，导入 .litematic 并创建第一个世界</p>
+                <p class="world-desc">点击进入管理员配置页，导入 .litematic 或 .schem 并创建第一个世界</p>
               </div>
             </article>
           </div>

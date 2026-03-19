@@ -13,8 +13,8 @@ const EMPTY_BLOCK_NAMES = new Set([
 ])
 
 /**
- * Litematica 原理图服务
- * 解析 .litematic 文件并注入方块到地形
+ * Minecraft 原理图服务
+ * 解析 .litematic / .schem 文件并注入方块到地形
  */
 class SchematicService {
   constructor() {
@@ -58,9 +58,30 @@ class SchematicService {
     return this.nbtParser
   }
 
+  async _parseNbtPayload(arrayBuffer) {
+    const pako = await this._loadPako()
+    const nbtParser = await this._loadNbtParser()
+    const rawBuffer = BufferPolyfill.from(arrayBuffer)
+
+    try {
+      const { parsed } = await nbtParser.parseNbt(rawBuffer)
+      return nbtParser.simplifyNbt(parsed)
+    }
+    catch (rawError) {
+      try {
+        const inflated = pako.inflate(arrayBuffer)
+        const { parsed } = await nbtParser.parseNbt(BufferPolyfill.from(inflated))
+        return nbtParser.simplifyNbt(parsed)
+      }
+      catch (inflatedError) {
+        throw new Error(rawError?.message || inflatedError?.message || 'unsupported_schematic_format')
+      }
+    }
+  }
+
   /**
-   * 从文件解析 Litematica 原理图
-   * @param {File} file - .litematic 文件
+   * 从文件解析 Minecraft 原理图
+   * @param {File} file - .litematic / .schem 文件
    * @returns {Promise<object>} 解析后的原理图数据
    */
   async parseFile(file) {
@@ -70,7 +91,9 @@ class SchematicService {
       reader.onload = async (e) => {
         try {
           const arrayBuffer = e.target.result
-          const schematic = await this.parseArrayBuffer(arrayBuffer)
+          const schematic = await this.parseArrayBuffer(arrayBuffer, {
+            sourceName: file?.name || '',
+          })
           resolve(schematic)
         }
         catch (error) {
@@ -104,17 +127,33 @@ class SchematicService {
    * 内部方法：从 ArrayBuffer 解析原理图
    */
   async _parseBuffer(arrayBuffer, options = {}) {
-    // Litematica 文件是 gzip 压缩的 NBT 格式
-    const pako = await this._loadPako()
-    const nbtParser = await this._loadNbtParser()
-    const decompressed = pako.inflate(arrayBuffer)
-    const { parsed } = await nbtParser.parseNbt(BufferPolyfill.from(decompressed))
-    const simplified = nbtParser.simplifyNbt(parsed)
+    const simplified = await this._parseNbtPayload(arrayBuffer)
+    const schematic = this._normalizeParsedSchematic(simplified, options)
 
+    if (options.includeRawNbt) {
+      schematic.rawNBT = simplified
+    }
+
+    return schematic
+  }
+
+  _normalizeParsedSchematic(simplified, options = {}) {
+    if (simplified?.Metadata && simplified?.Regions) {
+      return this._parseLitematicSchematic(simplified)
+    }
+
+    if (simplified?.Palette && simplified?.BlockData) {
+      return this._parseSpongeSchematic(simplified, options)
+    }
+
+    throw new Error(`Unsupported schematic format: ${options.sourceName || 'unknown_file'}`)
+  }
+
+  _parseLitematicSchematic(simplified = {}) {
     const metadata = simplified.Metadata || {}
     const regions = simplified.Regions || {}
 
-    const schematic = {
+    return {
       name: metadata.Name || 'Unknown',
       author: metadata.Author || 'Unknown',
       dataVersion: Number(simplified.MinecraftDataVersion) || null,
@@ -124,13 +163,42 @@ class SchematicService {
         z: metadata.EnclosingSize?.z || 0,
       },
       regions: this._parseRegions(regions),
+      format: 'litematic',
     }
+  }
 
-    if (options.includeRawNbt) {
-      schematic.rawNBT = simplified
+  _parseSpongeSchematic(simplified = {}, options = {}) {
+    const metadata = simplified.Metadata || {}
+    const width = Math.max(0, Number(simplified.Width || metadata.Width || 0))
+    const height = Math.max(0, Number(simplified.Height || metadata.Height || 0))
+    const length = Math.max(0, Number(simplified.Length || metadata.Length || 0))
+    const size = { x: width, y: height, z: length }
+    const totalBlocks = width * height * length
+    const regionName = metadata.Name || this._stripSchematicExtension(options.sourceName) || 'Region'
+    const palette = this._parseSpongePalette(simplified.Palette)
+    const decodedIndices = this._decodeVarIntBlockIndices(simplified.BlockData, totalBlocks)
+    const blockData = this._encodeBlockIndices(decodedIndices, Object.keys(palette).length, totalBlocks)
+    const offset = this._parseSpongeOffset(simplified.Offset)
+
+    return {
+      name: metadata.Name || this._stripSchematicExtension(options.sourceName) || 'Unknown',
+      author: metadata.Author || 'Unknown',
+      dataVersion: Number(simplified.DataVersion || metadata.DataVersion) || null,
+      size,
+      format: 'schem',
+      regions: {
+        [regionName]: {
+          position: offset,
+          size,
+          palette,
+          blockData,
+          totalBlocks,
+          _decodedIndices: decodedIndices,
+          _solidBlockCount: null,
+          _solidYStats: null,
+        },
+      },
     }
-
-    return schematic
   }
 
   /**
@@ -189,6 +257,153 @@ class SchematicService {
     })
 
     return palette
+  }
+
+  _parseSpongePalette(paletteData = {}) {
+    const palette = {}
+    const entries = Object.entries(paletteData || {})
+      .map(([stateString, paletteIndex]) => ({
+        stateString: String(stateString || ''),
+        paletteIndex: Number(paletteIndex),
+      }))
+      .filter(entry => Number.isFinite(entry.paletteIndex))
+      .sort((left, right) => left.paletteIndex - right.paletteIndex)
+
+    for (const entry of entries) {
+      palette[entry.paletteIndex] = this._parseSpongePaletteEntry(entry.stateString)
+    }
+
+    if (!Object.keys(palette).length) {
+      palette[0] = {
+        name: 'minecraft:air',
+        properties: {},
+      }
+    }
+
+    return palette
+  }
+
+  _parseSpongePaletteEntry(stateString = '') {
+    const raw = String(stateString || '').trim()
+    if (!raw) {
+      return {
+        name: 'minecraft:air',
+        properties: {},
+      }
+    }
+
+    const bracketIndex = raw.indexOf('[')
+    const hasProperties = bracketIndex > 0 && raw.endsWith(']')
+    const name = hasProperties ? raw.slice(0, bracketIndex) : raw
+    const properties = {}
+
+    if (hasProperties) {
+      const rawProperties = raw.slice(bracketIndex + 1, -1)
+      rawProperties.split(',').forEach((pair) => {
+        const separatorIndex = pair.indexOf('=')
+        if (separatorIndex <= 0) {
+          return
+        }
+
+        const key = pair.slice(0, separatorIndex).trim()
+        const value = pair.slice(separatorIndex + 1).trim()
+        if (key && value) {
+          properties[key] = value
+        }
+      })
+    }
+
+    return {
+      name: name || 'minecraft:air',
+      properties,
+    }
+  }
+
+  _parseSpongeOffset(offsetValue) {
+    if (Array.isArray(offsetValue)) {
+      return {
+        x: Number(offsetValue[0] || 0),
+        y: Number(offsetValue[1] || 0),
+        z: Number(offsetValue[2] || 0),
+      }
+    }
+
+    if (offsetValue && typeof offsetValue === 'object') {
+      return {
+        x: Number(offsetValue.x || offsetValue.X || 0),
+        y: Number(offsetValue.y || offsetValue.Y || 0),
+        z: Number(offsetValue.z || offsetValue.Z || 0),
+      }
+    }
+
+    return { x: 0, y: 0, z: 0 }
+  }
+
+  _decodeVarIntBlockIndices(blockData, expectedLength = 0) {
+    const bytes = blockData instanceof Uint8Array
+      ? blockData
+      : Uint8Array.from(Array.isArray(blockData) ? blockData : [])
+    const indices = []
+    let currentValue = 0
+    let bitOffset = 0
+
+    for (let index = 0; index < bytes.length; index += 1) {
+      const byte = bytes[index]
+      currentValue |= (byte & 0x7F) << bitOffset
+      if ((byte & 0x80) === 0) {
+        indices.push(currentValue >>> 0)
+        currentValue = 0
+        bitOffset = 0
+        if (expectedLength > 0 && indices.length >= expectedLength) {
+          break
+        }
+        continue
+      }
+
+      bitOffset += 7
+      if (bitOffset > 35) {
+        throw new Error('Invalid schematic block data')
+      }
+    }
+
+    if (expectedLength > 0 && indices.length < expectedLength) {
+      while (indices.length < expectedLength) {
+        indices.push(0)
+      }
+    }
+
+    return indices
+  }
+
+  _encodeBlockIndices(indices = [], paletteSize = 0, totalBlocks = indices.length) {
+    if (!Array.isArray(indices) || totalBlocks <= 0) {
+      return []
+    }
+
+    const bitsPerBlock = Math.max(2, Math.ceil(Math.log2(Math.max(1, paletteSize))))
+    const totalBits = totalBlocks * bitsPerBlock
+    const longCount = Math.max(1, Math.ceil(totalBits / 64))
+    const mask = (1n << BigInt(bitsPerBlock)) - 1n
+    const longArray = Array.from({ length: longCount }, () => 0n)
+
+    for (let blockIndex = 0; blockIndex < totalBlocks; blockIndex += 1) {
+      const value = BigInt(indices[blockIndex] || 0) & mask
+      const startBit = blockIndex * bitsPerBlock
+      const longIndex = Math.floor(startBit / 64)
+      const bitOffset = startBit % 64
+      longArray[longIndex] |= value << BigInt(bitOffset)
+
+      const spillBits = bitOffset + bitsPerBlock - 64
+      if (spillBits > 0 && longIndex + 1 < longArray.length) {
+        longArray[longIndex + 1] |= value >> BigInt(64 - bitOffset)
+      }
+    }
+
+    return longArray.map(value => BigInt.asIntN(64, value))
+  }
+
+  _stripSchematicExtension(fileName = '') {
+    return String(fileName || '').replace(/\.(litematic|schem|schematic)$/iu, '')
   }
 
   _toUint64BigInt(value) {

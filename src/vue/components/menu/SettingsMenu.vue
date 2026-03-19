@@ -6,17 +6,10 @@ import { useUiStore } from '@pinia/uiStore.js'
  * Supports preset switching and step sliders
  */
 import { computed } from 'vue'
-import { useI18n } from 'vue-i18n'
 import McStepSlider from './ui/McStepSlider.vue'
 
 const ui = useUiStore()
 const settings = useSettingsStore()
-const { locale } = useI18n()
-
-// Toggle language
-function toggleLanguage() {
-  locale.value = locale.value === 'en' ? 'zh' : 'en'
-}
 
 // Shadow quality options
 const shadowOptions = [
@@ -55,12 +48,7 @@ function adjustSensitivity(delta) {
 
 <template>
   <div class="settings-menu">
-    <h2 class="menu-title">
-      {{ $t('settings.title') }}
-      <button class="lang-switch-btn" @click="toggleLanguage">
-        {{ locale.toUpperCase() }}
-      </button>
-    </h2>
+    <h2 class="menu-title">{{ $t('settings.title') }}</h2>
 
     <div class="settings-content">
       <!-- Camera Section -->

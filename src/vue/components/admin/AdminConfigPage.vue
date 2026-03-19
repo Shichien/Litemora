@@ -1,5 +1,4 @@
 <script setup>
-import { useSettingsStore } from '@pinia/settingsStore.js'
 import {
   clearAdminAuthSession,
   getAuthProviders,
@@ -9,7 +8,10 @@ import {
 } from '@three/auth/admin-auth.js'
 import { getActiveProjectionId, getActiveSpaceName, buildSpaceProjectionUrl } from '@three/utils/space-context.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
-import { createGalleryItem } from '@three/gallery/gallery-api.js'
+import {
+  checkProjectionNameAvailability,
+  createGalleryItem,
+} from '@three/gallery/gallery-api.js'
 import emitter from '@three/utils/event/event-bus.js'
 import {
   ensureProjectionDisplayName,
@@ -38,10 +40,6 @@ import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
 
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-
-const settingsStore = useSettingsStore()
-const { locale } = useI18n()
 
 const authProviders = getAuthProviders()
 const authSession = ref(loadAdminAuthSession())
@@ -86,10 +84,6 @@ const skyModeOptions = ['DayCycle', 'HDR']
 const projectionVisibilityOptions = [
   { value: 'public', label: '公开' },
   { value: 'private', label: '私有' },
-]
-const languageOptions = [
-  { value: 'zh', label: '中文' },
-  { value: 'en', label: 'English' },
 ]
 
 const normalizedDraft = computed(() => {
@@ -348,16 +342,6 @@ async function clearCurrentResourcePack() {
   setStatus('已恢复内置 Minecraft 资源包', 'neutral')
 }
 
-function setAdminLanguage(lang) {
-  if (locale.value === lang) {
-    return
-  }
-
-  locale.value = lang
-  settingsStore.setLanguage(lang)
-  setStatus(`语言已切换为 ${lang.toUpperCase()}`, 'success')
-}
-
 function resetToDefaultTemplate() {
   configDraft.value = structuredClone(DEFAULT_BACKEND_WORLD_CONFIG)
   setStatus('已重置为默认模板（未保存）', 'warning')
@@ -399,8 +383,9 @@ async function handleSchematicFileSelect(event) {
     return
   }
 
-  if (!file.name.endsWith('.litematic')) {
-    setStatus('请选择 .litematic 文件', 'warning')
+  if (!/\.(litematic|schem)$/iu.test(file.name)) {
+    setStatus('请选择 .litematic 或 .schem 文件', 'warning')
+    event.target.value = ''
     return
   }
 
@@ -412,7 +397,7 @@ async function handleSchematicFileSelect(event) {
     schematicSourceFile.value = file
     schematicPreview.value = schematicService.getPreview()
     schematicProjectionName.value = ensureProjectionDisplayName(
-      schematic.name || file.name.replace(/\.litematic$/iu, ''),
+      schematic.name || file.name.replace(/\.(litematic|schem)$/iu, ''),
     )
     await saveAdminSchematicFile({
       accountId: currentAccountId.value,
@@ -426,7 +411,7 @@ async function handleSchematicFileSelect(event) {
       )
     }
     else {
-      setStatus(`已加载原理图: ${schematic.name} (${schematicPreview.value.blockCount} 方块)`, 'success')
+      setStatus(`已加载原理图: ${schematic.name} (${schematicPreview.value.blockCount} 方块，${schematic.format || 'litematic'})`, 'success')
     }
   }
   catch (error) {
@@ -491,6 +476,16 @@ async function applySchematic() {
 
     if (!isValidProjectionName(sanitizedProjectionName.value)) {
       setStatus('投影名称仅支持英文字母和数字', 'warning')
+      return
+    }
+
+    const availability = await checkProjectionNameAvailability(
+      spaceName,
+      sanitizedProjectionName.value,
+      session,
+    )
+    if (!availability?.available) {
+      setStatus('已存在同名投影，请换一个名字', 'warning')
       return
     }
 
@@ -570,7 +565,12 @@ async function applySchematic() {
       }
     }
     catch (error) {
-      setStatus(`创建投影失败: ${error.message}`, 'warning')
+      setStatus(
+        error?.message === 'projection_name_exists'
+          ? '已存在同名投影，请换一个名字'
+          : `创建投影失败: ${error.message}`,
+        'warning',
+      )
       isApplying.value = false
       return
     }
@@ -849,20 +849,6 @@ onBeforeUnmount(() => {
       <div class="settings-panel">
         <section class="setting-section">
           <h3>界面设置</h3>
-          <div class="setting-row">
-            <span class="row-label">语言</span>
-            <div class="option-group">
-              <button
-                v-for="option in languageOptions"
-                :key="`lang-${option.value}`"
-                class="option-btn"
-                :class="{ active: locale === option.value }"
-                @click="setAdminLanguage(option.value)"
-              >
-                {{ option.label }}
-              </button>
-            </div>
-          </div>
           <div class="setting-row toggles">
             <label><input v-model="configDraft.ui.pauseMenu.showSettings" type="checkbox">显示设置按钮</label>
             <label><input v-model="configDraft.ui.pauseMenu.showSkins" type="checkbox">显示皮肤按钮</label>
@@ -1032,15 +1018,18 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="subsection-title">
-            导入 Litematica 投影文件
+            导入 Minecraft 投影文件
           </div>
           <div class="setting-row">
             <input
               type="file"
-              accept=".litematic"
+              accept=".litematic,.schem"
               @change="handleSchematicFileSelect"
             >
           </div>
+          <p class="schematic-preview-hint">
+            支持上传 `.litematic` 和 `.schem` 文件。
+          </p>
 
           <div v-if="schematicFile" class="schematic-preview">
             <div class="preview-info">
@@ -1184,7 +1173,7 @@ onBeforeUnmount(() => {
               </div>
 
               <div v-if="!schematicImportLogs.length" class="schematic-console-empty">
-                还没有导入日志，应用原理图后会在这里显示楼梯/台阶/墙统计和贴图命中信息。
+                还没有导入日志，应用原理图后会在这里显示导入结果。
               </div>
 
               <div v-else class="schematic-console-list">
@@ -1203,16 +1192,6 @@ onBeforeUnmount(() => {
                   </div>
                   <div v-if="log.details" class="details">
                     放置 {{ log.details.placed || 0 }} · 替换 {{ log.details.replaced || 0 }} · 跳过 {{ log.details.skipped || 0 }} · 区块 {{ log.details.touchedChunks || 0 }}
-                  </div>
-                  <div v-if="log.details?.topTextures?.length" class="textures">
-                    TOP 贴图：
-                    <span
-                      v-for="item in log.details.topTextures.slice(0, 6)"
-                      :key="`${log.id}-${item.name}`"
-                      class="texture-chip"
-                    >
-                      {{ item.name }} ({{ item.count }})
-                    </span>
                   </div>
                 </div>
               </div>

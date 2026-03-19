@@ -106,6 +106,8 @@ export default class MinecraftSchematicRenderLayer {
     this._cubane = null
     this._cubanePromise = null
     this._meshEntries = []
+    this._meshGroups = new Map()
+    this._groupKeysByBlockString = new Map()
     this._overlayGeometryCache = new Map()
     this._rebuildToken = 0
     this._disposed = false
@@ -235,155 +237,266 @@ export default class MinecraftSchematicRenderLayer {
   }
 
   async rebuildFromLayer(layer, options = {}) {
+    return this._syncRenderGroupsFromLayer(layer, null, options)
+  }
+
+  async syncBlockStatesFromLayer(layer, blockStrings = [], options = {}) {
+    const normalizedBlockStrings = [...new Set(
+      (Array.isArray(blockStrings) ? blockStrings : [])
+        .map(blockString => String(blockString || '').trim())
+        .filter(Boolean),
+    )]
+
+    if (!normalizedBlockStrings.length) {
+      return {
+        uniqueBlockStates: 0,
+        builtMeshes: 0,
+        resourcePackStatus: { ...this._resourcePackStatus },
+      }
+    }
+
+    return this._syncRenderGroupsFromLayer(layer, normalizedBlockStrings, options)
+  }
+
+  async _syncRenderGroupsFromLayer(layer, blockStrings = null, options = {}) {
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
     const cubane = await this.ensureCubane()
     const rebuildToken = ++this._rebuildToken
     const buildStart = performance.now()
+    const filteredBlockStates = Array.isArray(blockStrings) && blockStrings.length
+      ? new Set(blockStrings)
+      : null
 
-    const stateGroups = this._groupBlocksByState(layer)
+    const stateGroups = this._groupBlocksByState(layer, filteredBlockStates)
     const { groupedBlocks, groupingStats } = this._buildRenderGroups(stateGroups)
     const lighting = buildSchematicLighting(layer)
-    this.clear()
 
-    const descriptorCache = new Map()
     const blockCount = layer?.getStats?.()?.blockCount ?? 0
     const uniqueStateCount = stateGroups.size
-    let processedStates = 0
-    let builtMeshes = 0
-    let maxInstancesPerMesh = 0
+    if (!filteredBlockStates) {
+      this.clear()
+      this._pruneOverlayGeometryCache(new Set(stateGroups.keys()))
+    }
 
-    for (const groupEntry of groupedBlocks.values()) {
-      if (this._disposed || rebuildToken !== this._rebuildToken) {
-        return {
-          cancelled: true,
-          uniqueBlockStates: uniqueStateCount,
-          builtMeshes,
-        }
-      }
-
-      const { blockString, instances, bounds } = groupEntry
-      if (!descriptorCache.has(blockString)) {
-        const prototype = await cubane.getBlockMesh(blockString, 'plains', true)
-        if (!prototype) {
-          descriptorCache.set(blockString, null)
-        }
-        else {
-          const rawDescriptors = this._extractMeshDescriptors(prototype)
-          const descriptors = rawDescriptors.map((descriptor, descriptorIndex) => ({
-            descriptorIndex,
-            relativeMatrix: descriptor.relativeMatrix,
-            sharedGeometry: descriptor.geometry,
-            sharedMaterial: createPreviewSyncedMaterial(descriptor.material),
-          }))
-          descriptorCache.set(blockString, descriptors.length ? descriptors : null)
-          if (!this._overlayGeometryCache.has(blockString) && rawDescriptors.length) {
-            const overlayGeometry = this._buildOverlayGeometry(rawDescriptors)
-            if (overlayGeometry) {
-              this._overlayGeometryCache.set(blockString, overlayGeometry)
-            }
-          }
-        }
-      }
-
-      const descriptors = descriptorCache.get(blockString) || []
-      if (!descriptors.length) {
-        processedStates++
-        continue
-      }
-      maxInstancesPerMesh = Math.max(maxInstancesPerMesh, instances.length)
-
-      for (let descriptorIndex = 0; descriptorIndex < descriptors.length; descriptorIndex++) {
-        const descriptor = descriptors[descriptorIndex]
-        const geometry = descriptor.sharedGeometry
-        const material = descriptor.sharedMaterial
-        const instancedMesh = new THREE.InstancedMesh(geometry, material, instances.length)
-        instancedMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage)
-        instancedMesh.castShadow = false
-        instancedMesh.receiveShadow = false
-        instancedMesh.name = `minecraft-instanced:${blockString}#${descriptor.descriptorIndex}`
-        instancedMesh.userData.minecraftSchematicLayer = true
-        instancedMesh.userData.blockString = blockString
-        instancedMesh.userData.previewSyncedMaterial = true
-        instancedMesh.userData.instanceToWorldBlock = new Int32Array(instances.length * 3)
-        instancedMesh.userData.blockName = `minecraft:${instances[0]?.blockName || 'unknown'}`
-        instancedMesh.userData.bounds = bounds
-
-        for (let index = 0; index < instances.length; index++) {
-          const instance = instances[index]
-          const offset = index * 3
-          instancedMesh.userData.instanceToWorldBlock[offset] = instance.x
-          instancedMesh.userData.instanceToWorldBlock[offset + 1] = instance.y
-          instancedMesh.userData.instanceToWorldBlock[offset + 2] = instance.z
-          this._tempTranslation.makeTranslation(instance.x, instance.y, instance.z)
-          this._tempMatrix.copy(this._tempTranslation).multiply(descriptor.relativeMatrix)
-          instancedMesh.setMatrixAt(index, this._tempMatrix)
-          const brightness = lighting.brightnessByPosition.get(`${instance.x},${instance.y},${instance.z}`) || 1
-          this._tempColor.setScalar(brightness)
-          instancedMesh.setColorAt(index, this._tempColor)
-
-          if (index > 0 && index % INSTANCE_UPLOAD_BATCH_SIZE === 0) {
-            instancedMesh.instanceMatrix.needsUpdate = true
-            if (instancedMesh.instanceColor) {
-              instancedMesh.instanceColor.needsUpdate = true
-            }
-            await this._yieldToMainThread()
-          }
-        }
-
-        instancedMesh.instanceMatrix.needsUpdate = true
-        if (instancedMesh.instanceColor) {
-          instancedMesh.instanceColor.needsUpdate = true
-        }
-        instancedMesh.computeBoundingSphere?.()
-        instancedMesh.computeBoundingBox?.()
-        this.group.add(instancedMesh)
-        this._meshEntries.push(instancedMesh)
-        builtMeshes++
-      }
-
-      processedStates++
-
-      if (onProgress) {
-        onProgress({
-          processedStates,
-          totalStates: groupedBlocks.size,
-          builtMeshes,
-          progress: groupedBlocks.size > 0 ? processedStates / groupedBlocks.size : 1,
-          resourcePackStatus: { ...this._resourcePackStatus },
-        })
-      }
-
-      if (processedStates % BUILD_BATCH_SIZE === 0) {
-        await this._yieldToMainThread()
+    const buildResult = await this._buildStagedRenderGroups(groupedBlocks, {
+      cubane,
+      lighting,
+      onProgress,
+      rebuildToken,
+    })
+    if (buildResult.cancelled) {
+      return {
+        cancelled: true,
+        uniqueBlockStates: uniqueStateCount,
+        builtMeshes: buildResult.builtMeshes,
       }
     }
 
+    if (this._disposed || rebuildToken !== this._rebuildToken) {
+      this._disposeStagedRenderGroups(buildResult.stagedGroups)
+      return {
+        cancelled: true,
+        uniqueBlockStates: uniqueStateCount,
+        builtMeshes: buildResult.builtMeshes,
+      }
+    }
+
+    if (filteredBlockStates) {
+      for (const blockString of filteredBlockStates) {
+        this._removeRenderGroupsForBlockString(blockString)
+      }
+    }
+
+    for (const groupRecord of buildResult.stagedGroups.values()) {
+      this._registerRenderGroup(groupRecord)
+    }
+
+    this._rebuildMeshEntriesList()
+
     const elapsedMs = performance.now() - buildStart
-    this._lastBuildProfile = {
+    const nextProfile = {
       blockCount,
       uniqueBlockStates: uniqueStateCount,
       renderGroups: groupedBlocks.size,
       grouping: groupingStats,
-      builtMeshes,
-      maxInstancesPerMesh,
+      builtMeshes: buildResult.builtMeshes,
+      maxInstancesPerMesh: buildResult.maxInstancesPerMesh,
       elapsedMs: Number(elapsedMs.toFixed(2)),
       lighting: lighting.stats,
     }
+    this._lastBuildProfile = filteredBlockStates
+      ? {
+          ...(this._lastBuildProfile || {}),
+          lastPatch: {
+            ...nextProfile,
+            affectedBlockStates: [...filteredBlockStates],
+          },
+        }
+      : nextProfile
+
     console.info('[MinecraftSchematicRenderLayer] Build profile', this._lastBuildProfile)
 
     return {
       uniqueBlockStates: uniqueStateCount,
-      builtMeshes,
+      builtMeshes: buildResult.builtMeshes,
       profile: this._lastBuildProfile,
       resourcePackStatus: { ...this._resourcePackStatus },
     }
   }
 
-  _groupBlocksByState(layer) {
+  _buildStagedRenderGroups(groupedBlocks, options = {}) {
+    const cubane = options.cubane
+    const lighting = options.lighting
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
+    const rebuildToken = options.rebuildToken
+
+    return (async () => {
+      const descriptorCache = new Map()
+      const stagedGroups = new Map()
+      let processedStates = 0
+      let builtMeshes = 0
+      let maxInstancesPerMesh = 0
+
+      for (const groupEntry of groupedBlocks.values()) {
+        if (this._disposed || rebuildToken !== this._rebuildToken) {
+          this._disposeDescriptorCache(descriptorCache)
+          this._disposeStagedRenderGroups(stagedGroups)
+          return {
+            cancelled: true,
+            stagedGroups: new Map(),
+            builtMeshes,
+            maxInstancesPerMesh,
+          }
+        }
+
+        const { blockString, instances, bounds, groupKey } = groupEntry
+        if (!descriptorCache.has(blockString)) {
+          const prototype = await cubane.getBlockMesh(blockString, 'plains', true)
+          if (!prototype) {
+            descriptorCache.set(blockString, null)
+          }
+          else {
+            const rawDescriptors = this._extractMeshDescriptors(prototype)
+            const descriptors = rawDescriptors.map((descriptor, descriptorIndex) => ({
+              descriptorIndex,
+              relativeMatrix: descriptor.relativeMatrix,
+              sharedGeometry: descriptor.geometry,
+              sharedMaterial: createPreviewSyncedMaterial(descriptor.material),
+            }))
+            descriptorCache.set(blockString, descriptors.length ? descriptors : null)
+            this._replaceOverlayGeometry(blockString, rawDescriptors)
+          }
+        }
+
+        const descriptors = descriptorCache.get(blockString) || []
+        if (!descriptors.length) {
+          processedStates++
+          continue
+        }
+        maxInstancesPerMesh = Math.max(maxInstancesPerMesh, instances.length)
+
+        const meshes = []
+        for (let descriptorIndex = 0; descriptorIndex < descriptors.length; descriptorIndex++) {
+          const descriptor = descriptors[descriptorIndex]
+          const instancedMesh = new THREE.InstancedMesh(
+            descriptor.sharedGeometry,
+            descriptor.sharedMaterial,
+            instances.length,
+          )
+          instancedMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage)
+          instancedMesh.castShadow = false
+          instancedMesh.receiveShadow = false
+          instancedMesh.name = `minecraft-instanced:${blockString}#${descriptor.descriptorIndex}`
+          instancedMesh.userData.minecraftSchematicLayer = true
+          instancedMesh.userData.blockString = blockString
+          instancedMesh.userData.previewSyncedMaterial = true
+          instancedMesh.userData.instanceToWorldBlock = new Int32Array(instances.length * 3)
+          instancedMesh.userData.blockName = `minecraft:${instances[0]?.blockName || 'unknown'}`
+          instancedMesh.userData.bounds = bounds
+
+          for (let index = 0; index < instances.length; index++) {
+            const instance = instances[index]
+            const offset = index * 3
+            instancedMesh.userData.instanceToWorldBlock[offset] = instance.x
+            instancedMesh.userData.instanceToWorldBlock[offset + 1] = instance.y
+            instancedMesh.userData.instanceToWorldBlock[offset + 2] = instance.z
+            this._tempTranslation.makeTranslation(instance.x, instance.y, instance.z)
+            this._tempMatrix.copy(this._tempTranslation).multiply(descriptor.relativeMatrix)
+            instancedMesh.setMatrixAt(index, this._tempMatrix)
+            const brightness = lighting?.brightnessByPosition?.get(`${instance.x},${instance.y},${instance.z}`) || 1
+            this._tempColor.setScalar(brightness)
+            instancedMesh.setColorAt(index, this._tempColor)
+
+            if (index > 0 && index % INSTANCE_UPLOAD_BATCH_SIZE === 0) {
+              instancedMesh.instanceMatrix.needsUpdate = true
+              if (instancedMesh.instanceColor) {
+                instancedMesh.instanceColor.needsUpdate = true
+              }
+              await this._yieldToMainThread()
+            }
+          }
+
+          instancedMesh.instanceMatrix.needsUpdate = true
+          if (instancedMesh.instanceColor) {
+            instancedMesh.instanceColor.needsUpdate = true
+          }
+          instancedMesh.computeBoundingSphere?.()
+          instancedMesh.computeBoundingBox?.()
+          meshes.push(instancedMesh)
+          builtMeshes++
+        }
+
+        stagedGroups.set(groupKey, {
+          groupKey,
+          blockString,
+          meshes,
+        })
+        processedStates++
+
+        if (onProgress) {
+          onProgress({
+            processedStates,
+            totalStates: groupedBlocks.size,
+            builtMeshes,
+            progress: groupedBlocks.size > 0 ? processedStates / groupedBlocks.size : 1,
+            resourcePackStatus: { ...this._resourcePackStatus },
+          })
+        }
+
+        if (processedStates % BUILD_BATCH_SIZE === 0) {
+          await this._yieldToMainThread()
+        }
+      }
+
+      return {
+        cancelled: false,
+        stagedGroups,
+        builtMeshes,
+        maxInstancesPerMesh,
+      }
+    })()
+  }
+
+  _groupBlocksByState(layer, blockStateFilter = null) {
     const grouped = new Map()
 
     layer?.forEachBlock?.((position, entry) => {
       const blockString = buildBlockString(entry?.blockName, entry?.properties)
+      if (!blockString) {
+        return
+      }
+
+      if (blockStateFilter && !blockStateFilter.has(blockString)) {
+        return
+      }
+
+      if (this.chunkManager?.isImportedMinecraftBlockTransientlyRemoved?.(
+        position.worldX,
+        position.worldY,
+        position.worldZ,
+      )) {
+        return
+      }
 
       if (!grouped.has(blockString)) {
         grouped.set(blockString, {
@@ -545,6 +658,136 @@ export default class MinecraftSchematicRenderLayer {
     return merged || null
   }
 
+  _replaceOverlayGeometry(blockString, descriptors = []) {
+    const previousGeometry = this._overlayGeometryCache.get(blockString)
+    if (previousGeometry) {
+      previousGeometry.dispose?.()
+      this._overlayGeometryCache.delete(blockString)
+    }
+
+    const overlayGeometry = this._buildOverlayGeometry(descriptors)
+    if (overlayGeometry) {
+      this._overlayGeometryCache.set(blockString, overlayGeometry)
+    }
+  }
+
+  _pruneOverlayGeometryCache(validBlockStrings = new Set()) {
+    for (const [blockString, geometry] of this._overlayGeometryCache.entries()) {
+      if (validBlockStrings.has(blockString)) {
+        continue
+      }
+
+      geometry?.dispose?.()
+      this._overlayGeometryCache.delete(blockString)
+    }
+  }
+
+  _registerRenderGroup(groupRecord) {
+    this._meshGroups.set(groupRecord.groupKey, groupRecord)
+
+    if (!this._groupKeysByBlockString.has(groupRecord.blockString)) {
+      this._groupKeysByBlockString.set(groupRecord.blockString, new Set())
+    }
+
+    this._groupKeysByBlockString.get(groupRecord.blockString)?.add(groupRecord.groupKey)
+    for (const mesh of groupRecord.meshes) {
+      this.group.add(mesh)
+    }
+  }
+
+  _removeRenderGroupsForBlockString(blockString) {
+    const groupKeys = [...(this._groupKeysByBlockString.get(blockString) || [])]
+    if (!groupKeys.length) {
+      return
+    }
+
+    const meshes = []
+    for (const groupKey of groupKeys) {
+      const groupRecord = this._meshGroups.get(groupKey)
+      if (!groupRecord) {
+        continue
+      }
+
+      meshes.push(...groupRecord.meshes)
+      this._meshGroups.delete(groupKey)
+    }
+
+    this._groupKeysByBlockString.delete(blockString)
+    this._disposeMeshes(meshes)
+  }
+
+  _disposeMeshes(meshes = []) {
+    const disposedGeometries = new Set()
+    const disposedMaterials = new Set()
+
+    for (const mesh of meshes) {
+      this.group.remove(mesh)
+      if (mesh.geometry && !disposedGeometries.has(mesh.geometry)) {
+        disposedGeometries.add(mesh.geometry)
+        mesh.geometry.dispose?.()
+      }
+
+      if (Array.isArray(mesh.material)) {
+        for (const entry of mesh.material) {
+          if (entry && !disposedMaterials.has(entry)) {
+            disposedMaterials.add(entry)
+            entry.dispose?.()
+          }
+        }
+      }
+      else if (mesh.material && !disposedMaterials.has(mesh.material)) {
+        disposedMaterials.add(mesh.material)
+        mesh.material.dispose?.()
+      }
+    }
+  }
+
+  _disposeDescriptorCache(cache = null) {
+    if (!cache) {
+      return
+    }
+
+    const disposedGeometries = new Set()
+    const disposedMaterials = new Set()
+
+    for (const descriptors of cache.values()) {
+      if (!Array.isArray(descriptors)) {
+        continue
+      }
+
+      for (const descriptor of descriptors) {
+        if (descriptor.sharedGeometry && !disposedGeometries.has(descriptor.sharedGeometry)) {
+          disposedGeometries.add(descriptor.sharedGeometry)
+          descriptor.sharedGeometry.dispose?.()
+        }
+
+        if (descriptor.sharedMaterial && !disposedMaterials.has(descriptor.sharedMaterial)) {
+          disposedMaterials.add(descriptor.sharedMaterial)
+          descriptor.sharedMaterial.dispose?.()
+        }
+      }
+    }
+  }
+
+  _disposeStagedRenderGroups(stagedGroups = null) {
+    if (!stagedGroups || typeof stagedGroups.values !== 'function') {
+      return
+    }
+
+    const meshes = []
+    for (const groupRecord of stagedGroups.values()) {
+      meshes.push(...(groupRecord?.meshes || []))
+    }
+    this._disposeMeshes(meshes)
+  }
+
+  _rebuildMeshEntriesList() {
+    this._meshEntries = []
+    for (const groupRecord of this._meshGroups.values()) {
+      this._meshEntries.push(...groupRecord.meshes)
+    }
+  }
+
   async _yieldToMainThread() {
     await new Promise((resolve) => {
       if (typeof requestAnimationFrame === 'function') {
@@ -636,30 +879,13 @@ export default class MinecraftSchematicRenderLayer {
   }
 
   clear() {
-    const disposedGeometries = new Set()
-    const disposedMaterials = new Set()
-
-    for (const mesh of this._meshEntries) {
-      this.group.remove(mesh)
-      if (mesh.geometry && !disposedGeometries.has(mesh.geometry)) {
-        disposedGeometries.add(mesh.geometry)
-        mesh.geometry.dispose?.()
-      }
-
-      if (Array.isArray(mesh.material)) {
-        for (const entry of mesh.material) {
-          if (entry && !disposedMaterials.has(entry)) {
-            disposedMaterials.add(entry)
-            entry.dispose?.()
-          }
-        }
-      }
-      else if (mesh.material && !disposedMaterials.has(mesh.material)) {
-        disposedMaterials.add(mesh.material)
-        mesh.material.dispose?.()
-      }
+    const blockStrings = [...this._groupKeysByBlockString.keys()]
+    for (const blockString of blockStrings) {
+      this._removeRenderGroupsForBlockString(blockString)
     }
 
+    this._meshGroups.clear()
+    this._groupKeysByBlockString.clear()
     this._meshEntries = []
   }
 

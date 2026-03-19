@@ -44,7 +44,11 @@ export default class ItemPickupAnimator {
    * Handle block break complete event
    * @param {{ blockId: number, worldPos: { x, y, z } }} data
    */
-  _onBlockBreakComplete({ blockId, worldPos }) {
+  _onBlockBreakComplete({ blockId, worldPos, source, suppressPickup = false }) {
+    if (suppressPickup || source === 'minecraft-schematic' || blockId === null || blockId === undefined || blockId === blocksConfig.empty.id) {
+      return
+    }
+
     // Get block config
     const blockConfig = this._getBlockConfigById(blockId)
     if (!blockConfig) {

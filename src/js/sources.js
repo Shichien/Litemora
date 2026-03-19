@@ -24,11 +24,6 @@ const sources = [
     type: 'hdrTexture',
     path: 'textures/environmentMap/HDRI_110.hdr',
   },
-  {
-    name: 'backgroundTexture',
-    type: 'texture',
-    path: 'textures/background/morning.png',
-  },
   // ===== 玩家皮肤模型 =====
   {
     name: 'steveModel',
@@ -349,42 +344,6 @@ const sources = [
     name: 'destroy_stage_9',
     type: 'texture',
     path: 'textures/destroy/destroy_stage_9.png',
-  },
-  // ===== 天空盒贴图（昼夜循环）=====
-  {
-    name: 'sky_sunriseTexture',
-    type: 'texture',
-    path: 'textures/background/sunrise.png',
-  },
-  {
-    name: 'sky_morningTexture',
-    type: 'texture',
-    path: 'textures/background/morning.png',
-  },
-  {
-    name: 'sky_noonTexture',
-    type: 'texture',
-    path: 'textures/background/noon.png',
-  },
-  {
-    name: 'sky_afternoonTexture',
-    type: 'texture',
-    path: 'textures/background/afternoon.png',
-  },
-  {
-    name: 'sky_sunsetTexture',
-    type: 'texture',
-    path: 'textures/background/sunset.png',
-  },
-  {
-    name: 'sky_duskTexture',
-    type: 'texture',
-    path: 'textures/background/dusk.png',
-  },
-  {
-    name: 'sky_midnightTexture',
-    type: 'texture',
-    path: 'textures/background/midnight.png',
   },
 ]
 
