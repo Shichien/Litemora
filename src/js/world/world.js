@@ -7,7 +7,7 @@ import {
 } from '../config/chunk-config.js'
 import { INTERACTION_CONFIG } from '../config/interaction-config.js'
 import Experience from '../experience.js'
-import { fetchGalleryItem } from '../gallery/gallery-api.js'
+import { fetchGalleryItem, fetchGalleryItemSource } from '../gallery/gallery-api.js'
 import BlockBreakParticles from '../interaction/block-break-particles.js'
 import BlockInteractionManager from '../interaction/block-interaction-manager.js'
 import BlockMiningController from '../interaction/block-mining-controller.js'
@@ -445,17 +445,31 @@ export default class World {
 
     const sourceFile = projectionContext.item?.sourceFile
     console.log('[World Debug] Parsed projection context item:', projectionContext.item)
-    if (!sourceFile?.fileBase64) {
-      emitter.emit('projection:bootstrap-error', {
-        spaceName: projectionContext.spaceName,
-        projectionId: projectionContext.projectionId,
-        error: 'projection_source_file_missing',
-      })
-      return backendConfig
-    }
-
     try {
-      const buffer = decodeBase64ToArrayBuffer(sourceFile.fileBase64)
+      let buffer = null
+
+      if (sourceFile?.fileBase64) {
+        buffer = decodeBase64ToArrayBuffer(sourceFile.fileBase64)
+      }
+      else {
+        const sourcePayload = await fetchGalleryItemSource(
+          projectionContext.spaceName,
+          projectionContext.projectionId,
+          loadAdminAuthSession(),
+          sourceFile,
+        )
+        buffer = sourcePayload?.buffer || null
+      }
+
+      if (!(buffer instanceof ArrayBuffer) || buffer.byteLength <= 0) {
+        emitter.emit('projection:bootstrap-error', {
+          spaceName: projectionContext.spaceName,
+          projectionId: projectionContext.projectionId,
+          error: 'projection_source_file_missing',
+        })
+        return backendConfig
+      }
+
       console.log('[World Debug] Decoded buffer length:', buffer.byteLength)
       await schematicService.parseArrayBuffer(buffer)
       const preview = schematicService.getPreview()

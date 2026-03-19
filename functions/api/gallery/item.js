@@ -5,9 +5,11 @@ import {
   galleryItemKey,
   galleryManifestKey,
   galleryProfileKey,
+  gallerySourceKey,
   loadGalleryState,
+  loadGalleryItemByIdentifier,
+  normalizeSourceFileMetadata,
   publicGalleryItems,
-  readGalleryJson,
   sendError,
   sendJson,
   writeGalleryJson,
@@ -35,7 +37,7 @@ export async function onRequestGet(context) {
       return sendError(400, 'missing_item_id', 'A gallery item id is required')
     }
 
-    const item = await readGalleryJson(state.kv, galleryItemKey(state.spaceName, itemId), null)
+    const { item } = await loadGalleryItemByIdentifier(state.kv, state.spaceName, state.manifest, itemId)
     if (!item) {
       return sendError(404, 'gallery_item_not_found')
     }
@@ -49,7 +51,9 @@ export async function onRequestGet(context) {
     return sendJson(200, {
       item: {
         ...item,
-        sourceFile: item.visibility === 'public' || canManage ? item.sourceFile : undefined,
+        sourceFile: item.visibility === 'public' || canManage
+          ? normalizeSourceFileMetadata(item?.sourceFile || {})
+          : undefined,
       },
       viewer: {
         authenticated: !!viewer,
@@ -80,17 +84,27 @@ export async function onRequestDelete(context) {
       return sendError(400, 'missing_item_id', 'A gallery item id is required')
     }
 
+    const { item, itemId: resolvedItemId } = await loadGalleryItemByIdentifier(
+      state.kv,
+      state.spaceName,
+      state.manifest,
+      itemId,
+    )
+    if (!item || !resolvedItemId) {
+      return sendError(404, 'gallery_item_not_found')
+    }
+
     const manifest = state.manifest || {
       items: [],
     }
     const nextItems = publicGalleryItems({
-      items: manifest.items.filter(item => item?.id !== itemId),
+      items: manifest.items.filter(entry => entry?.id !== resolvedItemId),
     }, state.profile, viewer)
 
     const nextManifest = {
       ...manifest,
       updatedAt: Date.now(),
-      items: manifest.items.filter(item => item?.id !== itemId),
+      items: manifest.items.filter(entry => entry?.id !== resolvedItemId),
     }
     const nextProfile = state.profile
       ? {
@@ -100,7 +114,8 @@ export async function onRequestDelete(context) {
         }
       : null
 
-    await deleteGalleryKey(state.kv, galleryItemKey(state.spaceName, itemId))
+    await deleteGalleryKey(state.kv, galleryItemKey(state.spaceName, resolvedItemId))
+    await deleteGalleryKey(state.kv, gallerySourceKey(state.spaceName, resolvedItemId))
     await writeGalleryJson(state.kv, galleryManifestKey(state.spaceName), nextManifest)
     if (nextProfile) {
       await writeGalleryJson(state.kv, galleryProfileKey(state.spaceName), nextProfile)

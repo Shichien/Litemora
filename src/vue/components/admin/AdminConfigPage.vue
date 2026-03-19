@@ -1681,8 +1681,8 @@ input::placeholder {
 }
 
 .preview-offset-slider input[type='range'].vertical-range {
-  -webkit-appearance: slider-vertical;
-  appearance: slider-vertical;
+  -webkit-appearance: none;
+  appearance: none;
   writing-mode: vertical-lr;
   direction: rtl;
   width: 22px;

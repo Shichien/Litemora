@@ -36,6 +36,10 @@ function itemKey(spaceName, itemId) {
   return `gallery:space:${normalizeSpaceName(spaceName)}:item:${encodeURIComponent(String(itemId || '').trim())}`
 }
 
+function sourceKey(spaceName, itemId) {
+  return `gallery:space:${normalizeSpaceName(spaceName)}:source:${encodeURIComponent(String(itemId || '').trim())}`
+}
+
 function fallbackKey(key) {
   return `${LOCAL_GALLERY_FALLBACK_PREFIX}:${key}`
 }
@@ -159,6 +163,124 @@ function toBase64(buffer) {
   return btoa(binary)
 }
 
+function fromBase64(base64) {
+  const binary = atob(String(base64 || ''))
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes.buffer
+}
+
+function normalizeSourceFileMetadata(value = {}, fallback = {}) {
+  return {
+    fileName: String(value?.fileName || fallback?.fileName || 'uploaded.schematic').trim(),
+    mimeType: String(value?.mimeType || fallback?.mimeType || 'application/octet-stream').trim(),
+    size: Math.max(0, Math.round(Number(value?.size ?? fallback?.size ?? 0) || 0)),
+  }
+}
+
+function normalizeStoredSourceRecord(record = null) {
+  if (!record || typeof record !== 'object') {
+    return null
+  }
+
+  let buffer = null
+  if (record.buffer instanceof ArrayBuffer) {
+    buffer = record.buffer
+  }
+  else if (ArrayBuffer.isView(record.buffer)) {
+    buffer = record.buffer.buffer.slice(
+      record.buffer.byteOffset,
+      record.buffer.byteOffset + record.buffer.byteLength,
+    )
+  }
+  else if (record.fileBase64) {
+    buffer = fromBase64(record.fileBase64)
+  }
+
+  if (!(buffer instanceof ArrayBuffer)) {
+    return null
+  }
+
+  return {
+    ...normalizeSourceFileMetadata(record, { size: buffer.byteLength }),
+    buffer,
+  }
+}
+
+async function readSourceRecord(key, fallbackValue = null) {
+  try {
+    const db = await openDb()
+    try {
+      const record = await new Promise((resolve, reject) => {
+        const tx = db.transaction(LOCAL_GALLERY_DB_STORE, 'readonly')
+        const store = tx.objectStore(LOCAL_GALLERY_DB_STORE)
+        const request = store.get(key)
+        request.onsuccess = () => resolve(request.result?.value ?? null)
+        request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'))
+      })
+      const normalized = normalizeStoredSourceRecord(record)
+      if (normalized) {
+        return normalized
+      }
+    }
+    finally {
+      db.close()
+    }
+  }
+  catch {
+    // ignore IndexedDB failures and continue with localStorage fallback
+  }
+
+  try {
+    const raw = localStorage.getItem(fallbackKey(key))
+    if (!raw) {
+      return fallbackValue
+    }
+    return normalizeStoredSourceRecord(JSON.parse(raw)) || fallbackValue
+  }
+  catch {
+    return fallbackValue
+  }
+}
+
+async function writeSourceRecord(key, value = {}) {
+  const normalized = normalizeStoredSourceRecord(value)
+  if (!normalized) {
+    throw new Error('invalid_source_record')
+  }
+
+  try {
+    const db = await openDb()
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(LOCAL_GALLERY_DB_STORE, 'readwrite')
+        const store = tx.objectStore(LOCAL_GALLERY_DB_STORE)
+        store.put({
+          id: key,
+          value: normalized,
+          updatedAt: Date.now(),
+        })
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error || new Error('indexeddb_write_failed'))
+        tx.onabort = () => reject(tx.error || new Error('indexeddb_write_aborted'))
+      })
+    }
+    finally {
+      db.close()
+    }
+  }
+  catch {
+    // ignore and continue with localStorage fallback below
+  }
+
+  localStorage.setItem(fallbackKey(key), JSON.stringify({
+    ...normalizeSourceFileMetadata(normalized, { size: normalized.buffer.byteLength }),
+    fileBase64: toBase64(normalized.buffer),
+  }))
+}
+
 function buildLocalViewer() {
   return {
     authenticated: true,
@@ -275,7 +397,7 @@ export async function createLocalGalleryItem({
   const sourceFile = {
     fileName: file?.name || 'uploaded.schematic',
     mimeType: file?.type || 'application/octet-stream',
-    fileBase64: toBase64(fileBuffer),
+    size: Math.max(0, Math.round(Number(file?.size || fileBuffer.byteLength || 0))),
   }
 
   const projectionDisplayName = ensureProjectionDisplayName(
@@ -342,6 +464,10 @@ export async function createLocalGalleryItem({
   nextProfile.updatedAt = now
 
   await writeRecord(itemKey(normalizedSpaceName, itemId), item)
+  await writeSourceRecord(sourceKey(normalizedSpaceName, itemId), {
+    ...sourceFile,
+    buffer: fileBuffer,
+  })
   await writeSpaceState(normalizedSpaceName, nextProfile, nextManifest)
 
   return {
@@ -371,6 +497,27 @@ export async function fetchLocalGalleryItem(spaceName, itemId) {
   }
 }
 
+export async function fetchLocalGalleryItemSource(spaceName, itemId) {
+  const normalizedSpaceName = normalizeSpaceName(spaceName)
+  const { manifest } = await readSpaceState(normalizedSpaceName)
+  const resolvedSummary = findManifestItemByIdentifier(manifest?.items, itemId)
+  const resolvedItemId = resolvedSummary?.id || String(itemId || '').trim()
+  const sourceRecord = await readSourceRecord(sourceKey(normalizedSpaceName, resolvedItemId), null)
+  if (sourceRecord) {
+    return sourceRecord
+  }
+
+  const item = await readRecord(itemKey(normalizedSpaceName, resolvedItemId), null)
+  if (item?.sourceFile?.fileBase64) {
+    return normalizeStoredSourceRecord({
+      ...item.sourceFile,
+      fileBase64: item.sourceFile.fileBase64,
+    })
+  }
+
+  throw new Error('gallery_item_source_not_found')
+}
+
 export async function deleteLocalGalleryItem(spaceName, itemId) {
   const normalizedSpaceName = normalizeSpaceName(spaceName)
   const { profile: currentProfile, manifest: currentManifest } = await readSpaceState(normalizedSpaceName)
@@ -385,6 +532,7 @@ export async function deleteLocalGalleryItem(spaceName, itemId) {
   nextProfile.updatedAt = Date.now()
 
   await deleteRecord(itemKey(normalizedSpaceName, resolvedItemId))
+  await deleteRecord(sourceKey(normalizedSpaceName, resolvedItemId))
   await writeSpaceState(normalizedSpaceName, nextProfile, nextManifest)
 
   return {

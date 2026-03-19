@@ -4,6 +4,7 @@ import { readAccountSession, trimString } from '../auth/_shared.js'
 const SPACE_REGEX = /^[a-z0-9-]{3,63}$/
 const MAX_TEXT_LENGTH = 4000
 const MAX_FILE_BASE64_LENGTH = 20 * 1024 * 1024
+const MAX_SOURCE_FILE_BYTES = 15 * 1024 * 1024
 const MAX_PREVIEW_BLOCKS = 40000
 const MAX_THUMBNAIL_DATA_URL_LENGTH = 1.5 * 1024 * 1024
 
@@ -67,6 +68,10 @@ export function galleryManifestKey(spaceName) {
 
 export function galleryItemKey(spaceName, itemId) {
   return `gallery:space:${spaceName}:item:${encodeURIComponent(itemId)}`
+}
+
+export function gallerySourceKey(spaceName, itemId) {
+  return `gallery:space:${spaceName}:source:${encodeURIComponent(itemId)}`
 }
 
 export async function readGalleryJson(kv, key, fallbackValue = null) {
@@ -153,6 +158,20 @@ function normalizeProjectionSlug(value = '') {
 
 function resolveProjectionSlug(value = '', fallback = '') {
   return normalizeProjectionSlug(value) || normalizeProjectionSlug(fallback)
+}
+
+function estimateBase64ByteLength(value = '') {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return 0
+  }
+
+  const padding = normalized.endsWith('==')
+    ? 2
+    : normalized.endsWith('=')
+      ? 1
+      : 0
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding)
 }
 
 function normalizePlacement(value = null) {
@@ -273,16 +292,45 @@ export function normalizeFilePayload(body = {}) {
   return {
     fileName: sanitizeText(body?.fileName, 240) || 'uploaded.schematic',
     mimeType: sanitizeText(body?.mimeType, 120) || 'application/octet-stream',
+    size: estimateBase64ByteLength(fileBase64),
     fileBase64,
   }
 }
 
-export function buildGalleryItemPayload({ body, account, profile, spaceName, itemId }) {
+export function normalizeSourceFileMetadata(value = {}) {
+  const size = Math.max(0, Math.round(toNumber(value?.size)))
+  if (size > MAX_SOURCE_FILE_BYTES) {
+    throw new Error('file_too_large_for_kv')
+  }
+
+  return {
+    fileName: sanitizeText(value?.fileName, 240) || 'uploaded.schematic',
+    mimeType: sanitizeText(value?.mimeType, 120) || 'application/octet-stream',
+    size,
+  }
+}
+
+export function decodeBase64ToUint8Array(base64Text = '') {
+  const binary = atob(String(base64Text || ''))
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+export function buildGalleryItemPayload({ body, account, profile, spaceName, itemId, sourceFile = null }) {
   const now = Date.now()
-  const sourceFile = normalizeFilePayload(body)
+  const normalizedSourceFile = normalizeSourceFileMetadata(
+    sourceFile || body?.sourceFile || {
+      fileName: body?.fileName,
+      mimeType: body?.mimeType,
+      size: body?.fileSize,
+    },
+  )
   const schematic = normalizeSchematicSummary(body?.schematic)
   const previewModel = normalizePreviewModel(body?.previewModel)
-  const title = sanitizeText(body?.title, 160) || schematic.name || sourceFile.fileName
+  const title = sanitizeText(body?.title, 160) || schematic.name || normalizedSourceFile.fileName
   const projectionSlug = resolveProjectionSlug(body?.projectionName, title)
 
   return {
@@ -292,9 +340,9 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
     projectionSlug,
     description: sanitizeLongText(body?.description),
     visibility: normalizeVisibility(body?.visibility),
-    fileName: sourceFile.fileName,
-    mimeType: sourceFile.mimeType,
-    sourceFile,
+    fileName: normalizedSourceFile.fileName,
+    mimeType: normalizedSourceFile.mimeType,
+    sourceFile: normalizedSourceFile,
     schematic,
     previewModel,
     placement: normalizePlacement(body?.placement),
@@ -306,6 +354,43 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
     },
     createdAt: now,
     updatedAt: now,
+  }
+}
+
+export function findGalleryManifestItemByIdentifier(manifest, identifier = '') {
+  const normalizedIdentifier = trimString(identifier)
+  if (!normalizedIdentifier) {
+    return null
+  }
+
+  const normalizedSlug = resolveProjectionSlug(normalizedIdentifier)
+  const items = Array.isArray(manifest?.items) ? manifest.items : []
+
+  return items.find((item) => {
+    if (trimString(item?.id) === normalizedIdentifier) {
+      return true
+    }
+
+    return !!normalizedSlug && resolveProjectionSlug(item?.projectionSlug, item?.title) === normalizedSlug
+  }) || null
+}
+
+export async function loadGalleryItemByIdentifier(kv, spaceName, manifest, identifier = '') {
+  const resolvedSummary = findGalleryManifestItemByIdentifier(manifest, identifier)
+  const resolvedItemId = trimString(resolvedSummary?.id || identifier)
+  if (!resolvedItemId) {
+    return {
+      item: null,
+      itemId: '',
+      summary: resolvedSummary,
+    }
+  }
+
+  const item = await readGalleryJson(kv, galleryItemKey(spaceName, resolvedItemId), null)
+  return {
+    item,
+    itemId: resolvedItemId,
+    summary: resolvedSummary,
   }
 }
 

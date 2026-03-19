@@ -1,7 +1,6 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
-import Experience from '@three/experience.js'
 import { isLocalDevAuthEnabled, loadAdminAuthSession } from '@three/auth/admin-auth.js'
 import { fetchGallery } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
@@ -13,14 +12,15 @@ import {
   isSpaceWorldsRoute,
   shouldUseRootPortalView,
 } from '@three/utils/space-context.js'
-import AdminConfigPage from '@ui-components/admin/AdminConfigPage.vue'
-import Crosshair from '@ui-components/Crosshair.vue'
-import EventMonitorPanel from '@ui-components/debug/EventMonitorPanel.vue'
-import GameHud from '@ui-components/hud/GameHud.vue'
-import PortalHome from '@ui-components/landing/PortalHome.vue'
-import UiRoot from '@ui-components/menu/UiRoot.vue'
-import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
-import SpaceWorldsPage from '@ui-components/space/SpaceWorldsPage.vue'
+
+const AdminConfigPage = defineAsyncComponent(() => import('@ui-components/admin/AdminConfigPage.vue'))
+const Crosshair = defineAsyncComponent(() => import('@ui-components/Crosshair.vue'))
+const EventMonitorPanel = defineAsyncComponent(() => import('@ui-components/debug/EventMonitorPanel.vue'))
+const GameHud = defineAsyncComponent(() => import('@ui-components/hud/GameHud.vue'))
+const PortalHome = defineAsyncComponent(() => import('@ui-components/landing/PortalHome.vue'))
+const UiRoot = defineAsyncComponent(() => import('@ui-components/menu/UiRoot.vue'))
+const SpaceBreadcrumbs = defineAsyncComponent(() => import('@ui-components/space/SpaceBreadcrumbs.vue'))
+const SpaceWorldsPage = defineAsyncComponent(() => import('@ui-components/space/SpaceWorldsPage.vue'))
 
 const threeCanvas = ref(null)
 const authSession = ref(loadAdminAuthSession())
@@ -37,6 +37,7 @@ const canShowAdminConfig = computed(() => {
 })
 const currentWorldRouteKey = ref('')
 let experience = null
+let experienceConstructorPromise = null
 const handleHashChange = () => { void syncRouteState() }
 const handlePopState = () => { void syncRouteState() }
 const handleAdminAuthChanged = () => { void syncRouteState() }
@@ -57,14 +58,36 @@ function syncScrollableRouteClass() {
   document.body.classList.toggle('app-scrollable', shouldAllowPageScroll)
 }
 
-function createExperienceIfNeeded() {
+async function loadExperienceConstructor() {
+  if (!experienceConstructorPromise) {
+    experienceConstructorPromise = import('@three/experience.js').then(module => module.default)
+  }
+
+  return experienceConstructorPromise
+}
+
+async function createExperienceIfNeeded() {
   if (routeKind.value !== 'projection') {
     return
   }
 
-  if (!experience && threeCanvas.value) {
-    experience = new Experience(threeCanvas.value)
+  if (experience || !threeCanvas.value) {
+    return
   }
+
+  const routeKeyAtRequest = currentWorldRouteKey.value
+  const Experience = await loadExperienceConstructor()
+
+  if (
+    experience
+    || !threeCanvas.value
+    || routeKind.value !== 'projection'
+    || currentWorldRouteKey.value !== routeKeyAtRequest
+  ) {
+    return
+  }
+
+  experience = new Experience(threeCanvas.value)
 }
 
 function destroyExperienceIfNeeded() {
@@ -166,7 +189,7 @@ async function syncRouteState() {
   }
 
   await nextTick()
-  createExperienceIfNeeded()
+  await createExperienceIfNeeded()
 }
 
 onMounted(() => {

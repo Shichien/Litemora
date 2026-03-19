@@ -15,11 +15,22 @@ import SkinSelector from './SkinSelector.vue'
 const ui = useUiStore()
 const { locale } = useI18n()
 
+function syncReadyStateFromRuntime() {
+  if (ui.screen !== 'loading') {
+    return
+  }
+
+  if (window.Experience?.resources?.isLoaded) {
+    handleCoreReady()
+  }
+}
+
 // Listen for core:ready to transition from loading to playing
 onMounted(() => {
   emitter.on('core:ready', handleCoreReady)
   emitter.on('ui:escape', handleEscape)
   window.addEventListener('blur', handleWindowBlur)
+  syncReadyStateFromRuntime()
 })
 
 onUnmounted(() => {

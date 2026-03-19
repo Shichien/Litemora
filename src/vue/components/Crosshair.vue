@@ -72,6 +72,8 @@ onMounted(() => {
   emitter.on('game:mining-progress', onMiningProgress)
   emitter.on('game:mining-cancel', onMiningCancel)
   emitter.on('game:mining-complete', onMiningComplete)
+
+  isVisible.value = !!document.pointerLockElement
 })
 
 onUnmounted(() => {

@@ -9,6 +9,7 @@ import {
   deleteLocalGalleryItem,
   fetchLocalGallery,
   fetchLocalGalleryItem,
+  fetchLocalGalleryItemSource,
   isLocalGalleryStoreEnabled,
 } from './local-gallery-store.js'
 
@@ -22,19 +23,6 @@ function buildApiUrl(path, params = {}) {
     }
   })
   return `${url.pathname}${url.search}`
-}
-
-function toBase64(buffer) {
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  const chunkSize = 0x8000
-
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    const chunk = bytes.subarray(offset, offset + chunkSize)
-    binary += String.fromCharCode(...chunk)
-  }
-
-  return btoa(binary)
 }
 
 function buildHeaders(session = null, extraHeaders = {}) {
@@ -327,7 +315,7 @@ function buildProjectionCacheItem({
   thumbnailDataUrl = '',
   fileName = '',
   mimeType = '',
-  fileBase64 = '',
+  fileSize = 0,
 }) {
   const safeItem = item && typeof item === 'object' ? item : {}
   return {
@@ -348,10 +336,10 @@ function buildProjectionCacheItem({
     }),
     thumbnailDataUrl: String(safeItem.thumbnailDataUrl || thumbnailDataUrl || '').trim(),
     previewModel: safeItem.previewModel || previewModel || null,
-    sourceFile: safeItem.sourceFile || {
+    sourceFile: {
       fileName: String(fileName || safeItem.fileName || 'uploaded.schematic').trim(),
       mimeType: String(mimeType || safeItem.mimeType || 'application/octet-stream').trim(),
-      fileBase64: String(fileBase64 || '').trim(),
+      size: Math.max(0, Math.round(Number(safeItem?.sourceFile?.size ?? fileSize ?? 0) || 0)),
     },
   }
 }
@@ -391,6 +379,29 @@ async function requestJson(url, options = {}) {
   }
 
   return payload
+}
+
+async function requestBinary(url, options = {}) {
+  const response = await fetch(url, options)
+  if (!response.ok) {
+    const rawText = await response.text().catch(() => '')
+    try {
+      const payload = rawText ? JSON.parse(rawText) : null
+      throw new Error(payload?.details || payload?.error || 'request_failed')
+    }
+    catch (error) {
+      if (error instanceof Error && error.message !== 'Unexpected end of JSON input') {
+        throw error
+      }
+      throw new Error(rawText || 'request_failed')
+    }
+  }
+
+  return {
+    buffer: await response.arrayBuffer(),
+    mimeType: String(response.headers.get('Content-Type') || 'application/octet-stream').trim(),
+    size: Math.max(0, Math.round(Number(response.headers.get('Content-Length') || 0) || 0)),
+  }
 }
 
 function shouldUseLocalGalleryApi() {
@@ -533,9 +544,6 @@ export async function createGalleryItem({
     throw new Error('invalid_projection_name')
   }
 
-  const fileBuffer = await file.arrayBuffer()
-  const fileBase64 = toBase64(fileBuffer)
-
   const payload = shouldUseLocalGalleryApi()
     ? await createLocalGalleryItem({
       spaceName,
@@ -550,25 +558,22 @@ export async function createGalleryItem({
       projectionName,
     })
     : await (async () => {
+      const formData = new FormData()
+      formData.set('space', String(spaceName || '').trim())
+      formData.set('title', String(title || '').trim())
+      formData.set('description', String(description || '').trim())
+      formData.set('projectionName', String(projectionName || '').trim())
+      formData.set('visibility', String(visibility || 'public').trim())
+      formData.set('schematic', JSON.stringify(schematic || null))
+      formData.set('previewModel', JSON.stringify(previewModel || null))
+      formData.set('placement', JSON.stringify(placement || null))
+      formData.set('thumbnailDataUrl', String(thumbnailDataUrl || '').trim())
+      formData.set('file', file, file?.name || 'uploaded.schematic')
+
       return requestJson('/api/gallery/items', {
         method: 'POST',
-        headers: buildHeaders(session, {
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({
-          space: spaceName,
-          title,
-          description,
-          projectionName,
-          visibility,
-          fileName: file?.name || 'uploaded.schematic',
-          mimeType: file?.type || 'application/octet-stream',
-          fileBase64,
-          schematic,
-          previewModel,
-          placement,
-          thumbnailDataUrl,
-        }),
+        headers: buildHeaders(session),
+        body: formData,
       })
     })()
 
@@ -584,7 +589,7 @@ export async function createGalleryItem({
     thumbnailDataUrl,
     fileName: file?.name || 'uploaded.schematic',
     mimeType: file?.type || 'application/octet-stream',
-    fileBase64,
+    fileSize: Number(file?.size || 0),
   }))
 
   emitGalleryChanged({
@@ -621,6 +626,28 @@ export async function fetchGalleryItem(spaceName, itemId, session = null) {
   }), {
     headers: buildHeaders(session),
   })
+}
+
+export async function fetchGalleryItemSource(spaceName, itemId, session = null, sourceFile = null) {
+  const fallbackFile = sourceFile && typeof sourceFile === 'object' ? sourceFile : {}
+
+  if (shouldUseLocalGalleryApi()) {
+    return fetchLocalGalleryItemSource(spaceName, itemId)
+  }
+
+  const payload = await requestBinary(buildApiUrl('/api/gallery/source', {
+    space: spaceName,
+    item: itemId,
+  }), {
+    headers: buildHeaders(session),
+  })
+
+  return {
+    buffer: payload.buffer,
+    fileName: String(fallbackFile.fileName || 'uploaded.schematic').trim(),
+    mimeType: String(fallbackFile.mimeType || payload.mimeType || 'application/octet-stream').trim(),
+    size: Math.max(0, Math.round(Number(fallbackFile.size || payload.size || payload.buffer.byteLength || 0))),
+  }
 }
 
 export async function deleteGalleryItem(spaceName, identifier, session = null) {

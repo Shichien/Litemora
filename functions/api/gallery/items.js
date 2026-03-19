@@ -6,16 +6,91 @@ import {
   createGalleryItemId,
   createGalleryManifest,
   createGalleryProfile,
-  galleryManifestHasProjectionName,
+  decodeBase64ToUint8Array,
   galleryItemKey,
+  galleryManifestHasProjectionName,
   galleryManifestKey,
   galleryProfileKey,
+  gallerySourceKey,
   loadGalleryState,
+  normalizeFilePayload,
+  normalizeSourceFileMetadata,
   requireGalleryAccount,
   sendError,
   sendJson,
   writeGalleryJson,
 } from './_shared.js'
+
+function parseJsonField(value, fallbackValue = null) {
+  if (typeof value !== 'string') {
+    return fallbackValue
+  }
+
+  try {
+    return JSON.parse(value)
+  }
+  catch {
+    return fallbackValue
+  }
+}
+
+async function readCreateRequestPayload(request) {
+  const contentType = String(request.headers.get('content-type') || '').toLowerCase()
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await request.formData()
+    const file = formData.get('file')
+    const uploadFile = file && typeof file.arrayBuffer === 'function' ? file : null
+
+    return {
+      body: {
+        space: formData.get('space'),
+        title: formData.get('title'),
+        description: formData.get('description'),
+        projectionName: formData.get('projectionName'),
+        visibility: formData.get('visibility'),
+        thumbnailDataUrl: formData.get('thumbnailDataUrl'),
+        schematic: parseJsonField(formData.get('schematic'), null),
+        previewModel: parseJsonField(formData.get('previewModel'), null),
+        placement: parseJsonField(formData.get('placement'), null),
+        fileName: uploadFile?.name || formData.get('fileName'),
+        mimeType: uploadFile?.type || formData.get('mimeType'),
+        fileSize: Number(uploadFile?.size || 0),
+      },
+      uploadFile,
+    }
+  }
+
+  return {
+    body: await parseJsonBody(request),
+    uploadFile: null,
+  }
+}
+
+async function readSourceUpload(body = {}, uploadFile = null) {
+  if (uploadFile) {
+    const buffer = await uploadFile.arrayBuffer()
+    return {
+      sourceFile: normalizeSourceFileMetadata({
+        fileName: uploadFile.name || body?.fileName,
+        mimeType: uploadFile.type || body?.mimeType,
+        size: buffer.byteLength,
+      }),
+      sourceBuffer: buffer,
+    }
+  }
+
+  const legacyFile = normalizeFilePayload(body)
+  const bytes = decodeBase64ToUint8Array(legacyFile.fileBase64)
+
+  return {
+    sourceFile: normalizeSourceFileMetadata({
+      fileName: legacyFile.fileName,
+      mimeType: legacyFile.mimeType,
+      size: bytes.byteLength,
+    }),
+    sourceBuffer: bytes.buffer,
+  }
+}
 
 export async function onRequestPost(context) {
   try {
@@ -24,7 +99,7 @@ export async function onRequestPost(context) {
       return auth.response
     }
 
-    const body = await parseJsonBody(context.request)
+    const { body, uploadFile } = await readCreateRequestPayload(context.request)
     const state = await loadGalleryState(context, body)
     if (state.response) {
       return state.response
@@ -42,12 +117,14 @@ export async function onRequestPost(context) {
 
     const manifest = state.manifest || createGalleryManifest(state.spaceName, profile)
     const itemId = createGalleryItemId()
+    const { sourceFile, sourceBuffer } = await readSourceUpload(body, uploadFile)
     const item = buildGalleryItemPayload({
       body,
       account: auth.account,
       profile,
       spaceName: state.spaceName,
       itemId,
+      sourceFile,
     })
     if (galleryManifestHasProjectionName(manifest, item.projectionSlug)) {
       return sendError(409, 'projection_name_exists', 'A projection with the same name already exists in this space')
@@ -73,6 +150,7 @@ export async function onRequestPost(context) {
     }
 
     await writeGalleryJson(state.kv, galleryItemKey(state.spaceName, itemId), item)
+    await state.kv.put(gallerySourceKey(state.spaceName, itemId), sourceBuffer)
     await writeGalleryJson(state.kv, galleryManifestKey(state.spaceName), nextManifest)
     await writeGalleryJson(state.kv, galleryProfileKey(state.spaceName), nextProfile)
 
