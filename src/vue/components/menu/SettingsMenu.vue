@@ -26,12 +26,6 @@ const presetOptions = [
   { value: 'arcade', label: 'Arcade' },
 ]
 
-// Sky mode options
-const skyModeOptions = [
-  { value: 'DayCycle', label: 'DayCycle' },
-  { value: 'HDR', label: 'HDR' },
-]
-
 // Sensitivity display (percentage)
 const sensitivityPercent = computed(() => {
   return Math.round(settings.mouseSensitivity * 1000)
@@ -131,22 +125,6 @@ function adjustSensitivity(delta) {
         <h3 class="section-title">
           {{ $t('settings.environment') }}
         </h3>
-
-        <!-- Sky Mode -->
-        <div class="setting-row">
-          <span class="setting-label">{{ $t('settings.sky') }}</span>
-          <div class="setting-control">
-            <button
-              v-for="opt in skyModeOptions"
-              :key="opt.value"
-              class="option-btn"
-              :class="{ active: settings.envSkyMode === opt.value }"
-              @click="settings.setEnvSkyMode(opt.value)"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
-        </div>
 
         <!-- Sun Intensity -->
         <McStepSlider

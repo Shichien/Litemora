@@ -9,6 +9,7 @@ import {
 import {
   checkSpaceNameAvailability,
   claimGallerySpace,
+  fetchDiscoverProjectionFeed,
 } from '@three/gallery/gallery-api.js'
 import { buildSpaceUrl, isValidSpaceName, normalizeSpaceName } from '@three/utils/space-context.js'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -19,6 +20,7 @@ const authProviders = getAuthProviders()
 const authMenuOpen = ref(false)
 const authSession = ref(loadAdminAuthSession())
 const authMenuRef = ref(null)
+const discoverFeedItems = ref([])
 
 function syncAuthSession(event = null) {
   authSession.value = event?.detail?.session || loadAdminAuthSession()
@@ -30,13 +32,42 @@ function handleDocumentClick(event) {
   }
 }
 
+function shuffleItems(items = []) {
+  const copy = [...items]
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const current = copy[index]
+    copy[index] = copy[swapIndex]
+    copy[swapIndex] = current
+  }
+  return copy
+}
+
+async function loadDiscoverFeed() {
+  try {
+    const payload = await fetchDiscoverProjectionFeed(12)
+    const items = Array.isArray(payload?.items) ? payload.items : []
+    discoverFeedItems.value = shuffleItems(items).filter(item => item?.routeId && item?.space)
+  }
+  catch {
+    discoverFeedItems.value = []
+  }
+}
+
+function handleGalleryChanged() {
+  void loadDiscoverFeed()
+}
+
 onMounted(() => {
   window.addEventListener('admin-auth-changed', syncAuthSession)
+  window.addEventListener('gallery:changed', handleGalleryChanged)
   document.addEventListener('click', handleDocumentClick)
+  void loadDiscoverFeed()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('admin-auth-changed', syncAuthSession)
+  window.removeEventListener('gallery:changed', handleGalleryChanged)
   document.removeEventListener('click', handleDocumentClick)
 })
 
@@ -152,7 +183,7 @@ const heroTiles = [
   { id: 'embers', gradient: 'radial-gradient(circle at 74% 26%, rgba(255, 161, 108, 0.18), transparent 26%), linear-gradient(145deg, #1a1415 0%, #5b342c 46%, #b86b47 100%)' },
 ]
 
-const discoverSpaces = [
+const defaultDiscoverSpaces = [
   { title: 'Brutalist Library', author: 'By Shichien', url: 'brutalist-library', gradient: 'linear-gradient(145deg, #1b2734 0%, #43596b 48%, #d8c8aa 100%)' },
   { title: 'Cyberpunk City', author: 'By Litemora Community', url: 'cyber-city', gradient: 'linear-gradient(145deg, #060b15 0%, #1f3260 44%, #3bc6d8 100%)' },
   { title: 'Medieval Castle', author: 'By BuilderXYZ', url: 'medieval', gradient: 'linear-gradient(145deg, #1b1616 0%, #6d4531 40%, #d79b61 100%)' },
@@ -160,6 +191,70 @@ const discoverSpaces = [
   { title: 'Sky Island', author: 'By Aeria', url: 'sky-island', gradient: 'linear-gradient(145deg, #0d2240 0%, #4f86db 48%, #d8f2ff 100%)' },
   { title: 'Deep Dark City', author: 'By Miner123', url: 'deep-dark', gradient: 'linear-gradient(145deg, #06080c 0%, #24354a 48%, #596d92 100%)' },
 ]
+
+const heroBadgeProjection = computed(() => {
+  return discoverFeedItems.value.find(item => String(item?.thumbnailDataUrl || '').trim()) || null
+})
+
+const heroBadgeStyle = computed(() => {
+  const imageUrl = String(heroBadgeProjection.value?.thumbnailDataUrl || '').trim()
+  if (!imageUrl) {
+    return {
+      '--hero-badge-image': 'none',
+      '--hero-badge-gradient': 'linear-gradient(145deg, #122233 0%, #44687d 48%, #9ed4db 100%)',
+    }
+  }
+
+  return {
+    '--hero-badge-image': `url("${imageUrl.replace(/"/g, '\\"')}")`,
+    '--hero-badge-gradient': 'linear-gradient(145deg, rgba(9, 17, 27, 0.28) 0%, rgba(9, 17, 27, 0.68) 100%)',
+  }
+})
+
+function buildDiscoverCard(item, fallback = null) {
+  if (!item || typeof item !== 'object') {
+    return fallback
+  }
+
+  const routeId = String(item.routeId || item.projectionSlug || item.id || '').trim()
+  const spaceName = String(item.space || '').trim()
+  if (!routeId || !spaceName) {
+    return fallback
+  }
+
+  const ownerName = String(item.ownerName || spaceName).trim()
+  const imageUrl = String(item.thumbnailDataUrl || '').trim()
+  return {
+    title: String(item.title || 'World').trim(),
+    author: `By ${ownerName}`,
+    url: `/${spaceName}/worlds/${routeId}`,
+    gradient: fallback?.gradient || 'linear-gradient(145deg, #10202f 0%, #35566d 44%, #8aaebe 100%)',
+    imageUrl,
+    artImage: imageUrl ? `url("${imageUrl.replace(/"/g, '\\"')}")` : 'none',
+    ownerAvatar: String(item.ownerAvatar || '').trim(),
+    ownerInitial: ownerName.slice(0, 1).toUpperCase() || 'L',
+    spaceLabel: spaceName,
+  }
+}
+
+const discoverSpaces = computed(() => {
+  if (!discoverFeedItems.value.length) {
+    return defaultDiscoverSpaces.map(item => ({
+      ...item,
+      url: `/${item.url}`,
+      imageUrl: '',
+      artImage: 'none',
+      ownerAvatar: '',
+      ownerInitial: item.author.slice(3, 4).toUpperCase() || 'L',
+      spaceLabel: item.url,
+    }))
+  }
+
+  return discoverFeedItems.value
+    .slice(0, 6)
+    .map((item, index) => buildDiscoverCard(item, defaultDiscoverSpaces[index % defaultDiscoverSpaces.length]))
+    .filter(Boolean)
+})
 </script>
 
 <template>
@@ -285,7 +380,9 @@ const discoverSpaces = [
     <!-- Hero Content -->
     <section class="hero-content">
       <h1 class="hero-title">
-                <img src="/logo.webp" alt="" class="hero-title-icon" />
+        <span class="hero-title-badge" :style="heroBadgeStyle">
+          <img src="/logo.webp" alt="" class="hero-title-icon" />
+        </span>
         Litemora
       </h1>
       <p class="hero-subtitle">{{ t('home.hero.subtitle') }}</p>
@@ -373,13 +470,17 @@ const discoverSpaces = [
       <p class="section-desc">{{ t('home.discover.desc') }}</p>
       
       <div class="discover-grid">
-        <a v-for="space in discoverSpaces" :key="space.url" :href="`/${space.url}`" class="discover-card">
-          <div class="discover-art" :style="{ '--discover-gradient': space.gradient }"></div>
+        <a v-for="space in discoverSpaces" :key="space.url" :href="space.url" class="discover-card">
+          <div class="discover-art" :style="{ '--discover-gradient': space.gradient, '--discover-image': space.artImage }"></div>
           <div class="discover-info">
-            <div class="avatar-placeholder"></div>
+            <div class="avatar-placeholder">
+              <img v-if="space.ownerAvatar" :src="space.ownerAvatar" :alt="space.author">
+              <span v-else>{{ space.ownerInitial }}</span>
+            </div>
             <div class="author-info">
               <h4>{{ space.title }}</h4>
               <p>{{ space.author }}</p>
+              <span class="discover-space-label">{{ space.spaceLabel }}</span>
             </div>
           </div>
         </a>
@@ -804,10 +905,41 @@ header, section, footer {
   gap: 0.5rem;
 }
 
+.hero-title-badge {
+  position: relative;
+  width: clamp(3.5rem, 8vw, 6.2rem);
+  height: clamp(3.5rem, 8vw, 6.2rem);
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-image:
+    linear-gradient(145deg, rgba(9, 17, 27, 0.22) 0%, rgba(9, 17, 27, 0.74) 100%),
+    var(--hero-badge-image),
+    var(--hero-badge-gradient);
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.hero-title-badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.18), transparent 36%),
+    linear-gradient(180deg, rgba(7, 11, 18, 0.04) 0%, rgba(7, 11, 18, 0.38) 100%);
+}
+
 .hero-title-icon {
-  height: clamp(3rem, 8vw, 6rem);
-  width: auto;
+  position: relative;
+  z-index: 1;
+  width: 56%;
+  height: 56%;
   object-fit: contain;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.38));
 }
 
 .hero-subtitle {
@@ -841,8 +973,9 @@ header, section, footer {
 .quote-container p {
   font-size: 1rem;
   color: var(--accent);
-  max-width: 70%;
+  max-width: none;
   line-height: 1.6;
+  white-space: nowrap;
 }
 
 .stats-row {
@@ -1046,7 +1179,13 @@ header, section, footer {
 .discover-art {
   width: 100%;
   height: 200px;
-  background: var(--discover-gradient);
+  background-image:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(5, 9, 14, 0.12), rgba(5, 9, 14, 0.42)),
+    var(--discover-image),
+    var(--discover-gradient);
+  background-size: cover;
+  background-position: center;
   position: relative;
   overflow: hidden;
 }
@@ -1071,8 +1210,21 @@ header, section, footer {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--text-muted);
-  opacity: 0.2;
+  background: linear-gradient(135deg, #233445 0%, #5f8191 100%);
+  color: #f4f7fb;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.avatar-placeholder img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .author-info h4 {
@@ -1086,6 +1238,15 @@ header, section, footer {
   color: var(--text-muted);
   margin: 0.3rem 0 0 0;
   font-size: 0.8rem;
+}
+
+.discover-space-label {
+  display: inline-block;
+  margin-top: 0.45rem;
+  color: rgba(126, 188, 211, 0.9);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* Footer */
@@ -1152,6 +1313,10 @@ header, section, footer {
   
   .quote-container h2 {
     font-size: 2rem;
+  }
+
+  .quote-container p {
+    white-space: normal;
   }
   
   .stats-row {

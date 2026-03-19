@@ -2,6 +2,7 @@ import { readAccountSession } from '../auth/_shared.js'
 import {
   canManageGallery,
   deleteGalleryKey,
+  galleryDiscoverKey,
   galleryItemKey,
   galleryManifestKey,
   galleryProfileKey,
@@ -10,6 +11,8 @@ import {
   loadGalleryItemByIdentifier,
   normalizeSourceFileMetadata,
   publicGalleryItems,
+  readGalleryJson,
+  removeDiscoverProjectionEntry,
   sendError,
   sendJson,
   writeGalleryJson,
@@ -120,6 +123,16 @@ export async function onRequestDelete(context) {
     if (nextProfile) {
       await writeGalleryJson(state.kv, galleryProfileKey(state.spaceName), nextProfile)
     }
+    const discoverEntries = await readGalleryJson(state.kv, galleryDiscoverKey(), [])
+    await writeGalleryJson(
+      state.kv,
+      galleryDiscoverKey(),
+      removeDiscoverProjectionEntry(
+        removeDiscoverProjectionEntry(discoverEntries, state.spaceName, resolvedItemId),
+        state.spaceName,
+        item?.projectionSlug || '',
+      ),
+    )
 
     return sendJson(200, {
       ok: true,

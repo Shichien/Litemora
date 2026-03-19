@@ -74,6 +74,10 @@ export function gallerySourceKey(spaceName, itemId) {
   return `gallery:space:${spaceName}:source:${encodeURIComponent(itemId)}`
 }
 
+export function galleryDiscoverKey() {
+  return 'gallery:discover:public'
+}
+
 export async function readGalleryJson(kv, key, fallbackValue = null) {
   if (!kv) {
     return fallbackValue
@@ -106,6 +110,71 @@ export async function deleteGalleryKey(kv, key) {
   }
 
   await kv.delete(key)
+}
+
+export function buildDiscoverProjectionEntry(spaceName, item = null, profile = null) {
+  const routeId = trimString(item?.projectionSlug || item?.id)
+  if (!routeId || trimString(item?.visibility) === 'private') {
+    return null
+  }
+
+  return {
+    id: trimString(item?.id),
+    projectionSlug: trimString(item?.projectionSlug),
+    routeId,
+    space: trimString(spaceName),
+    title: sanitizeText(item?.title || item?.schematic?.name || item?.fileName || 'World', 160),
+    ownerName: sanitizeText(item?.owner?.name || profile?.ownerName || spaceName, 120),
+    ownerAvatar: sanitizeText(item?.owner?.avatar || profile?.ownerAvatar, 1024),
+    thumbnailDataUrl: sanitizeThumbnailDataUrl(item?.thumbnailDataUrl),
+    updatedAt: Math.round(toNumber(item?.updatedAt, Date.now())),
+    preview: {
+      totalSolidBlocks: Math.max(0, Math.round(toNumber(item?.previewModel?.totalSolidBlocks || item?.preview?.totalSolidBlocks))),
+      sampled: !!(item?.previewModel?.sampled || item?.preview?.sampled),
+      bounds: normalizeBounds(item?.previewModel?.bounds || item?.preview?.bounds),
+    },
+  }
+}
+
+export function upsertDiscoverProjectionEntry(entries = [], entry = null, maxItems = 24) {
+  const safeEntry = entry && typeof entry === 'object' ? entry : null
+  if (!safeEntry?.routeId || !safeEntry?.space) {
+    return Array.isArray(entries) ? entries.slice(0, maxItems) : []
+  }
+
+  const dedupeKey = `${safeEntry.space}:${safeEntry.routeId}`
+  const nextEntries = [safeEntry]
+
+  for (const candidate of Array.isArray(entries) ? entries : []) {
+    const candidateKey = `${trimString(candidate?.space)}:${trimString(candidate?.routeId || candidate?.projectionSlug || candidate?.id)}`
+    if (!candidateKey || candidateKey === dedupeKey) {
+      continue
+    }
+    nextEntries.push(candidate)
+  }
+
+  return nextEntries
+    .sort((left, right) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
+    .slice(0, maxItems)
+}
+
+export function removeDiscoverProjectionEntry(entries = [], spaceName = '', identifier = '') {
+  const normalizedSpace = trimString(spaceName)
+  const normalizedIdentifier = trimString(identifier)
+  if (!normalizedSpace || !normalizedIdentifier) {
+    return Array.isArray(entries) ? entries : []
+  }
+
+  return (Array.isArray(entries) ? entries : []).filter((entry) => {
+    const sameSpace = trimString(entry?.space) === normalizedSpace
+    const matches = [
+      trimString(entry?.routeId),
+      trimString(entry?.projectionSlug),
+      trimString(entry?.id),
+    ].includes(normalizedIdentifier)
+
+    return !(sameSpace && matches)
+  })
 }
 
 export function createGalleryProfile(spaceName, account, input = {}) {

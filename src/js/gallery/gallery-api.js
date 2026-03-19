@@ -280,6 +280,91 @@ function listProjectionCacheItems(spaceName = '') {
   return deduped.sort((left, right) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
 }
 
+function listAllProjectionCacheItems() {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  const prefix = `${PROJECTION_CACHE_PREFIX}:space:`
+  const entries = []
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (!key || !key.startsWith(prefix)) {
+      continue
+    }
+
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || 'null')
+      if (!parsed?.item) {
+        continue
+      }
+      entries.push(parsed.item)
+    }
+    catch {
+      // ignore malformed cache entry
+    }
+  }
+
+  const deduped = []
+  const seen = new Set()
+  for (const entry of entries) {
+    const cacheKey = [
+      normalizeProjectionIdentifier(entry?.space),
+      getProjectionIdentity(entry),
+    ].filter(Boolean).join(':')
+
+    if (!cacheKey || seen.has(cacheKey)) {
+      continue
+    }
+
+    seen.add(cacheKey)
+    deduped.push(entry)
+  }
+
+  return deduped
+}
+
+function normalizeDiscoverProjectionItem(item = null) {
+  if (!item || typeof item !== 'object') {
+    return null
+  }
+
+  const visibility = normalizeProjectionVisibility(item?.visibility)
+  if (visibility !== 'public') {
+    return null
+  }
+
+  const projectionSlug = String(item?.projectionSlug || '').trim()
+  const projectionId = String(item?.id || '').trim()
+  const routeId = projectionSlug || projectionId
+  const spaceName = String(item?.space || '').trim()
+  if (!routeId || !spaceName) {
+    return null
+  }
+
+  return {
+    id: projectionId,
+    projectionSlug,
+    routeId,
+    space: spaceName,
+    title: String(item?.title || item?.schematic?.name || item?.fileName || 'World').trim(),
+    ownerName: String(item?.owner?.name || item?.author?.name || spaceName).trim(),
+    ownerAvatar: String(item?.owner?.avatar || item?.author?.avatar || '').trim(),
+    thumbnailDataUrl: String(item?.thumbnailDataUrl || '').trim(),
+    updatedAt: Number(item?.updatedAt || item?.createdAt || 0),
+    preview: item?.preview || null,
+  }
+}
+
+function buildCachedDiscoverProjectionFeed(limit = 12) {
+  return listAllProjectionCacheItems()
+    .map(item => normalizeDiscoverProjectionItem(item))
+    .filter(Boolean)
+    .sort((left, right) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
+    .slice(0, Math.max(1, Math.round(Number(limit) || 12)))
+}
+
 function mergeProjectionLists(primaryItems = [], cachedItems = []) {
   const merged = []
   const seen = new Set()
@@ -423,6 +508,33 @@ export async function fetchGallery(spaceName, session = null) {
   return requestJson(buildApiUrl('/api/gallery', { space: spaceName }), {
     headers: buildHeaders(session),
   })
+}
+
+export async function fetchDiscoverProjectionFeed(limit = 12) {
+  const normalizedLimit = Math.min(24, Math.max(1, Math.round(Number(limit) || 12)))
+
+  if (shouldUseLocalGalleryApi()) {
+    return {
+      items: buildCachedDiscoverProjectionFeed(normalizedLimit),
+      cached: true,
+      localOnly: true,
+    }
+  }
+
+  try {
+    return await requestJson(buildApiUrl('/api/discover', {
+      limit: normalizedLimit,
+    }), {
+      headers: buildHeaders(),
+    })
+  }
+  catch {
+    return {
+      items: buildCachedDiscoverProjectionFeed(normalizedLimit),
+      cached: true,
+      localOnly: true,
+    }
+  }
 }
 
 export async function checkSpaceNameAvailability(spaceName, session = null) {

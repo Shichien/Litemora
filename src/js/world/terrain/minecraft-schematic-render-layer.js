@@ -266,6 +266,7 @@ export default class MinecraftSchematicRenderLayer {
     const filteredBlockStates = Array.isArray(blockStrings) && blockStrings.length
       ? new Set(blockStrings)
       : null
+    const progressiveRegistration = !filteredBlockStates && options.progressive !== false
 
     const stateGroups = this._groupBlocksByState(layer, filteredBlockStates)
     const { groupedBlocks, groupingStats } = this._buildRenderGroups(stateGroups)
@@ -283,6 +284,17 @@ export default class MinecraftSchematicRenderLayer {
       lighting,
       onProgress,
       rebuildToken,
+      onGroupBuilt: progressiveRegistration
+        ? (groupRecord) => {
+            if (this._disposed || rebuildToken !== this._rebuildToken) {
+              this._disposeMeshes(groupRecord?.meshes || [])
+              return false
+            }
+
+            this._registerRenderGroup(groupRecord, { appendMeshes: true })
+            return true
+          }
+        : null,
     })
     if (buildResult.cancelled) {
       return {
@@ -311,7 +323,9 @@ export default class MinecraftSchematicRenderLayer {
       this._registerRenderGroup(groupRecord)
     }
 
-    this._rebuildMeshEntriesList()
+    if (!progressiveRegistration) {
+      this._rebuildMeshEntriesList()
+    }
 
     const elapsedMs = performance.now() - buildStart
     const nextProfile = {
@@ -349,6 +363,7 @@ export default class MinecraftSchematicRenderLayer {
     const lighting = options.lighting
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
     const rebuildToken = options.rebuildToken
+    const onGroupBuilt = typeof options.onGroupBuilt === 'function' ? options.onGroupBuilt : null
 
     return (async () => {
       const descriptorCache = new Map()
@@ -356,10 +371,13 @@ export default class MinecraftSchematicRenderLayer {
       let processedStates = 0
       let builtMeshes = 0
       let maxInstancesPerMesh = 0
+      let hasProgressiveRegistrations = false
 
       for (const groupEntry of groupedBlocks.values()) {
         if (this._disposed || rebuildToken !== this._rebuildToken) {
-          this._disposeDescriptorCache(descriptorCache)
+          if (!hasProgressiveRegistrations) {
+            this._disposeDescriptorCache(descriptorCache)
+          }
           this._disposeStagedRenderGroups(stagedGroups)
           return {
             cancelled: true,
@@ -446,11 +464,20 @@ export default class MinecraftSchematicRenderLayer {
           builtMeshes++
         }
 
-        stagedGroups.set(groupKey, {
+        const groupRecord = {
           groupKey,
           blockString,
           meshes,
-        })
+        }
+        if (onGroupBuilt) {
+          const accepted = onGroupBuilt(groupRecord)
+          if (accepted !== false) {
+            hasProgressiveRegistrations = true
+          }
+        }
+        else {
+          stagedGroups.set(groupKey, groupRecord)
+        }
         processedStates++
 
         if (onProgress) {
@@ -682,7 +709,8 @@ export default class MinecraftSchematicRenderLayer {
     }
   }
 
-  _registerRenderGroup(groupRecord) {
+  _registerRenderGroup(groupRecord, options = {}) {
+    const appendMeshes = options.appendMeshes === true
     this._meshGroups.set(groupRecord.groupKey, groupRecord)
 
     if (!this._groupKeysByBlockString.has(groupRecord.blockString)) {
@@ -692,6 +720,9 @@ export default class MinecraftSchematicRenderLayer {
     this._groupKeysByBlockString.get(groupRecord.blockString)?.add(groupRecord.groupKey)
     for (const mesh of groupRecord.meshes) {
       this.group.add(mesh)
+      if (appendMeshes) {
+        this._meshEntries.push(mesh)
+      }
     }
   }
 

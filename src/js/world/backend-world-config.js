@@ -134,7 +134,7 @@ function mergeBackendConfig(raw = {}) {
         ),
       },
       environment: {
-        skyMode: settings.environment?.skyMode ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.skyMode,
+        skyMode: DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.skyMode,
         sunIntensity: toNumber(settings.environment?.sunIntensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.sunIntensity),
         ambientIntensity: toNumber(settings.environment?.ambientIntensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.ambientIntensity),
         fogDensity: toNumber(settings.environment?.fogDensity, DEFAULT_BACKEND_WORLD_CONFIG.settings.environment.fogDensity),

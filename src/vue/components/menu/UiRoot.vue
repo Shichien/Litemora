@@ -20,26 +20,26 @@ function syncReadyStateFromRuntime() {
     return
   }
 
-  if (window.Experience?.resources?.isLoaded) {
-    handleCoreReady()
+  if (window.Experience?.world?.isSceneReady) {
+    handleSceneReady()
   }
 }
 
-// Listen for core:ready to transition from loading to playing
+// Transition from loading only after the scene is actually playable.
 onMounted(() => {
-  emitter.on('core:ready', handleCoreReady)
+  emitter.on('world:scene-ready', handleSceneReady)
   emitter.on('ui:escape', handleEscape)
   window.addEventListener('blur', handleWindowBlur)
   syncReadyStateFromRuntime()
 })
 
 onUnmounted(() => {
-  emitter.off('core:ready', handleCoreReady)
+  emitter.off('world:scene-ready', handleSceneReady)
   emitter.off('ui:escape', handleEscape)
   window.removeEventListener('blur', handleWindowBlur)
 })
 
-function handleCoreReady() {
+function handleSceneReady() {
   ui.bootstrapBackendWorld()
 }
 

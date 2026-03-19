@@ -122,8 +122,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
 
         // Environment
-        if (parsed.envSkyMode)
-          envSkyMode.value = parsed.envSkyMode
+        envSkyMode.value = DEFAULT_SETTINGS.envSkyMode
         if (parsed.envSunIntensity !== undefined)
           envSunIntensity.value = parsed.envSunIntensity
         if (parsed.envAmbientIntensity !== undefined)
@@ -159,7 +158,6 @@ export const useSettingsStore = defineStore('settings', () => {
         sfxVolume: sfxVolume.value,
         cameraPreset: cameraPreset.value,
         visualPreset: visualPreset.value,
-        envSkyMode: envSkyMode.value,
         envSunIntensity: envSunIntensity.value,
         envAmbientIntensity: envAmbientIntensity.value,
         envFogDensity: envFogDensity.value,
@@ -256,9 +254,9 @@ export const useSettingsStore = defineStore('settings', () => {
   // ----------------------------------------
   // Actions - Environment settings
   // ----------------------------------------
-  function setEnvSkyMode(mode) {
-    envSkyMode.value = mode
-    emitter.emit('settings:environment-changed', { skyMode: mode })
+  function setEnvSkyMode() {
+    envSkyMode.value = DEFAULT_SETTINGS.envSkyMode
+    emitter.emit('settings:environment-changed', { skyMode: DEFAULT_SETTINGS.envSkyMode })
     saveSettings()
   }
 

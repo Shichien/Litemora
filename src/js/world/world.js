@@ -309,7 +309,10 @@ export default class World {
     this.minecraftSchematicRenderLayer = null
     this.activeProjectionContext = null
     this._projectionBootstrapApplied = false
+    this._needsMinecraftSchematicRenderLayerRestore = false
     this._minecraftRenderLayerSyncTimer = null
+    this._minecraftRenderLayerRestoreTimer = null
+    this.isSceneReady = false
     this._onMinecraftBlockBreakComplete = this._onMinecraftBlockBreakComplete.bind(this)
     this._onMinecraftBlockPlace = this._onMinecraftBlockPlace.bind(this)
     this._onMinecraftBlockUse = this._onMinecraftBlockUse.bind(this)
@@ -324,23 +327,49 @@ export default class World {
     })
 
     emitter.on('core:ready', async () => {
-      this.activeProjectionContext = await this._loadActiveProjectionContext()
-      this.backendConfigRecord = await loadBackendWorldConfigRecord()
-      this.backendConfig = this.backendConfigRecord.config
-      const sharedWorldState = await this._loadSharedWorldState()
+      const initStartedAt = performance.now()
 
-      this._initTerrain(this.backendConfig, sharedWorldState)
-      this.backendConfig = await this._ensureProjectionWorldInitialized(sharedWorldState, this.backendConfig)
-      if (!this._projectionBootstrapApplied) {
-        await this._restoreMinecraftSchematicRenderLayer()
+      try {
+        this.activeProjectionContext = await this._loadActiveProjectionContext()
+        this.backendConfigRecord = await loadBackendWorldConfigRecord()
+        this.backendConfig = this.backendConfigRecord.config
+        const sharedWorldState = await this._loadSharedWorldState()
+
+        this._initTerrain(this.backendConfig, sharedWorldState)
+        this.backendConfig = await this._ensureProjectionWorldInitialized(sharedWorldState, this.backendConfig)
+
+        this._initPlayerAndCamera()
+        this._initEnvironment()
+        this._initBlockInteraction()
+        this._initEffects()
+        this._setupSettingsListeners()
+        await this._applyBackendRuntimeConfig(this.backendConfig, { movePlayer: true })
+
+        this.isSceneReady = true
+        emitter.emit('world:scene-ready', {
+          projectionId: this.activeProjectionContext?.projectionId || '',
+          bootstrapApplied: this._projectionBootstrapApplied,
+        })
+
+        if (this._needsMinecraftSchematicRenderLayerRestore || !this._projectionBootstrapApplied) {
+          this._scheduleInitialMinecraftSchematicRenderLayerRestore()
+        }
+
+        console.info('[World] Scene ready', {
+          projectionId: this.activeProjectionContext?.projectionId || '',
+          bootstrapApplied: this._projectionBootstrapApplied,
+          deferredRenderLayerRestore: this._needsMinecraftSchematicRenderLayerRestore || !this._projectionBootstrapApplied,
+          elapsedMs: Number((performance.now() - initStartedAt).toFixed(2)),
+        })
       }
-
-      this._initPlayerAndCamera()
-      this._initEnvironment()
-      this._initBlockInteraction()
-      this._initEffects()
-      this._setupSettingsListeners()
-      await this._applyBackendRuntimeConfig(this.backendConfig, { movePlayer: true })
+      catch (error) {
+        console.error('[World] Failed to initialize scene:', error)
+        emitter.emit('projection:bootstrap-error', {
+          spaceName: this.activeProjectionContext?.spaceName || getActiveSpaceName(),
+          projectionId: this.activeProjectionContext?.projectionId || getActiveProjectionId(),
+          error: error?.message || 'world_scene_init_failed',
+        })
+      }
     })
 
     emitter.on('backend:config-updated', async (config) => {
@@ -510,6 +539,7 @@ export default class World {
         offset: placementOffset,
         spawnPoint: nextConfig?.player?.spawnPoint || null,
         movePlayerToSpawn: false,
+        awaitRenderOverlay: false,
         options: {
           replaceWorld: true,
           persistModifications: true,
@@ -550,24 +580,31 @@ export default class World {
         emitter.emit('schematic:apply-progress', progress)
       },
     }
+    const awaitRenderOverlay = payload.awaitRenderOverlay !== false
     const result = await schematicService.applyToWorld(this.chunkManager, offset, options)
-    try {
-      const renderOverlay = await this._syncMinecraftSchematicRenderLayer({
-        onProgress: (renderProgress) => {
-          emitter.emit('schematic:apply-progress', {
-            phase: 'building-minecraft-render-layer',
-            processedStates: renderProgress.processedStates,
-            totalStates: renderProgress.totalStates,
-            builtMeshes: renderProgress.builtMeshes,
-            progress: renderProgress.progress,
-          })
-        },
-      })
-      result.renderOverlay = renderOverlay
+    if (awaitRenderOverlay) {
+      try {
+        const renderOverlay = await this._syncMinecraftSchematicRenderLayer({
+          onProgress: (renderProgress) => {
+            emitter.emit('schematic:apply-progress', {
+              phase: 'building-minecraft-render-layer',
+              processedStates: renderProgress.processedStates,
+              totalStates: renderProgress.totalStates,
+              builtMeshes: renderProgress.builtMeshes,
+              progress: renderProgress.progress,
+            })
+          },
+        })
+        result.renderOverlay = renderOverlay
+      }
+      catch (renderError) {
+        console.warn('[World] Failed to rebuild Minecraft schematic render layer:', renderError)
+        result.renderOverlayError = renderError?.message || 'minecraft_render_overlay_failed'
+      }
     }
-    catch (renderError) {
-      console.warn('[World] Failed to rebuild Minecraft schematic render layer:', renderError)
-      result.renderOverlayError = renderError?.message || 'minecraft_render_overlay_failed'
+    else {
+      this._needsMinecraftSchematicRenderLayerRestore = true
+      result.renderOverlayPending = true
     }
 
     if (spawnPoint) {
@@ -729,6 +766,7 @@ export default class World {
     if (!stats.blockCount) {
       this.chunkManager?.setMinecraftRenderOverlayActive?.(false)
       this.minecraftSchematicRenderLayer?.clear?.()
+      this._needsMinecraftSchematicRenderLayerRestore = false
       return {
         uniqueBlockStates: 0,
         builtMeshes: 0,
@@ -743,12 +781,20 @@ export default class World {
     const renderLayer = await this._ensureMinecraftSchematicRenderLayer()
     const result = await renderLayer.rebuildFromLayer(schematicLayer, options)
     this.chunkManager?.setMinecraftRenderOverlayActive?.(true)
+    this._needsMinecraftSchematicRenderLayerRestore = false
     return result
   }
 
-  async _restoreMinecraftSchematicRenderLayer() {
+  async _restoreMinecraftSchematicRenderLayer(options = {}) {
+    const startedAt = performance.now()
     try {
-      await this._syncMinecraftSchematicRenderLayer()
+      const result = await this._syncMinecraftSchematicRenderLayer(options)
+      console.info('[World] Restored Minecraft schematic render layer', {
+        progressive: options.progressive !== false,
+        builtMeshes: result?.builtMeshes ?? 0,
+        uniqueBlockStates: result?.uniqueBlockStates ?? 0,
+        elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
+      })
     }
     catch (error) {
       console.warn('[World] Failed to restore Minecraft schematic render layer:', error)
@@ -760,6 +806,27 @@ export default class World {
       clearTimeout(this._minecraftRenderLayerSyncTimer)
       this._minecraftRenderLayerSyncTimer = null
     }
+  }
+
+  _cancelInitialMinecraftSchematicRenderLayerRestore() {
+    if (this._minecraftRenderLayerRestoreTimer) {
+      clearTimeout(this._minecraftRenderLayerRestoreTimer)
+      this._minecraftRenderLayerRestoreTimer = null
+    }
+  }
+
+  _scheduleInitialMinecraftSchematicRenderLayerRestore(delayMs = 48) {
+    this._cancelInitialMinecraftSchematicRenderLayerRestore()
+    console.info('[World] Scheduling initial Minecraft schematic render layer restore', {
+      delayMs,
+      projectionId: this.activeProjectionContext?.projectionId || '',
+    })
+    this._minecraftRenderLayerRestoreTimer = setTimeout(() => {
+      this._minecraftRenderLayerRestoreTimer = null
+      void this._restoreMinecraftSchematicRenderLayer({
+        progressive: true,
+      })
+    }, delayMs)
   }
 
   _scheduleMinecraftSchematicRenderLayerSync(delayMs = 60) {
@@ -789,8 +856,15 @@ export default class World {
       return null
     }
 
-    if (!this.chunkManager?.minecraftRenderOverlayActive || !this.minecraftSchematicRenderLayer?.getStats?.()?.meshCount) {
-      return this._syncMinecraftSchematicRenderLayer(options)
+    if (
+      this._needsMinecraftSchematicRenderLayerRestore
+      || !this.chunkManager?.minecraftRenderOverlayActive
+      || !this.minecraftSchematicRenderLayer?.getStats?.()?.meshCount
+    ) {
+      return this._syncMinecraftSchematicRenderLayer({
+        progressive: true,
+        ...options,
+      })
     }
 
     const renderLayer = await this._ensureMinecraftSchematicRenderLayer()
@@ -1130,6 +1204,8 @@ export default class World {
 
   destroy() {
     this._cancelMinecraftSchematicRenderLayerSync()
+    this._cancelInitialMinecraftSchematicRenderLayerRestore()
+    this.isSceneReady = false
     emitter.off('game:block-break-complete', this._onMinecraftBlockBreakComplete)
     emitter.off('game:block-place', this._onMinecraftBlockPlace)
     emitter.off('game:block-use', this._onMinecraftBlockUse)

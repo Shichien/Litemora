@@ -1,5 +1,6 @@
 import { parseJsonBody } from '../auth/_shared.js'
 import {
+  buildDiscoverProjectionEntry,
   buildGalleryItemPayload,
   buildGalleryItemSummary,
   canManageGallery,
@@ -7,6 +8,7 @@ import {
   createGalleryManifest,
   createGalleryProfile,
   decodeBase64ToUint8Array,
+  galleryDiscoverKey,
   galleryItemKey,
   galleryManifestHasProjectionName,
   galleryManifestKey,
@@ -15,9 +17,11 @@ import {
   loadGalleryState,
   normalizeFilePayload,
   normalizeSourceFileMetadata,
+  readGalleryJson,
   requireGalleryAccount,
   sendError,
   sendJson,
+  upsertDiscoverProjectionEntry,
   writeGalleryJson,
 } from './_shared.js'
 
@@ -153,6 +157,17 @@ export async function onRequestPost(context) {
     await state.kv.put(gallerySourceKey(state.spaceName, itemId), sourceBuffer)
     await writeGalleryJson(state.kv, galleryManifestKey(state.spaceName), nextManifest)
     await writeGalleryJson(state.kv, galleryProfileKey(state.spaceName), nextProfile)
+    if (summary.visibility === 'public') {
+      const discoverEntry = buildDiscoverProjectionEntry(state.spaceName, item, nextProfile)
+      if (discoverEntry) {
+        const discoverEntries = await readGalleryJson(state.kv, galleryDiscoverKey(), [])
+        await writeGalleryJson(
+          state.kv,
+          galleryDiscoverKey(),
+          upsertDiscoverProjectionEntry(discoverEntries, discoverEntry),
+        )
+      }
+    }
 
     return sendJson(200, {
       ok: true,

@@ -87,7 +87,6 @@ const schematicRendererCanvasRef = ref(null)
 
 const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
-const skyModeOptions = ['DayCycle', 'HDR']
 const projectionVisibilityOptions = [
   { value: 'public', label: '公开' },
   { value: 'private', label: '私有' },
@@ -113,7 +112,7 @@ const schematicPlacedBounds = computed(() => {
     return null
   }
 
-  const yOffset = Number(schematicOffsetY.value) || 0
+  const yOffset = normalizeSchematicOffsetY(schematicOffsetY.value)
   return {
     ...bounds,
     minY: bounds.minY + yOffset,
@@ -173,6 +172,14 @@ const schematicProgressLabel = computed(() => {
   return labelMap[phase] || phase
 })
 
+function normalizeSchematicOffsetY(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return 0
+  }
+  return Math.min(100, Math.max(0, Math.round(numeric)))
+}
+
 function onSchematicApplyProgress(payload) {
   schematicApplyProgress.value = payload
 }
@@ -226,6 +233,7 @@ async function restorePersistedSchematic() {
     schematicFile.value = persisted.fileName || persisted.file.name || null
     schematicSourceFile.value = persisted.file
     schematicPreview.value = schematicService.getPreview()
+    schematicOffsetY.value = normalizeSchematicOffsetY(schematicOffsetY.value)
     if (!sanitizedProjectionName.value) {
       schematicProjectionName.value = ensureProjectionDisplayName(
         schematic.name || persisted.fileName || persisted.file.name || '',
@@ -416,6 +424,7 @@ async function handleSchematicFileSelect(event) {
     schematicProjectionName.value = ensureProjectionDisplayName(
       schematic.name || file.name.replace(/\.(litematic|schem)$/iu, ''),
     )
+    schematicOffsetY.value = normalizeSchematicOffsetY(schematicOffsetY.value)
     await saveAdminSchematicFile({
       accountId: currentAccountId.value,
       file,
@@ -522,7 +531,7 @@ async function applySchematic() {
         placement: {
           offset: {
             x: 0,
-            y: Number(schematicOffsetY.value) || 0,
+            y: normalizeSchematicOffsetY(schematicOffsetY.value),
             z: 0,
           },
         },
@@ -592,7 +601,7 @@ async function applySchematic() {
   try {
     const offset = {
       x: 0,
-      y: Number(schematicOffsetY.value) || 0,
+      y: normalizeSchematicOffsetY(schematicOffsetY.value),
       z: 0,
     }
     const runtimeConfig = normalizeBackendWorldConfig(configDraft.value)
@@ -704,7 +713,7 @@ function setProjectionSpawnFromPreviewBlock(payload) {
     return
   }
 
-  const yOffset = Number(schematicOffsetY.value) || 0
+  const yOffset = normalizeSchematicOffsetY(schematicOffsetY.value)
   const spawnPoint = {
     x: Number(x.toFixed(2)),
     y: Number((y + yOffset + 0.5 + DEFAULT_PROJECTION_SPAWN_LIFT).toFixed(2)),
@@ -910,12 +919,9 @@ onBeforeUnmount(() => {
               时间流逝
               <span><input v-model="configDraft.settings.environment.timeAutoPlay" type="checkbox"> 自动推进昼夜循环</span>
             </label>
-            <label>
-              天空模式
-              <input :value="configDraft.settings.environment.skyMode" readonly type="text">
-            </label>
+            <div />
           </div>
-          <div class="setting-row setting-row-spacer-top">
+          <div class="setting-row setting-row-spacer-top setting-preset-row">
             <span class="row-label">相机风格</span>
             <div class="option-group">
               <button
@@ -929,7 +935,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-          <div class="setting-row">
+          <div class="setting-row setting-preset-row">
             <span class="row-label">速度线</span>
             <div class="option-group">
               <button
@@ -938,20 +944,6 @@ onBeforeUnmount(() => {
                 class="option-btn"
                 :class="{ active: configDraft.settings.visualPreset === option }"
                 @click="configDraft.settings.visualPreset = option"
-              >
-                {{ option }}
-              </button>
-            </div>
-          </div>
-          <div class="setting-row">
-            <span class="row-label">天空</span>
-            <div class="option-group">
-              <button
-                v-for="option in skyModeOptions"
-                :key="`sky-${option}`"
-                class="option-btn"
-                :class="{ active: configDraft.settings.environment.skyMode === option }"
-                @click="configDraft.settings.environment.skyMode = option"
               >
                 {{ option }}
               </button>
@@ -1036,13 +1028,10 @@ onBeforeUnmount(() => {
                   {{ option.label }}
                 </button>
               </div>
-            </div>
-
-            <div class="setting-row">
-              <label class="full">
-                SpawnPoint
-                <input :value="formattedProjectionSpawnPoint" readonly type="text">
-              </label>
+              <div class="inline-help">
+                <span class="inline-help-icon" aria-hidden="true">?</span>
+                <span class="inline-help-tooltip">公开投影在退出登录后仍然可见。</span>
+              </div>
             </div>
 
             <div class="setting-row schematic-preview-row">
@@ -1053,13 +1042,17 @@ onBeforeUnmount(() => {
                     <input
                       v-model.number="schematicOffsetY"
                       class="vertical-range"
-                      min="-64"
-                      max="128"
+                      min="0"
+                      max="100"
                       step="1"
                       type="range"
                     >
                     <span class="preview-offset-value">{{ formatSliderValue(schematicOffsetY) }}</span>
                   </div>
+                </div>
+                <div class="preview-spawn-overlay">
+                  <span class="preview-spawn-label">SpawnPoint</span>
+                  <div class="preview-spawn-value">{{ formattedProjectionSpawnPoint }}</div>
                 </div>
                 <SchematicRendererCanvas
                   ref="schematicRendererCanvasRef"
@@ -1078,11 +1071,7 @@ onBeforeUnmount(() => {
             </div>
 
             <p class="schematic-preview-hint">
-              {{ schematicVisibility === 'private' ? '私有投影仅当前 Space 管理者可见。' : '公开投影在退出登录后仍然可见。' }}
-            </p>
-
-            <p class="schematic-preview-hint">
-              鼠标移到高亮方块后双击，可直接把该方块上方设置为出生点；选中的方块会保持绿色半透明标记。
+              鼠标移到高亮方块后双击，可直接把该方块上方设置为出生点。
             </p>
 
             <div class="preview-actions-right" style="margin-top: 12px;">
@@ -1423,6 +1412,10 @@ onBeforeUnmount(() => {
   margin-top: 14px;
 }
 
+.setting-preset-row {
+  align-items: flex-start;
+}
+
 .grid-three {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1488,6 +1481,61 @@ input::placeholder {
   color: #e2e8f0;
   font-size: 14px;
   flex-shrink: 0;
+  padding-top: 6px;
+}
+
+.setting-preset-row .option-group {
+  flex: 1 1 auto;
+}
+
+.inline-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+}
+
+.inline-help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #111827;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+.inline-help-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.16s ease, visibility 0.16s ease;
+}
+
+.inline-help:hover .inline-help-tooltip,
+.inline-help:focus-within .inline-help-tooltip {
+  opacity: 1;
+  visibility: visible;
 }
 
 .warning-text {
@@ -1686,7 +1734,7 @@ input::placeholder {
   writing-mode: vertical-lr;
   direction: rtl;
   width: 22px;
-  height: 180px;
+  height: 220px;
   flex: none;
 }
 
@@ -1694,6 +1742,40 @@ input::placeholder {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: #f8fafc;
+}
+
+.preview-spawn-overlay {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  max-width: min(42vw, 280px);
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.preview-spawn-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+
+.preview-spawn-value {
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(2, 6, 23, 0.5);
+  color: #f8fafc;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .schematic-progress {
