@@ -917,9 +917,9 @@ header, section, footer {
 .hero-title-icon {
   position: relative;
   z-index: 1;
-  width: 56%;
-  height: 56%;
-  object-fit: contain;
+  width: 92%;
+  height: 92%;
+  object-fit: cover;
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.38));
 }
 

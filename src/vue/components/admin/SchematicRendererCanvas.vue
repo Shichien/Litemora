@@ -21,6 +21,10 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  previewMetadata: {
+    type: Object,
+    default: null,
+  },
   sourceFile: {
     type: [Object, File, Blob],
     default: null,
@@ -117,6 +121,61 @@ function getPreviewOffsetObject() {
   }
 }
 
+function countSolidBlocksInRegion(region) {
+  if (typeof region?._solidBlockCount === 'number' && region._solidBlockCount >= 0) {
+    return region._solidBlockCount
+  }
+
+  const palette = Array.isArray(region?.palette) ? region.palette : []
+  const blockData = Array.isArray(region?._decodedIndices)
+    ? region._decodedIndices
+    : ArrayBuffer.isView(region?._decodedIndices)
+      ? region._decodedIndices
+      : null
+
+  if (!blockData?.length) {
+    return null
+  }
+
+  let solidCount = 0
+  for (const paletteIndex of blockData) {
+    const blockName = palette[paletteIndex]?.name || 'minecraft:air'
+    if (blockName !== 'minecraft:air' && blockName !== 'minecraft:cave_air' && blockName !== 'minecraft:void_air') {
+      solidCount++
+    }
+  }
+  return solidCount
+}
+
+function resolveBlockCount(loadedSchematic = null) {
+  const explicitBlockCount = Number(props.previewMetadata?.blockCount ?? props.schematic?.blockCount)
+  if (Number.isFinite(explicitBlockCount) && explicitBlockCount >= 0) {
+    return explicitBlockCount
+  }
+
+  const runtimeRegions = Object.values(props.schematic?.regions || {})
+  if (runtimeRegions.length) {
+    const counted = runtimeRegions
+      .map(region => countSolidBlocksInRegion(region))
+      .filter(count => Number.isFinite(count))
+    if (counted.length) {
+      return counted.reduce((sum, count) => sum + count, 0)
+    }
+  }
+
+  const loadedRegions = Object.values(loadedSchematic?.regions || {})
+  if (loadedRegions.length) {
+    const counted = loadedRegions
+      .map(region => countSolidBlocksInRegion(region))
+      .filter(count => Number.isFinite(count))
+    if (counted.length) {
+      return counted.reduce((sum, count) => sum + count, 0)
+    }
+  }
+
+  return null
+}
+
 function toLocalBlockPosition(worldPosition) {
   const offset = getPreviewOffsetObject()
   return {
@@ -190,7 +249,13 @@ function updateDiagnostics(loadedSchematic = null, sourceName = '') {
     || loadedSchematic?.getDimensions?.()
     || null
 
-  const fallbackSize = props.schematic?.size
+  const fallbackSize = props.previewMetadata?.size
+    ? [
+        Number(props.previewMetadata.size.x || 0),
+        Number(props.previewMetadata.size.y || 0),
+        Number(props.previewMetadata.size.z || 0),
+      ]
+    : props.schematic?.size
     ? [
         Number(props.schematic.size.x || 0),
         Number(props.schematic.size.y || 0),
@@ -202,8 +267,8 @@ function updateDiagnostics(loadedSchematic = null, sourceName = '') {
 
   diagnostics.value = {
     name: resolvedDisplayName.value || props.schematic?.name || loadedSchematic?.name || sourceName || 'Unknown',
-    author: props.schematic?.author || '',
-    blockCount: Number(props.schematic?.blockCount || 0) || null,
+    author: props.previewMetadata?.author || props.schematic?.author || '',
+    blockCount: resolveBlockCount(loadedSchematic),
     sourceName,
     size: resolvedSize
       ? {
@@ -889,7 +954,10 @@ onBeforeUnmount(() => {
 
     <div v-if="diagnostics && !isPreparing && !errorMessage" class="renderer-hud">
       <span v-if="diagnostics.name" class="hud-chip">{{ diagnostics.name }}</span>
-      <span v-if="diagnostics.author" class="hud-chip">{{ diagnostics.author }}</span>
+      <span v-if="diagnostics.size" class="hud-chip">
+        {{ diagnostics.size.x }}x{{ diagnostics.size.y }}x{{ diagnostics.size.z }}
+      </span>
+      <span v-if="diagnostics.blockCount !== null" class="hud-chip">{{ diagnostics.blockCount }} 方块</span>
     </div>
   </div>
 </template>

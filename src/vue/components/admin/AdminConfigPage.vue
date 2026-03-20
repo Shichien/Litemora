@@ -1048,6 +1048,7 @@ onBeforeUnmount(() => {
                   ref="schematicRendererCanvasRef"
                   v-if="schematicObject"
                   :display-name="previewProjectionDisplayName"
+                  :preview-metadata="schematicPreview"
                   :resource-pack-signature="resourcePackSignature"
                   :schematic="schematicObject"
                   :source-file="schematicSourceFile"
@@ -1059,10 +1060,6 @@ onBeforeUnmount(() => {
                   {{ isParsingSchematic ? '正在解析原理图...' : '暂无可渲染的原理图' }}
                 </div>
               </div>
-            </div>
-
-            <div v-if="schematicPreview" class="preview-tag-row">
-              <span class="preview-tag">方块数 {{ schematicPreview.blockCount }}</span>
             </div>
 
             <p class="schematic-preview-hint">
@@ -1815,26 +1812,6 @@ input::placeholder {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.preview-tag-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.preview-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.42rem 0.72rem;
-  border-radius: 999px;
-  border: 1px solid rgba(94, 203, 149, 0.26);
-  background: rgba(94, 203, 149, 0.12);
-  color: #c7f9de;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
 }
 
 .schematic-progress {
