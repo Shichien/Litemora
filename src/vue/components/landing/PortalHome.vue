@@ -43,6 +43,14 @@ function shuffleItems(items = []) {
   return copy
 }
 
+function toCssImage(value = '') {
+  const imageUrl = String(value || '').trim()
+  if (!imageUrl) {
+    return 'none'
+  }
+  return `url("${imageUrl.replace(/"/g, '\\"')}")`
+}
+
 async function loadDiscoverFeed() {
   try {
     const payload = await fetchDiscoverProjectionFeed(12)
@@ -172,7 +180,7 @@ function providerLabel(provider) {
   return `使用 ${provider.label} 登录`
 }
 
-const heroTiles = [
+const heroTileGradients = [
   { id: 'sunrise', gradient: 'radial-gradient(circle at 24% 18%, rgba(255, 220, 171, 0.55), transparent 34%), linear-gradient(145deg, #5a3f36 0%, #c07b58 52%, #f8c283 100%)' },
   { id: 'noon', gradient: 'radial-gradient(circle at 70% 20%, rgba(255, 255, 255, 0.35), transparent 28%), linear-gradient(145deg, #12324a 0%, #4688d0 55%, #c5ebff 100%)' },
   { id: 'afternoon', gradient: 'radial-gradient(circle at 18% 22%, rgba(255, 210, 150, 0.26), transparent 30%), linear-gradient(145deg, #20364b 0%, #6188a4 52%, #cfb68d 100%)' },
@@ -182,6 +190,7 @@ const heroTiles = [
   { id: 'forest', gradient: 'radial-gradient(circle at 20% 24%, rgba(183, 222, 143, 0.2), transparent 28%), linear-gradient(145deg, #12261f 0%, #355844 48%, #7ea26c 100%)' },
   { id: 'embers', gradient: 'radial-gradient(circle at 74% 26%, rgba(255, 161, 108, 0.18), transparent 26%), linear-gradient(145deg, #1a1415 0%, #5b342c 46%, #b86b47 100%)' },
 ]
+const HERO_EXHIBIT_TILE_COUNT = 12
 
 const defaultDiscoverSpaces = [
   { title: 'Brutalist Library', author: 'By Shichien', url: 'brutalist-library', gradient: 'linear-gradient(145deg, #1b2734 0%, #43596b 48%, #d8c8aa 100%)' },
@@ -192,23 +201,20 @@ const defaultDiscoverSpaces = [
   { title: 'Deep Dark City', author: 'By Miner123', url: 'deep-dark', gradient: 'linear-gradient(145deg, #06080c 0%, #24354a 48%, #596d92 100%)' },
 ]
 
-const heroBadgeProjection = computed(() => {
-  return discoverFeedItems.value.find(item => String(item?.thumbnailDataUrl || '').trim()) || null
-})
+const heroExhibitTiles = computed(() => {
+  const thumbnailItems = discoverFeedItems.value.filter(item => String(item?.thumbnailDataUrl || '').trim())
 
-const heroBadgeStyle = computed(() => {
-  const imageUrl = String(heroBadgeProjection.value?.thumbnailDataUrl || '').trim()
-  if (!imageUrl) {
+  return Array.from({ length: HERO_EXHIBIT_TILE_COUNT }, (_, index) => {
+    const base = heroTileGradients[index % heroTileGradients.length]
+    const featuredItem = thumbnailItems.length ? thumbnailItems[index % thumbnailItems.length] : null
     return {
-      '--hero-badge-image': 'none',
-      '--hero-badge-gradient': 'linear-gradient(145deg, #122233 0%, #44687d 48%, #9ed4db 100%)',
+      id: `${base.id}-${index}`,
+      style: {
+        '--tile-gradient': base.gradient,
+        '--tile-image': toCssImage(featuredItem?.thumbnailDataUrl || ''),
+      },
     }
-  }
-
-  return {
-    '--hero-badge-image': `url("${imageUrl.replace(/"/g, '\\"')}")`,
-    '--hero-badge-gradient': 'linear-gradient(145deg, rgba(9, 17, 27, 0.28) 0%, rgba(9, 17, 27, 0.68) 100%)',
-  }
+  })
 })
 
 function buildDiscoverCard(item, fallback = null) {
@@ -230,7 +236,7 @@ function buildDiscoverCard(item, fallback = null) {
     url: `/${spaceName}/worlds/${routeId}`,
     gradient: fallback?.gradient || 'linear-gradient(145deg, #10202f 0%, #35566d 44%, #8aaebe 100%)',
     imageUrl,
-    artImage: imageUrl ? `url("${imageUrl.replace(/"/g, '\\"')}")` : 'none',
+    artImage: toCssImage(imageUrl),
     ownerAvatar: String(item.ownerAvatar || '').trim(),
     ownerInitial: ownerName.slice(0, 1).toUpperCase() || 'L',
     spaceLabel: spaceName,
@@ -263,10 +269,10 @@ const discoverSpaces = computed(() => {
     <div class="hero-grid-bg">
       <div class="grid-layer" :style="{ opacity: 0.4 }">
         <div
-          v-for="tile in heroTiles"
+          v-for="tile in heroExhibitTiles"
           :key="tile.id"
           class="grid-tile"
-          :style="{ '--tile-gradient': tile.gradient }"
+          :style="tile.style"
         />
       </div>
       <div class="gradient-overlay"></div>
@@ -279,13 +285,6 @@ const discoverSpaces = computed(() => {
       <nav ref="authMenuRef" class="nav-links">
         <div class="auth-popover">
           <button type="button" class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
-            <span class="auth-rail" aria-hidden="true">
-              <span class="auth-rail-block wide"></span>
-              <span class="auth-rail-block"></span>
-              <span class="auth-rail-block"></span>
-              <span class="auth-rail-block narrow"></span>
-            </span>
-            <span class="auth-trigger-divider" aria-hidden="true"></span>
             <template v-if="isLoggedIn">
               <span class="auth-account">
                 <span class="auth-avatar">
@@ -296,6 +295,11 @@ const discoverSpaces = computed(() => {
                   <strong>{{ currentAccountName }}</strong>
                   <small>{{ currentAccountRole }}</small>
                 </span>
+              </span>
+              <span class="auth-trigger-arrow">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M7 10l5 5 5-5"></path>
+                </svg>
               </span>
             </template>
             <template v-else>
@@ -380,7 +384,7 @@ const discoverSpaces = computed(() => {
     <!-- Hero Content -->
     <section class="hero-content">
       <h1 class="hero-title">
-        <span class="hero-title-badge" :style="heroBadgeStyle">
+        <span class="hero-title-badge">
           <img src="/logo.webp" alt="" class="hero-title-icon" />
         </span>
         Litemora
@@ -541,8 +545,9 @@ h1, h2, h3, h4, .hero-title, .logo, .step-num {
 .grid-layer {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: 30vh;
-  gap: 4px;
+  grid-auto-rows: 24vh;
+  gap: 10px;
+  padding: 0 3vw;
   transform: scale(1.05);
   transition: opacity 0.4s ease;
 }
@@ -550,9 +555,16 @@ h1, h2, h3, h4, .hero-title, .logo, .step-num {
 .grid-tile {
   width: 100%;
   height: 100%;
-  background: var(--tile-gradient);
+  background-image:
+    linear-gradient(180deg, rgba(8, 13, 19, 0.08), rgba(8, 13, 19, 0.28)),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    var(--tile-image),
+    var(--tile-gradient);
+  background-size: cover;
+  background-position: center;
   border: 1px solid rgba(255, 255, 255, 0.04);
-  filter: saturate(0.82) brightness(0.52);
+  border-radius: 22px;
+  filter: saturate(0.9) brightness(0.62);
   position: relative;
   overflow: hidden;
 }
@@ -672,12 +684,12 @@ header, section, footer {
 }
 
 .auth-trigger {
-  min-width: 280px;
+  min-width: 232px;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 1rem;
-  padding: 0.8rem 1rem;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.8rem 0.95rem;
   border-radius: 0;
   border: 1px solid rgba(54, 109, 122, 0.2) !important;
   background: rgba(16, 24, 30, 0.84) !important;
@@ -701,40 +713,12 @@ header, section, footer {
   text-align: left;
 }
 
-.auth-rail {
-  display: inline-grid;
-  grid-template-columns: 1.4fr 1fr 1fr 0.52fr;
-  gap: 0.55rem;
-  align-items: center;
-  min-width: 134px;
-}
-
-.auth-rail-block {
-  height: 3.1rem;
-  border-radius: 0.45rem;
-  background: linear-gradient(180deg, rgba(46, 54, 63, 0.92) 0%, rgba(28, 34, 42, 0.96) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.03);
-}
-
-.auth-rail-block.wide {
-  min-width: 4.6rem;
-}
-
-.auth-rail-block.narrow {
-  min-width: 1.3rem;
-}
-
-.auth-trigger-divider {
-  width: 1px;
-  height: 4.3rem;
-  background: rgba(255, 255, 255, 0.1);
-}
-
 .auth-account {
   display: inline-flex;
   align-items: center;
   gap: 0.95rem;
   min-width: 0;
+  flex: 1;
 }
 
 .auth-trigger-arrow {
@@ -914,12 +898,9 @@ header, section, footer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-image:
-    linear-gradient(145deg, rgba(9, 17, 27, 0.22) 0%, rgba(9, 17, 27, 0.74) 100%),
-    var(--hero-badge-image),
-    var(--hero-badge-gradient);
-  background-size: cover;
-  background-position: center;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.18), transparent 36%),
+    linear-gradient(145deg, rgba(11, 20, 31, 0.88) 0%, rgba(28, 49, 68, 0.94) 100%);
   border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
 }
@@ -1288,19 +1269,6 @@ header, section, footer {
 
   .auth-trigger {
     min-width: 100%;
-  }
-
-  .auth-rail {
-    min-width: 100px;
-    gap: 0.35rem;
-  }
-
-  .auth-rail-block {
-    height: 2.7rem;
-  }
-
-  .auth-trigger-divider {
-    height: 3.6rem;
   }
 
   .auth-menu {

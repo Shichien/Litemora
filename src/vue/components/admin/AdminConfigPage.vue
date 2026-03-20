@@ -133,6 +133,17 @@ const formattedProjectionSpawnPoint = computed(() => {
 })
 
 const sanitizedProjectionName = computed(() => sanitizeProjectionNameInput(schematicProjectionName.value))
+const previewProjectionDisplayName = computed(() => {
+  return ensureProjectionDisplayName(
+    schematicProjectionName.value,
+    schematicPreview.value?.name || schematicFile.value || 'World',
+  )
+})
+const projectionVisibilityHelpText = computed(() => {
+  return schematicVisibility.value === 'private'
+    ? '私有投影在退出登录后不会公开展示，只有已登录并具备管理权限时可见。'
+    : '公开投影在退出登录后仍然可见。'
+})
 const resourcePackSignature = computed(() => {
   const info = resourcePackInfo.value
   if (!info) {
@@ -994,11 +1005,12 @@ onBeforeUnmount(() => {
 
           <div v-if="schematicFile" class="schematic-preview">
             <div class="preview-info">
-              <div>
-                <strong>文件:</strong> {{ schematicFile }}
+              <div class="preview-info-field">
+                <strong>文件</strong>
+                <span>{{ schematicFile }}</span>
               </div>
-              <div>
-                <strong>投影名:</strong>
+              <label class="preview-info-field preview-info-field-name">
+                <strong>投影名</strong>
                 <input
                   v-model="schematicProjectionName"
                   maxlength="48"
@@ -1006,12 +1018,14 @@ onBeforeUnmount(() => {
                   type="text"
                   @input="schematicProjectionName = sanitizeProjectionNameInput(schematicProjectionName)"
                 >
+              </label>
+              <div v-if="schematicPreview" class="preview-info-field">
+                <strong>作者</strong>
+                <span>{{ schematicPreview.author || 'Unknown' }}</span>
               </div>
-              <div v-if="schematicPreview">
-                <strong>作者:</strong> {{ schematicPreview.author }}
-              </div>
-              <div v-if="schematicPreview">
-                <strong>方块数:</strong> {{ schematicPreview.blockCount }}
+              <div v-if="schematicPreview" class="preview-info-field">
+                <strong>方块数</strong>
+                <span>{{ schematicPreview.blockCount }}</span>
               </div>
             </div>
 
@@ -1030,7 +1044,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="inline-help">
                 <span class="inline-help-icon" aria-hidden="true">?</span>
-                <span class="inline-help-tooltip">公开投影在退出登录后仍然可见。</span>
+                <span class="inline-help-tooltip">{{ projectionVisibilityHelpText }}</span>
               </div>
             </div>
 
@@ -1057,6 +1071,7 @@ onBeforeUnmount(() => {
                 <SchematicRendererCanvas
                   ref="schematicRendererCanvasRef"
                   v-if="schematicObject"
+                  :display-name="previewProjectionDisplayName"
                   :resource-pack-signature="resourcePackSignature"
                   :schematic="schematicObject"
                   :source-file="schematicSourceFile"
@@ -1662,6 +1677,10 @@ input::placeholder {
     grid-template-columns: 1fr;
   }
 
+  .preview-info {
+    grid-template-columns: 1fr;
+  }
+
 }
 
 .schematic-preview {
@@ -1673,20 +1692,53 @@ input::placeholder {
 }
 
 .preview-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   margin-bottom: 12px;
   font-size: 13px;
   color: #cbd5e1;
 }
 
-.preview-info div {
-  padding: 4px 0;
+.preview-info-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 88px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.32);
 }
 
 .preview-info strong {
   color: #5ecb95;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.preview-info-field span {
+  color: #f8fafc;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.preview-info-field-name input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(2, 6, 23, 0.52);
+  color: #f8fafc;
+  font-size: 14px;
+  outline: none;
+}
+
+.preview-info-field-name input:focus {
+  border-color: rgba(94, 203, 149, 0.52);
+  box-shadow: 0 0 0 1px rgba(94, 203, 149, 0.18);
 }
 
 .schematic-preview-row {
@@ -1706,9 +1758,9 @@ input::placeholder {
   z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 10px;
-  border-radius: 12px;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: rgba(15, 23, 42, 0.78);
   backdrop-filter: blur(10px);
@@ -1725,7 +1777,7 @@ input::placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .preview-offset-slider input[type='range'].vertical-range {
@@ -1733,8 +1785,8 @@ input::placeholder {
   appearance: none;
   writing-mode: vertical-lr;
   direction: rtl;
-  width: 22px;
-  height: 220px;
+  width: 16px;
+  height: 184px;
   flex: none;
 }
 
@@ -1751,10 +1803,11 @@ input::placeholder {
   z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 180px;
-  max-width: min(42vw, 280px);
-  padding: 12px 14px;
+  align-items: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: min(72vw, 280px);
+  padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: rgba(15, 23, 42, 0.78);
@@ -1769,6 +1822,9 @@ input::placeholder {
 }
 
 .preview-spawn-value {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
   padding: 9px 10px;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.22);
@@ -1776,6 +1832,7 @@ input::placeholder {
   color: #f8fafc;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .schematic-progress {

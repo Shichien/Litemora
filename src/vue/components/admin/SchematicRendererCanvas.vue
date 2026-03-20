@@ -33,6 +33,10 @@ const props = defineProps({
     type: String,
     default: '暂无可渲染的投影文件',
   },
+  displayName: {
+    type: String,
+    default: '',
+  },
   resourcePackSignature: {
     type: String,
     default: '',
@@ -63,6 +67,9 @@ let selectedBlockHighlightMesh = null
 
 const hasRenderableSource = computed(() => {
   return Boolean(props.sourceFile || props.schematic)
+})
+const resolvedDisplayName = computed(() => {
+  return String(props.displayName || '').trim()
 })
 
 function appendHandshakeStep(label, details = '') {
@@ -194,8 +201,7 @@ function updateDiagnostics(loadedSchematic = null, sourceName = '') {
   const resolvedSize = sizeFromSchematic || fallbackSize
 
   diagnostics.value = {
-    engine: 'schematic-renderer',
-    name: props.schematic?.name || loadedSchematic?.name || sourceName || 'Unknown',
+    name: resolvedDisplayName.value || props.schematic?.name || loadedSchematic?.name || sourceName || 'Unknown',
     author: props.schematic?.author || '',
     blockCount: Number(props.schematic?.blockCount || 0) || null,
     sourceName,
@@ -818,6 +824,19 @@ watch(
   },
 )
 
+watch(
+  () => resolvedDisplayName.value,
+  (name) => {
+    if (!diagnostics.value) {
+      return
+    }
+    diagnostics.value = {
+      ...diagnostics.value,
+      name: name || diagnostics.value.name,
+    }
+  },
+)
+
 onMounted(() => {
   void renderCurrentSchematic()
 })
@@ -869,7 +888,6 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="diagnostics && !isPreparing && !errorMessage" class="renderer-hud">
-      <span class="hud-chip">{{ diagnostics.engine }}</span>
       <span v-if="diagnostics.name" class="hud-chip">{{ diagnostics.name }}</span>
       <span v-if="diagnostics.blockCount" class="hud-chip">{{ diagnostics.blockCount }} blocks</span>
       <span v-if="diagnostics.size" class="hud-chip">
