@@ -1,8 +1,7 @@
-import { sendError, sendJson } from './_space.js'
+import { getKv, sendError, sendJson } from './_space.js'
 import {
   buildDiscoverProjectionEntry,
   galleryDiscoverKey,
-  getKv,
   readGalleryJson,
   upsertDiscoverProjectionEntry,
   writeGalleryJson,
