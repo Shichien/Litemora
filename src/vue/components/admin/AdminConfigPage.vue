@@ -1,6 +1,5 @@
 <script setup>
 import {
-  clearAdminAuthSession,
   getAuthProviders,
   loadAdminAuthSession,
   signInWithPassword,
@@ -318,15 +317,6 @@ async function handlePasswordAuth() {
   finally {
     isAuthenticating.value = false
   }
-}
-
-function logout() {
-  clearAdminAuthSession()
-  authSession.value = null
-  tempAdminPassword.value = ''
-  authError.value = ''
-  clearSchematicFile({ withStatus: false })
-  backToGame()
 }
 
 async function loadCurrentConfig() {
@@ -818,26 +808,20 @@ onBeforeUnmount(() => {
         </div>
         <div class="header-right">
           <span class="dirty" :class="{ active: isDirty }">{{ isDirty ? '未保存' : '已保存' }}</span>
-          <button class="btn ghost" @click="logout">
-            登出
-          </button>
           <button class="btn ghost" @click="backToGame">
-            返回游戏
+            返回
+          </button>
+          <button class="btn" @click="resetToDefaultTemplate">
+            默认模板
+          </button>
+          <button class="btn primary" :disabled="isApplying" @click="applyConfig">
+            {{ isApplying ? '保存中...' : '保存设置' }}
           </button>
         </div>
       </header>
 
       <div v-if="statusText" class="status" :class="statusType">
         {{ statusText }}
-      </div>
-
-      <div class="toolbar">
-        <button class="btn" @click="resetToDefaultTemplate">
-          默认模板
-        </button>
-        <button class="btn primary" :disabled="isApplying" @click="applyConfig">
-          {{ isApplying ? '应用中...' : '保存并应用' }}
-        </button>
       </div>
 
       <div class="settings-panel">
@@ -1005,10 +989,6 @@ onBeforeUnmount(() => {
 
           <div v-if="schematicFile" class="schematic-preview">
             <div class="preview-info">
-              <div class="preview-info-field">
-                <strong>文件</strong>
-                <span>{{ schematicFile }}</span>
-              </div>
               <label class="preview-info-field preview-info-field-name">
                 <strong>投影名</strong>
                 <input
@@ -1022,10 +1002,6 @@ onBeforeUnmount(() => {
               <div v-if="schematicPreview" class="preview-info-field">
                 <strong>作者</strong>
                 <span>{{ schematicPreview.author || 'Unknown' }}</span>
-              </div>
-              <div v-if="schematicPreview" class="preview-info-field">
-                <strong>方块数</strong>
-                <span>{{ schematicPreview.blockCount }}</span>
               </div>
             </div>
 
@@ -1083,6 +1059,10 @@ onBeforeUnmount(() => {
                   {{ isParsingSchematic ? '正在解析原理图...' : '暂无可渲染的原理图' }}
                 </div>
               </div>
+            </div>
+
+            <div v-if="schematicPreview" class="preview-tag-row">
+              <span class="preview-tag">方块数 {{ schematicPreview.blockCount }}</span>
             </div>
 
             <p class="schematic-preview-hint">
@@ -1815,6 +1795,8 @@ input::placeholder {
 }
 
 .preview-spawn-label {
+  width: 100%;
+  text-align: center;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1833,6 +1815,26 @@ input::placeholder {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.preview-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preview-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(94, 203, 149, 0.26);
+  background: rgba(94, 203, 149, 0.12);
+  color: #c7f9de;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 .schematic-progress {

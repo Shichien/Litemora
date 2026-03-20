@@ -81,9 +81,9 @@ export function getOverlayGeometryForTarget(target, geometryCache, options = {})
         const depth = Math.max(0.001, box.maxZ - box.minZ)
         const geometry = new THREE.BoxGeometry(width * scale, height * scale, depth * scale)
 
-        const localCenterX = ((box.minX + box.maxX) * 0.5) - target.worldBlock.x
-        const localCenterY = ((box.minY + box.maxY) * 0.5) - target.worldBlock.y
-        const localCenterZ = ((box.minZ + box.maxZ) * 0.5) - target.worldBlock.z
+        const localCenterX = ((box.minX + box.maxX) * 0.5) - 0.5
+        const localCenterY = ((box.minY + box.maxY) * 0.5) - 0.5
+        const localCenterZ = ((box.minZ + box.maxZ) * 0.5) - 0.5
         geometry.translate(localCenterX, localCenterY, localCenterZ)
         return geometry
       })

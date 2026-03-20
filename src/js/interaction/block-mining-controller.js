@@ -81,6 +81,9 @@ export default class BlockMiningController {
    */
   _captureTarget(raycastInfo) {
     const faceNormal = raycastInfo.face?.normal?.clone?.() || null
+    const collisionBoxes = Array.isArray(raycastInfo.collisionBoxes)
+      ? raycastInfo.collisionBoxes.map(box => Array.isArray(box) ? [...box] : { ...box })
+      : null
     return {
       chunkX: raycastInfo.chunkX,
       chunkZ: raycastInfo.chunkZ,
@@ -90,6 +93,7 @@ export default class BlockMiningController {
       source: raycastInfo.source || 'legacy',
       isImportedMinecraft: !!raycastInfo.isImportedMinecraft,
       blockString: String(raycastInfo.blockString || ''),
+      collisionBoxes,
       minecraftBlock: raycastInfo.minecraftBlock
         ? {
             name: raycastInfo.minecraftBlock.name,

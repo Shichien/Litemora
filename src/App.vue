@@ -124,7 +124,8 @@ async function resolveActiveSpaceManageAccess(spaceName) {
 
   try {
     const payload = await fetchGallery(spaceName, authSession.value)
-    canManageActiveSpace.value = !!payload?.viewer?.canManage || (!!authSession.value && !payload?.profile)
+    const items = Array.isArray(payload?.items) ? payload.items : []
+    canManageActiveSpace.value = !!payload?.viewer?.canManage || (!!authSession.value && !payload?.profile && items.length > 0)
   }
   catch {
     canManageActiveSpace.value = false

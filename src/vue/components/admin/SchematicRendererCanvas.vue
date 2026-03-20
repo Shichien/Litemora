@@ -889,16 +889,7 @@ onBeforeUnmount(() => {
 
     <div v-if="diagnostics && !isPreparing && !errorMessage" class="renderer-hud">
       <span v-if="diagnostics.name" class="hud-chip">{{ diagnostics.name }}</span>
-      <span v-if="diagnostics.blockCount" class="hud-chip">{{ diagnostics.blockCount }} blocks</span>
-      <span v-if="diagnostics.size" class="hud-chip">
-        {{ diagnostics.size.x }} x {{ diagnostics.size.y }} x {{ diagnostics.size.z }}
-      </span>
-      <span
-        v-if="diagnostics.offset && (diagnostics.offset.x || diagnostics.offset.y || diagnostics.offset.z)"
-        class="hud-chip is-warning"
-      >
-        offset {{ diagnostics.offset.x }}, {{ diagnostics.offset.y }}, {{ diagnostics.offset.z }}
-      </span>
+      <span v-if="diagnostics.author" class="hud-chip">{{ diagnostics.author }}</span>
     </div>
   </div>
 </template>
@@ -1014,11 +1005,6 @@ onBeforeUnmount(() => {
   color: #e6f1f6;
   font-size: 0.83rem;
   line-height: 1.2;
-}
-
-.hud-chip.is-warning {
-  border-color: rgba(255, 196, 111, 0.28);
-  color: #ffe0b3;
 }
 
 @media (max-width: 720px) {

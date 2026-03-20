@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
 import { getBlockTypeById, getGeometryForBlockType } from '../world/terrain/blocks-config.js'
+import { getOverlayGeometryForTarget } from '../world/terrain/block-overlay-geometry.js'
 
 /**
  * BlockMiningOverlay
@@ -87,6 +88,21 @@ export default class BlockMiningOverlay {
   }
 
   _applyOverlayGeometry(target) {
+    const collisionGeometry = getOverlayGeometryForTarget(
+      target,
+      this._geometryCache,
+      {
+        scale: 1.002,
+        world: this.experience.world,
+      },
+    )
+    if (collisionGeometry) {
+      if (this._mesh.geometry !== collisionGeometry) {
+        this._mesh.geometry = collisionGeometry
+      }
+      return
+    }
+
     const blockId = Number(target?.blockId)
     if (!Number.isFinite(blockId)) {
       if (this._mesh.geometry !== this._defaultGeometry) {

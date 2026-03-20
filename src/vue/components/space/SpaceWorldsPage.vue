@@ -12,6 +12,7 @@ import {
 } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
 import { buildSpaceProjectionUrl, buildSpaceWorldsAdminUrl } from '@three/utils/space-context.js'
+import SpaceNotFoundPage from '@ui-components/space/SpaceNotFoundPage.vue'
 import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -70,11 +71,10 @@ const canManageProjections = computed(() => {
     return false
   }
 
-  if (!galleryProfile.value) {
-    return true
-  }
-
-  return !!galleryViewer.value?.canManage
+  return !!galleryViewer.value?.canManage || (!galleryProfile.value && galleryItems.value.length > 0)
+})
+const isMissingSpace = computed(() => {
+  return !galleryProfile.value && galleryItems.value.length === 0 && !canManageProjections.value
 })
 
 function resolveProjectionPreview(item) {
@@ -330,7 +330,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="worlds-shell">
+  <SpaceNotFoundPage
+    v-if="!isLoading && !loadError && isMissingSpace"
+    :space-name="spaceName"
+  />
+
+  <main v-else class="worlds-shell">
     <header class="worlds-topbar">
       <SpaceBreadcrumbs :space-name="spaceName" />
 
