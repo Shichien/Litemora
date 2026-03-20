@@ -186,7 +186,6 @@ function resolveProjectionThumbnailAsset(item) {
   }
 }
 
-// 根据 projection 的 bounds 生成预览 SVG
 function generateProjectionThumbnailSvg(item) {
   const preview = resolveProjectionPreview(item)
   const bounds = preview?.bounds
@@ -194,7 +193,6 @@ function generateProjectionThumbnailSvg(item) {
     return null
   }
 
-  // 计算归一化的尺寸
   const minX = bounds.minX ?? 0
   const maxX = bounds.maxX ?? 16
   const minY = bounds.minY ?? 0
@@ -206,7 +204,6 @@ function generateProjectionThumbnailSvg(item) {
   const height = maxY - minY || 32
   const depth = maxZ - minZ || 16
 
-  // 计算显示比例（适配 16:9）
   const maxDim = Math.max(width, height, depth)
   const scale = 20 / maxDim
 
@@ -217,7 +214,6 @@ function generateProjectionThumbnailSvg(item) {
     .replace(/[^a-z0-9_-]/giu, '')
     .slice(0, 48) || 'projection'
 
-  // 生成 3D 效果的 SVG
   const centerX = 12
   const centerY = 12
   const baseColor = '#7ebcd3'
@@ -232,15 +228,11 @@ function generateProjectionThumbnailSvg(item) {
             <stop offset="100%" style="stop-color:${baseColor};stop-opacity:0.6" />
           </linearGradient>
         </defs>
-        <!-- 3D 立方体效果 -->
         <g transform="translate(${centerX - displayWidth / 2}, ${centerY - displayHeight / 2})">
-          <!-- 顶面 -->
           <path d="M0,${displayHeight * 0.2} L${displayWidth * 0.3},0 L${displayWidth},${displayHeight * 0.2} L${displayWidth * 0.7},${displayHeight * 0.4} Z"
                 fill="${highlightColor}" fill-opacity="0.7" />
-          <!-- 正面 -->
           <rect x="0" y="${displayHeight * 0.2}" width="${displayWidth}" height="${displayHeight * 0.6}"
                 fill="url(#grad-${safeGradientId})" />
-          <!-- 右侧面 -->
           <path d="M${displayWidth},${displayHeight * 0.2} L${displayWidth * 0.7},${displayHeight * 0.4} L${displayWidth * 0.7},${displayHeight} L${displayWidth},${displayHeight * 0.8} Z"
                 fill="${baseColor}" fill-opacity="0.5" />
         </g>
@@ -595,130 +587,133 @@ watch(
 
   <main v-else class="worlds-shell">
     <header class="worlds-topbar">
-      <div class="worlds-brand">
-        <button
-          type="button"
-          class="brand-avatar-button"
-          :class="{ disabled: !canEditProfileSettings }"
-          :disabled="!canEditProfileSettings"
-          @click="openProfileSettings"
-        >
-          <span class="brand-avatar">
-            <img v-if="brandAvatar" :src="brandAvatar" :alt="brandTitle">
-            <span v-else>{{ brandAvatarInitial }}</span>
-          </span>
-        </button>
-
-        <div class="brand-copy">
+      <div class="worlds-topbar-inner">
+        <div class="worlds-brand">
           <button
             type="button"
-            class="brand-title-button"
-            :disabled="!isProfileSettingsView && !canEditProfileSettings"
-            @click="isProfileSettingsView ? closeProfileSettings() : openProfileSettings()"
+            class="brand-avatar-button"
+            :class="{ disabled: !canEditProfileSettings }"
+            :disabled="!canEditProfileSettings"
+            @click="openProfileSettings"
           >
-            <strong>{{ brandTitle }}</strong>
-            <span>{{ brandSubtitle }}</span>
+            <span class="brand-avatar">
+              <img v-if="brandAvatar" :src="brandAvatar" :alt="brandTitle">
+              <span v-else>{{ brandAvatarInitial }}</span>
+            </span>
           </button>
+
+          <div class="brand-copy">
+            <button
+              type="button"
+              class="brand-title-button"
+              :disabled="!isProfileSettingsView && !canEditProfileSettings"
+              @click="isProfileSettingsView ? closeProfileSettings() : openProfileSettings()"
+            >
+              <span class="title-text">{{ brandTitle }}</span>
+              <span class="subtitle-text">{{ brandSubtitle }}</span>
+            </button>
+          </div>
+
+          <div class="brand-icon-row">
+            <a
+              class="brand-icon-button"
+              :href="LITEMORA_REPOSITORY_URL"
+              target="_blank"
+              rel="noreferrer"
+              title="Open GitHub repository"
+              aria-label="Open GitHub repository"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
+              </svg>
+            </a>
+            <button
+              type="button"
+              class="brand-icon-button"
+              title="Open RSS feed"
+              aria-label="Open RSS feed"
+              @click="openRssFeed"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 11a9 9 0 0 1 9 9"></path>
+                <path d="M4 4a16 16 0 0 1 16 16"></path>
+                <circle cx="5" cy="19" r="1"></circle>
+              </svg>
+            </button>
+          </div>
         </div>
 
-        <div class="brand-icon-row">
-          <a
-            class="brand-icon-button"
-            :href="LITEMORA_REPOSITORY_URL"
-            target="_blank"
-            rel="noreferrer"
-            title="Open GitHub repository"
-            aria-label="Open GitHub repository"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-              <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
-            </svg>
-          </a>
-          <button
-            type="button"
-            class="brand-icon-button"
-            title="Open RSS feed"
-            aria-label="Open RSS feed"
-            @click="openRssFeed"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M4 11a9 9 0 0 1 9 9"></path>
-              <path d="M4 4a16 16 0 0 1 16 16"></path>
-              <circle cx="5" cy="19" r="1"></circle>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div ref="authMenuRef" class="worlds-topbar-actions">
-        <div class="auth-popover">
-          <button type="button" class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
-            <span class="auth-trigger-label">{{ authSession ? 'Account' : 'Login' }}</span>
-            <template v-if="authSession">
-              <span class="auth-account compact">
-                <span class="auth-avatar compact">
-                  <img v-if="viewerAvatar" :src="viewerAvatar" :alt="viewerDisplayName">
-                  <span v-else>{{ viewerInitial }}</span>
+        <div ref="authMenuRef" class="worlds-topbar-actions">
+          <div class="auth-popover">
+            <button type="button" class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
+              <span class="auth-trigger-label">{{ authSession ? 'Account' : 'Login' }}</span>
+              <template v-if="authSession">
+                <span class="auth-account compact">
+                  <span class="auth-avatar compact">
+                    <img v-if="viewerAvatar" :src="viewerAvatar" :alt="viewerDisplayName">
+                    <span v-else>{{ viewerInitial }}</span>
+                  </span>
                 </span>
-              </span>
-            </template>
-            <template v-else>
-              <span class="auth-trigger-arrow">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                  <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
-                </svg>
-              </span>
-            </template>
-          </button>
-
-          <div v-if="authMenuOpen" class="auth-menu">
-            <template v-if="authSession">
-              <div class="auth-menu-header">
-                <div class="menu-account-copy">
-                  <strong>{{ viewerDisplayName }}</strong>
-                  <span>{{ viewerEmail || 'local@litemora.dev' }} · {{ viewerRole }}</span>
-                </div>
-              </div>
-
-              <button type="button" class="auth-menu-item placeholder" @click="openProfileSettingsFromMenu">
-                <span class="menu-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"></path>
-                    <path d="M4 20a8 8 0 0 1 16 0"></path>
-                  </svg>
-                </span>
-                <span>Profile Settings</span>
-              </button>
-              <button type="button" class="auth-menu-item danger" @click="logout">
-                <span class="menu-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                    <path d="m16 17 5-5-5-5"></path>
-                    <path d="M21 12H9"></path>
-                  </svg>
-                </span>
-                <span>Log out</span>
-              </button>
-            </template>
-
-            <template v-else>
-              <div class="auth-menu-title">选择登录方式</div>
-              <button
-                v-for="provider in authProviders"
-                :key="provider.id"
-                type="button"
-                class="auth-menu-item"
-                :disabled="isAuthenticating"
-                @click="handleProviderAuth(provider.id)"
-              >
-                <span class="menu-icon" aria-hidden="true">
-                  <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+              </template>
+              <template v-else>
+                <span class="auth-trigger-arrow">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
                     <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
                   </svg>
                 </span>
-                <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
-              </button>
-            </template>
+              </template>
+            </button>
+
+            <div v-if="authMenuOpen" class="auth-menu">
+              <template v-if="authSession">
+                <div class="auth-menu-header">
+                  <div class="menu-account-copy">
+                    <span class="account-name">{{ viewerDisplayName }}</span>
+                    <span class="account-email">{{ viewerEmail || 'local@litemora.dev' }}</span>
+                  </div>
+                </div>
+
+                <button type="button" class="auth-menu-item" @click="openProfileSettingsFromMenu">
+                  <span class="menu-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"></path>
+                      <path d="M4 20a8 8 0 0 1 16 0"></path>
+                    </svg>
+                  </span>
+                  <span>Profile Settings</span>
+                </button>
+
+                <button type="button" class="auth-menu-item danger" @click="logout">
+                  <span class="menu-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                      <path d="m16 17 5-5-5-5"></path>
+                      <path d="M21 12H9"></path>
+                    </svg>
+                  </span>
+                  <span>Log out</span>
+                </button>
+              </template>
+
+              <template v-else>
+                <div class="auth-menu-title">选择登录方式</div>
+                <button
+                  v-for="provider in authProviders"
+                  :key="provider.id"
+                  type="button"
+                  class="auth-menu-item"
+                  :disabled="isAuthenticating"
+                  @click="handleProviderAuth(provider.id)"
+                >
+                  <span class="menu-icon" aria-hidden="true">
+                    <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                      <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
+                    </svg>
+                  </span>
+                  <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
+                </button>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -759,15 +754,14 @@ watch(
           </div>
 
           <div v-if="isLoading" class="empty-state">
-            <strong>正在同步世界目录...</strong>
+            <span class="loading-text">正在同步世界目录...</span>
           </div>
 
           <div v-else-if="galleryItems.length === 0 && !canManageProjections" class="empty-state">
-            <strong>还没有任何世界</strong>
-            <span>当前 Space 尚未公开任何投影。</span>
+            <span class="empty-title">还没有任何世界</span>
+            <span class="empty-desc">当前 Space 尚未公开任何投影。</span>
           </div>
 
-          <!-- 当没有世界但用户可以管理时，显示占位卡片 -->
           <div v-else-if="galleryItems.length === 0 && canManageProjections" class="card-grid">
             <article
               class="world-card placeholder-card"
@@ -788,7 +782,6 @@ watch(
           </div>
 
           <div v-else class="card-grid">
-            <!-- 添加投影占位卡片 -->
             <article
               v-if="canManageProjections"
               class="world-card placeholder-card"
@@ -876,7 +869,7 @@ watch(
                     title="世界设置"
                     @click.stop.prevent="openProjectionSettings(item)"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82 2 2 0 1 1-2.83 2.83 1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 2 2 0 1 1-4 0 1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33 2 2 0 1 1-2.83-2.83 1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 2 2 0 1 1 0-4 1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82 2 2 0 1 1 2.83-2.83 1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 2.6a2 2 0 1 1 4 0 1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33 2 2 0 1 1 2.83 2.83 1.65 1.65 0 0 0-.33 1.82v.01A1.65 1.65 0 0 0 21.4 10a2 2 0 1 1 0 4 1.65 1.65 0 0 0-1.51 1Z"></path></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82 2 2 0 1 1-2.83 2.83 1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 2 2 0 1 1-4 0 1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33 2 2 0 1 1-2.83-2.83 1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 2 2 0 1 1 0-4 1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82 2 2 0 1 1 2.83-2.83 1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 2.6a2 2 0 1 1 4 0 1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33 2 2 0 1 1 2.83 2.83 1.65 1.65 0 0 0-.33 1.82v.01A1.65 1.65 0 0 0 21.4 10a2 2 0 1 1 0 4 1.65 1.65 0 0 0-1.51 1Z"></path></svg>
                     <span>设置</span>
                   </button>
                   <button
@@ -886,7 +879,7 @@ watch(
                     title="删除"
                     @click.stop.prevent="pendingDeleteItemId = item.id"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                   </button>
                   <button
                     v-else
@@ -915,44 +908,50 @@ watch(
   color: #edf4f7;
 }
 
-.worlds-topbar,
-.worlds-main,
-.worlds-hero,
-.worlds-layout,
-.login-panel {
-  width: min(1280px, calc(100% - 2rem));
-  margin: 0 auto;
-}
-
+/* 顶部导航通栏化，去除顶部留白和粗重感 */
 .worlds-topbar {
+  width: 100%;
   position: relative;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.1rem;
-  margin-top: 0.75rem;
-  border-radius: 20px;
-  border: 1px solid rgba(112, 159, 197, 0.22);
-  background:
-    linear-gradient(180deg, rgba(17, 19, 22, 0.98) 0%, rgba(22, 25, 28, 0.98) 100%);
-  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.22);
+  background: rgba(17, 19, 22, 0.96);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(112, 159, 197, 0.15);
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 .worlds-topbar::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 2px;
-  border-radius: 999px;
   background: linear-gradient(90deg, rgba(90, 171, 255, 0.9) 0%, rgba(111, 210, 255, 0.7) 55%, rgba(90, 171, 255, 0.4) 100%);
+}
+
+.worlds-topbar-inner {
+  width: min(1280px, calc(100% - 2rem));
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 0;
+}
+
+.worlds-main {
+  width: min(1280px, calc(100% - 2rem));
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+  padding-bottom: 3rem;
 }
 
 .worlds-brand {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.95rem;
+  gap: 0.75rem;
 }
 
 .brand-avatar-button {
@@ -960,6 +959,7 @@ watch(
   border: none;
   background: transparent;
   cursor: pointer;
+  display: flex;
 }
 
 .brand-avatar-button.disabled {
@@ -967,8 +967,8 @@ watch(
 }
 
 .brand-avatar {
-  width: 54px;
-  height: 54px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
@@ -977,9 +977,9 @@ watch(
   flex-shrink: 0;
   background: linear-gradient(135deg, #213241 0%, #6a8da7 100%);
   border: 1px solid rgba(116, 181, 236, 0.25);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
   color: #f4f8ff;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 1.1rem;
 }
 
 .brand-avatar img {
@@ -993,8 +993,11 @@ watch(
 }
 
 .brand-title-button {
-  display: grid;
-  gap: 0.12rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
   padding: 0;
   border: none;
   background: transparent;
@@ -1008,40 +1011,40 @@ watch(
   cursor: default;
 }
 
-.brand-title-button strong {
-  max-width: min(48vw, 620px);
+.title-text {
+  max-width: min(48vw, 400px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: clamp(1.15rem, 2vw, 2rem);
-  letter-spacing: -0.04em;
-  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  font-weight: 600;
 }
 
-.brand-title-button span {
+.subtitle-text {
   color: #8da8b8;
-  font-size: 0.88rem;
+  font-size: 0.75rem;
 }
 
 .brand-icon-row {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  margin-left: 0.3rem;
+  gap: 0.4rem;
+  margin-left: 0.5rem;
 }
 
 .brand-icon-button {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #cbd9e2;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: transparent;
+  color: #a4b9c7;
   text-decoration: none;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .brand-icon-button:hover {
@@ -1064,49 +1067,44 @@ watch(
 .auth-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.42rem 0.55rem 0.42rem 0.78rem;
+  gap: 0.5rem;
+  padding: 0.3rem 0.35rem 0.3rem 0.7rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  background: rgba(19, 24, 28, 0.88);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.03);
   color: #edf4f7;
   cursor: pointer;
-  min-height: 44px;
+  height: 36px;
+  transition: background 0.2s ease;
 }
 
 .auth-trigger:hover,
 .auth-trigger.active {
-  background: rgba(24, 29, 34, 0.98);
-  border-color: rgba(126, 188, 211, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(126, 188, 211, 0.2);
 }
 
 .auth-account {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-}
-
-.auth-account.compact {
-  margin-left: auto;
 }
 
 .auth-trigger-label {
-  font-size: 0.88rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .auth-trigger-arrow {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #d7e4ed;
+  color: #a5b9c7;
+  margin-right: 0.25rem;
 }
 
 .auth-avatar {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
@@ -1115,13 +1113,8 @@ watch(
   flex-shrink: 0;
   background: linear-gradient(135deg, #233445 0%, #5f8191 100%);
   color: #f4f7fb;
-  font-size: 1rem;
+  font-size: 0.85rem;
   font-weight: 600;
-}
-
-.auth-avatar.compact {
-  width: 28px;
-  height: 28px;
 }
 
 .auth-avatar img {
@@ -1130,78 +1123,76 @@ watch(
   object-fit: cover;
 }
 
-.menu-account-copy {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.12rem;
-  min-width: 0;
-}
-
-.menu-account-copy strong {
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.98rem;
-  font-weight: 500;
-  color: #edf4f7;
-}
-
-.menu-account-copy span {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #8ea8b7;
-  font-size: 0.82rem;
-}
-
 .auth-menu {
   position: absolute;
-  top: calc(100% + 0.35rem);
+  top: calc(100% + 0.5rem);
   right: 0;
-  width: min(320px, calc(100vw - 2rem));
-  padding: 1rem 1rem 0.85rem;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(16, 21, 25, 0.98);
+  width: 240px;
+  padding: 0.5rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(22, 28, 33, 0.98);
   backdrop-filter: blur(14px);
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
   z-index: 20;
 }
 
 .auth-menu-header {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.1rem 0.1rem 1rem;
-  margin-bottom: 0.6rem;
-  border-bottom: 1px solid rgba(45, 111, 132, 0.26);
+  padding: 0.5rem 0.5rem 0.8rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.menu-account-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.account-name {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #edf4f7;
+}
+
+.account-email {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #728b9c;
+  font-size: 0.75rem;
 }
 
 .auth-menu-title {
-  padding: 0.25rem 0.1rem 0.9rem;
+  padding: 0.5rem 0.5rem 0.4rem;
   color: rgba(255, 255, 255, 0.4);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
 }
 
 .auth-menu-item {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.9rem;
-  padding: 0.9rem 0.25rem;
+  gap: 0.6rem;
+  padding: 0.6rem;
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   background: transparent;
   color: #edf4f7;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   cursor: pointer;
+  transition: background 0.2s ease;
 }
 
 .auth-menu-item:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .auth-menu-item:disabled {
@@ -1209,25 +1200,18 @@ watch(
   cursor: wait;
 }
 
-.auth-menu-item.placeholder {
-  border-bottom: 1px solid rgba(45, 111, 132, 0.26);
-  border-radius: 0;
-}
-
-.auth-menu-item.placeholder:last-of-type {
-  border-bottom: none;
-}
-
 .auth-menu-item.danger {
   color: #ff695f;
-  margin-top: 0.65rem;
-  padding-top: 1.05rem;
-  border-top: 1px solid rgba(45, 111, 132, 0.26);
+  margin-top: 0.25rem;
+}
+
+.auth-menu-item.danger:hover:not(:disabled) {
+  background: rgba(255, 105, 95, 0.1);
 }
 
 .menu-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1235,268 +1219,93 @@ watch(
   flex-shrink: 0;
 }
 
-.worlds-hero {
-  padding: 2rem 0 1.4rem;
-}
-
-.hero-topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.hero-share {
-  color: #b4c9d8;
-  text-decoration: none;
-}
-
-.hero-kicker {
-  margin: 2rem 0 0;
-  color: #77bddc;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-size: 0.88rem;
-}
-
-.hero-title {
-  margin: 0.8rem 0 0;
-  font-size: clamp(2.5rem, 6vw, 5rem);
-  line-height: 0.98;
-  letter-spacing: -0.05em;
-}
-
-.hero-copy {
-  margin: 1rem 0 0;
-  max-width: 860px;
-  color: #abc2cf;
-  line-height: 1.85;
-}
-
-.hero-meta {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1.75rem;
-}
-
-.meta-card,
-.panel {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(10, 18, 24, 0.76);
-  border-radius: 24px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
-}
-
-.meta-card {
-  padding: 1rem 1.1rem;
-}
-
-.meta-card span {
-  display: block;
-  color: #8ea8b7;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-size: 0.8rem;
-}
-
-.meta-card strong {
-  display: block;
-  margin-top: 0.5rem;
-  font-size: 1rem;
-}
-
-.login-panel {
-  padding-bottom: 3rem;
-}
-
-.panel {
-  padding: 1.35rem;
-}
-
-.worlds-layout {
-  display: grid;
-  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
-  gap: 1.2rem;
-  padding-bottom: 3rem;
-}
-
-.worlds-sidebar {
-  display: grid;
-  gap: 1.1rem;
-}
-
-.panel.disabled {
-  opacity: 0.68;
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-}
-
-.panel-head h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.panel-copy {
-  color: #a8c1cf;
-  line-height: 1.7;
-}
-
-.field {
-  display: grid;
-  gap: 0.45rem;
-  margin-top: 1rem;
-}
-
-.field span {
-  color: #9fb8c7;
+.banner {
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
   font-size: 0.9rem;
 }
 
-.field input,
-.field textarea,
-.field select {
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: #edf4f7;
-  border-radius: 16px;
-  padding: 0.8rem 0.95rem;
-  font: inherit;
-}
-
-.auth-list,
-.world-card-actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.45rem 0.72rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #edf4f7;
-  font-size: 0.8rem;
-}
-
-.chip.success {
-  background: rgba(102, 215, 154, 0.14);
-  color: #9af1bf;
-}
-
-.chip.warning {
-  background: rgba(245, 184, 88, 0.14);
-  color: #ffd08a;
-}
-
-.upload-summary {
-  display: grid;
-  gap: 0.35rem;
-  margin-top: 1rem;
-  color: #b6c8d4;
-}
-
-.upload-preview {
-  margin-top: 1rem;
-  border-radius: 22px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.22);
-  min-height: 240px;
-}
-
-.worlds-main {
-  display: grid;
-  gap: 1rem;
-  padding-bottom: 3rem;
-}
-
-.banner {
-  padding: 0.95rem 1.1rem;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
 .banner.success {
-  background: rgba(68, 180, 119, 0.16);
+  background: rgba(68, 180, 119, 0.12);
+  color: #a4f2c5;
 }
 
 .banner.warning {
-  background: rgba(227, 172, 83, 0.14);
+  background: rgba(227, 172, 83, 0.12);
+  color: #ffe3b1;
 }
 
 .worlds-gallery {
   display: grid;
-  gap: 1.5rem;
+  gap: 1.25rem;
   align-content: start;
 }
 
 .gallery-head {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.8rem;
 }
 
 .gallery-head h2 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .count-badge {
-  background: rgba(255, 255, 255, 0.08);
-  padding: 0.3rem 0.6rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.25rem 0.5rem;
   border-radius: 999px;
-  font-size: 0.8rem;
-  color: #a3c4d9;
-}
-
-.empty-state {
-  display: grid;
-  gap: 0.5rem;
-  padding: 4rem 2rem;
-  text-align: center;
-  background: rgba(10, 18, 24, 0.4);
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  border-radius: 24px;
+  font-size: 0.75rem;
   color: #8da4b4;
 }
 
-.empty-state strong {
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 3.5rem 2rem;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+}
+
+.loading-text, .empty-title {
   color: #edf4f7;
-  font-size: 1.1rem;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.empty-desc {
+  color: #728b9c;
+  font-size: 0.85rem;
 }
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
 }
 
 .world-card {
   display: flex;
   flex-direction: column;
-  background: rgba(13, 19, 25, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 20px;
+  background: rgba(15, 21, 27, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: all 0.3s ease;
 }
 
 .world-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(126, 189, 228, 0.1) inset;
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
 }
 
 .world-card-thumb {
@@ -1512,7 +1321,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.5s ease;
+  transition: transform 0.4s ease;
 }
 
 .thumb-placeholder.has-custom-thumb {
@@ -1521,7 +1330,7 @@ watch(
 
 .thumb-placeholder.has-image-thumb {
   background:
-    radial-gradient(circle at 20% 20%, rgba(126, 189, 228, 0.24), transparent 32%),
+    radial-gradient(circle at 20% 20%, rgba(126, 189, 228, 0.2), transparent 40%),
     linear-gradient(180deg, #091018 0%, #0c1620 100%);
 }
 
@@ -1530,7 +1339,6 @@ watch(
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.5s ease;
 }
 
 .custom-thumb {
@@ -1542,28 +1350,24 @@ watch(
 }
 
 .custom-thumb svg {
-  max-width: 80%;
-  max-height: 80%;
+  max-width: 75%;
+  max-height: 75%;
 }
 
 .world-card:hover .thumb-placeholder {
-  transform: scale(1.05);
-}
-
-.world-card:hover .thumb-image {
-  transform: scale(1.04);
+  transform: scale(1.03);
 }
 
 .thumb-icon {
-  width: 72px;
-  height: 72px;
+  width: 54px;
+  height: 54px;
 }
 
 .thumb-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(0deg, rgba(8, 16, 24, 0.8) 0%, transparent 40%);
-  padding: 1rem;
+  background: linear-gradient(0deg, rgba(8, 16, 24, 0.7) 0%, transparent 50%);
+  padding: 0.8rem;
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
@@ -1572,42 +1376,37 @@ watch(
 .thumb-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .tag-badge {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
   color: #fff;
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 0.25rem 0.5rem;
-  border-radius: 6px;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
 }
 
 .version-tag {
-  background: rgba(121, 203, 167, 0.2);
+  background: rgba(121, 203, 167, 0.15);
   color: #bbf4d9;
-  border: 1px solid rgba(121, 203, 167, 0.1);
 }
 
 .visibility-tag {
-  background: rgba(119, 175, 255, 0.16);
+  background: rgba(119, 175, 255, 0.12);
   color: #cfe0ff;
-  border: 1px solid rgba(119, 175, 255, 0.18);
 }
 
 .visibility-tag.private {
-  background: rgba(255, 159, 67, 0.16);
+  background: rgba(255, 159, 67, 0.12);
   color: #ffd7a8;
-  border: 1px solid rgba(255, 159, 67, 0.2);
 }
 
 .world-card-content {
   position: relative;
-  padding: 1.25rem;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1615,8 +1414,8 @@ watch(
 
 .world-title {
   margin: 0;
-  font-size: 1.15rem;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 500;
   color: #fff;
   line-height: 1.3;
   display: -webkit-box;
@@ -1626,37 +1425,37 @@ watch(
 }
 
 .world-desc {
-  margin: 0.65rem 0 0;
-  font-size: 0.9rem;
-  color: #8da4b4;
-  line-height: 1.6;
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: #728b9c;
+  line-height: 1.5;
   flex: 1;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .world-meta {
-  margin-top: 1.25rem;
+  margin-top: 1rem;
   display: flex;
-  gap: 1rem;
-  color: #728c9e;
-  font-size: 0.85rem;
+  gap: 0.8rem;
+  color: #5c7485;
+  font-size: 0.75rem;
 }
 
 .meta-item {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .world-actions {
   position: absolute;
-  top: 1.25rem;
-  right: 1.25rem;
+  top: 1rem;
+  right: 1rem;
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -1667,39 +1466,37 @@ watch(
 
 .btn-settings,
 .btn-delete {
-  background: rgba(18, 30, 40, 0.82);
-  color: #d7e7ef;
-  border: 1px solid rgba(126, 189, 228, 0.2);
-  height: 32px;
-  border-radius: 8px;
+  background: rgba(22, 33, 43, 0.9);
+  color: #c4d9e6;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  height: 28px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
 }
 
 .btn-settings {
-  gap: 0.4rem;
-  padding: 0 0.72rem;
-  font-size: 0.8rem;
-  font-weight: 600;
+  gap: 0.3rem;
+  padding: 0 0.6rem;
+  font-size: 0.75rem;
 }
 
 .btn-settings:hover {
-  background: rgba(28, 44, 57, 0.95);
-  color: #f4fbff;
-  border-color: rgba(126, 189, 228, 0.36);
+  background: rgba(32, 48, 62, 0.95);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .btn-delete {
   background: rgba(220, 53, 69, 0.1);
   color: #ff6b7b;
-  border: 1px solid rgba(220, 53, 69, 0.2);
-  width: 32px;
+  border: 1px solid rgba(220, 53, 69, 0.15);
+  width: 28px;
   padding: 0;
-  backdrop-filter: blur(12px);
 }
 
 .btn-delete:hover {
@@ -1711,180 +1508,56 @@ watch(
   background: #dc3545;
   color: #fff;
   border: none;
-  height: 32px;
-  padding: 0 0.8rem;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  height: 28px;
+  padding: 0 0.6rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
-/* 占位卡片样式 */
 .placeholder-card {
-  border: 2px dashed rgba(126, 189, 228, 0.3);
-  background: rgba(126, 189, 228, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .placeholder-card:hover {
-  border-color: rgba(126, 189, 228, 0.6);
-  background: rgba(126, 189, 228, 0.1);
+  border-color: rgba(126, 189, 228, 0.3);
+  background: rgba(126, 189, 228, 0.04);
 }
 
 .placeholder-thumb {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(126, 189, 228, 0.1);
+  background: transparent;
 }
 
 .add-icon {
-  color: rgba(126, 189, 228, 0.6);
-  transition: transform 0.2s ease;
+  color: rgba(255, 255, 255, 0.15);
+  transition: transform 0.2s ease, color 0.2s ease;
 }
 
 .placeholder-card:hover .add-icon {
-  transform: scale(1.1);
-  color: rgba(126, 189, 228, 0.9);
-}
-
-/* 世界配置面板样式 */
-.btn-close {
-  background: rgba(255, 255, 255, 0.08);
-  border: none;
-  border-radius: 8px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #a8c1cf;
-  transition: all 0.2s;
-}
-
-.btn-close:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-.config-loading {
-  padding: 2rem;
-  text-align: center;
-  color: #8da4b4;
-}
-
-.config-form {
-  display: grid;
-  gap: 1rem;
-}
-
-.field-group {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.field-label {
-  color: #9fb8c7;
-  font-size: 0.9rem;
-}
-
-.coord-inputs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
-}
-
-.coord-field {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.coord-field span {
-  color: #728c9e;
-  font-size: 0.75rem;
-}
-
-.coord-field input {
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: #edf4f7;
-  border-radius: 8px;
-  padding: 0.5rem;
-  font: inherit;
-  text-align: center;
-}
-
-.config-actions {
-  margin-top: 0.5rem;
-}
-
-.world-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 0.95rem;
-  color: #95b1c1;
-  font-size: 0.88rem;
-}
-
-.world-card-actions {
-  margin-top: 1rem;
-}
-
-.action-btn {
-  border: none;
-  border-radius: 999px;
-  padding: 0.85rem 1.2rem;
-  font: inherit;
-  cursor: pointer;
-}
-
-.action-btn.compact {
-  padding: 0.7rem 1rem;
-}
-
-.action-btn.primary {
-  background: #edf4f7;
-  color: #081018;
-}
-
-.action-btn.subtle {
-  background: rgba(255, 255, 255, 0.08);
-  color: #edf4f7;
-}
-
-.action-btn.danger {
-  background: rgba(215, 92, 92, 0.18);
-  color: #ffd0d0;
-}
-
-.feedback.warning {
-  color: #ffd79a;
+  transform: scale(1.05);
+  color: rgba(126, 189, 228, 0.6);
 }
 
 @media (max-width: 960px) {
-  .worlds-layout {
-    grid-template-columns: 1fr;
-  }
-
   .card-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
 }
 
 @media (max-width: 760px) {
   .worlds-topbar {
-    align-items: flex-start;
-    padding: 0.85rem 0.9rem;
+    margin-bottom: 1.5rem;
   }
 
-  .worlds-brand {
-    flex-wrap: wrap;
-    gap: 0.7rem;
+  .worlds-topbar-inner {
+    padding: 0.5rem 0;
   }
 
-  .brand-title-button strong {
+  .title-text {
     max-width: 100%;
     white-space: normal;
   }
@@ -1894,22 +1567,17 @@ watch(
   }
 
   .auth-trigger {
-    padding: 0.4rem 0.5rem 0.4rem 0.72rem;
-    min-height: 40px;
-  }
-
-  .auth-avatar {
-    width: 32px;
+    padding: 0.25rem 0.3rem 0.25rem 0.6rem;
     height: 32px;
   }
 
-  .auth-menu {
-    width: min(320px, calc(100vw - 1rem));
-    padding: 1rem 1rem 0.85rem;
+  .auth-avatar {
+    width: 24px;
+    height: 24px;
   }
 
-  .hero-meta {
-    grid-template-columns: 1fr;
+  .auth-menu {
+    width: min(280px, calc(100vw - 1rem));
   }
 
   .world-actions {

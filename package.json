@@ -1,18 +1,12 @@
 {
   "type": "module",
   "private": true,
-  "author": {
-    "name": "Doinel Atanasiu",
-    "email": "doinel1atanasiu@gmail.com",
-    "url": "https://business-link.d1a.app"
-  },
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/Shichien/Litemora.git"
   },
   "scripts": {
-    "postinstall": "husky",
     "clean:dist": "npx rimraf dist",
     "sync:bedrock-textures": "node ./scripts/sync-bedrock-textures.mjs",
     "gen:litematic:all-blocks": "node ./scripts/generate-all-blocks-litematic.mjs",
@@ -24,7 +18,6 @@
   },
   "dependencies": {
     "@tweakpane/plugin-essentials": "^0.2.1",
-    "@vitejs/plugin-legacy": "^5.4.1",
     "buffer": "^6.0.3",
     "cubane": "1.0.19",
     "gsap": "^3.12.5",
@@ -32,7 +25,6 @@
     "mitt": "^3.0.1",
     "pako": "^2.1.0",
     "pinia": "^3.0.2",
-    "postcss-import": "^16.1.0",
     "prismarine-nbt": "^2.8.0",
     "schematic-renderer": "^1.1.23",
     "three": "^0.172.0",
@@ -43,15 +35,10 @@
   "devDependencies": {
     "@antfu/eslint-config": "^4.10.1",
     "@builder.io/partytown": "^0.10.2",
-    "@commitlint/cli": "^19.4.0",
-    "@commitlint/config-conventional": "^19.2.2",
     "@rollup/pluginutils": "^5.3.0",
     "@vitejs/plugin-vue": "^5.2.3",
     "assert": "^2.1.0",
-    "autoprefixer": "^10.4.20",
     "browserify-zlib": "^0.2.0",
-    "copy-webpack-plugin": "^14.0.0",
-    "cssnano": "^7.0.5",
     "eslint": "^9.22.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
@@ -61,7 +48,6 @@
     "eslint-plugin-sonarjs": "^0.25.1",
     "eslint-plugin-unicorn": "^55.0.0",
     "events": "^3.3.0",
-    "husky": "^9.1.4",
     "postcss": "^8.4.41",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.6",
@@ -69,12 +55,10 @@
     "sass": "^1.77.8",
     "stream-browserify": "^3.0.0",
     "tailwindcss": "^3.4.9",
-    "terser": "^5.31.6",
     "tweakpane": "^4.0.5",
     "typescript": "^5.8.3",
     "vite": "^5.4.0",
-    "vite-plugin-glsl": "^1.3.0",
-    "webpack": "^5.105.4",
-    "webpack-cli": "^7.0.0"
+    "vite-plugin-glsl": "^1.3.0"
   }
 }
+

@@ -264,7 +264,7 @@ const discoverSpaces = computed(() => {
 </script>
 
 <template>
-  <main class="afilmory-home">
+  <main class="Litemora-home">
     <!-- Hero Grid Background -->
     <div class="hero-grid-bg">
       <div class="grid-layer" :style="{ opacity: 0.4 }">
@@ -502,7 +502,7 @@ const discoverSpaces = computed(() => {
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap');
 
 /* Fixed dark theme variables */
-.afilmory-home {
+.Litemora-home {
   --bg: #0a0e12;
   --text-main: #e8edf2;
   --text-muted: #7a8a96;
@@ -514,7 +514,7 @@ const discoverSpaces = computed(() => {
   --card-hover-bg: rgba(30, 40, 52, 0.6);
 }
 
-.afilmory-home {
+.Litemora-home {
   background-color: var(--bg);
   color: var(--text-main);
   font-family: 'Inter', sans-serif;

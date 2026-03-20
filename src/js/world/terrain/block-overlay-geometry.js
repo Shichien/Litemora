@@ -42,9 +42,12 @@ export function getOverlayGeometryForTarget(target, geometryCache, options = {})
   const cache = geometryCache instanceof Map ? geometryCache : new Map()
   const scale = Number(options.scale) > 0 ? Number(options.scale) : 1
   const world = options.world || null
-
   const blockString = String(target?.blockString || '').trim()
-  if (blockString) {
+  const getMinecraftOverlayGeometry = () => {
+    if (!blockString) {
+      return null
+    }
+
     const cacheKey = `minecraft:${scale}:${blockString}`
     if (!cache.has(cacheKey)) {
       const geometry = world?.minecraftSchematicRenderLayer?.getOverlayGeometryForBlockString?.(blockString)
@@ -55,19 +58,18 @@ export function getOverlayGeometryForTarget(target, geometryCache, options = {})
       }
     }
 
-    const cached = cache.get(cacheKey)
-    if (cached) {
-      return cached
-    }
+    return cache.get(cacheKey) || null
   }
 
+  // Prefer collision boxes for the mining overlay so imported Minecraft models
+  // do not reuse their atlas UVs for destroy-stage textures.
   if (!Array.isArray(target?.collisionBoxes) || !target.collisionBoxes.length || !target?.worldBlock) {
-    return null
+    return getMinecraftOverlayGeometry()
   }
 
   const boxesKey = buildCollisionBoxesCacheKey(target.collisionBoxes)
   if (!boxesKey) {
-    return null
+    return getMinecraftOverlayGeometry()
   }
 
   const cacheKey = `boxes:${scale}:${boxesKey}`

@@ -99,7 +99,7 @@ function handleReset() {
             v-model="draftTitle"
             type="text"
             maxlength="160"
-            placeholder="Deralive's Afilmory"
+            placeholder="Litemora"
             :disabled="!canEdit"
           >
           <small>显示在 worlds 顶栏左侧。留空时会回退到默认标题。</small>
