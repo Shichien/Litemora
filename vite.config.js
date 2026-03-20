@@ -10,6 +10,15 @@ import _config from './_config'
 
 const HOST = _config.server.host
 const PORT = _config.server.port
+const LOCAL_DEV_MOCK_ACCOUNT = {
+  id: 'local-dev',
+  provider: 'local-dev',
+  name: 'Local Dev',
+  email: 'local@litemora.dev',
+  avatar: '',
+}
+const SAFE_SOURCE_MIME_TYPE = 'application/octet-stream'
+const ALLOWED_SOURCE_FILE_EXTENSIONS = new Set(['.litematic', '.schem', '.schematic'])
 
 function readRequestBody(req) {
   return new Promise((resolve, reject) => {
@@ -34,6 +43,37 @@ function sanitizeProjectionName(value) {
     .trim()
     .replace(/[^a-z0-9]/giu, '')
     .slice(0, 48)
+}
+
+function sanitizeSourceFileName(value, fallbackValue = 'uploaded.schematic') {
+  const fallback = String(fallbackValue || 'uploaded.schematic')
+    .replace(/[\\/\r\n"]/g, '-')
+    .trim()
+  return String(value || '')
+    .replace(/[\\/\r\n"]/g, '-')
+    .trim() || fallback
+}
+
+function getSourceFileExtension(fileName = '') {
+  const normalized = String(fileName || '').trim().toLowerCase()
+  const dotIndex = normalized.lastIndexOf('.')
+  if (dotIndex <= 0 || dotIndex === normalized.length - 1) {
+    return ''
+  }
+
+  return normalized.slice(dotIndex)
+}
+
+function normalizeMockSourceFileMetadata(value = {}) {
+  const fileName = sanitizeSourceFileName(value?.fileName, 'uploaded.schematic')
+  if (!ALLOWED_SOURCE_FILE_EXTENSIONS.has(getSourceFileExtension(fileName))) {
+    throw new Error('invalid_source_file_type')
+  }
+
+  return {
+    fileName,
+    mimeType: SAFE_SOURCE_MIME_TYPE,
+  }
 }
 
 function normalizeProjectionSlug(value) {
@@ -188,8 +228,18 @@ function createMockSession(account) {
   }
 }
 
+function isLocalDevMockAccount(account = null) {
+  return account?.provider === LOCAL_DEV_MOCK_ACCOUNT.provider && account?.id === LOCAL_DEV_MOCK_ACCOUNT.id
+}
+
 function readMockAccount(req) {
   const authorization = String(req.headers.authorization || '')
+  if (authorization === 'Bearer local-dev-session') {
+    return {
+      ...LOCAL_DEV_MOCK_ACCOUNT,
+    }
+  }
+
   if (!authorization.startsWith('Bearer mock.')) {
     return null
   }
@@ -217,8 +267,16 @@ function getItemIdFromRequest(req) {
   }
 }
 
+function canManageMockGallery(viewerAccount = null, profile = null) {
+  return !!viewerAccount?.id && viewerAccount.id === profile?.ownerAccountId
+}
+
+function hasLegacyGalleryContent(profile = null, manifest = null) {
+  return !profile && Array.isArray(manifest?.items) && manifest.items.length > 0
+}
+
 function filterVisibleGalleryItems(items = [], viewerAccount = null, profile = null) {
-  const canManage = !!viewerAccount?.id && viewerAccount.id === profile?.ownerAccountId
+  const canManage = canManageMockGallery(viewerAccount, profile)
   return items.filter(item => canManage || item?.visibility !== 'private')
 }
 
@@ -325,7 +383,7 @@ function registerMockApi(middlewares) {
     const resolvedItemId = resolvedSummary?.id || itemId
     const item = await readJsonFileOr(resolveGalleryItemPath(spaceName, resolvedItemId), null)
     const viewer = readMockAccount(req)
-    const canManage = !!viewer?.id && viewer.id === profile?.ownerAccountId
+    const canManage = canManageMockGallery(viewer, profile)
 
     if (req.method === 'GET') {
       if (!item || (item.visibility === 'private' && !canManage)) {
@@ -445,6 +503,16 @@ function registerMockApi(middlewares) {
         res.end(JSON.stringify({ error: 'gallery_write_forbidden' }))
         return
       }
+      if (hasLegacyGalleryContent(existingProfile, existingManifest)) {
+        res.statusCode = 409
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'gallery_legacy_claim_blocked' }))
+        return
+      }
+
+      const sourceFileMeta = normalizeMockSourceFileMetadata({
+        fileName: payload?.fileName || 'uploaded.schematic',
+      })
 
       const profile = existingProfile || {
         space: spaceName,
@@ -452,6 +520,7 @@ function registerMockApi(middlewares) {
         ownerProvider: viewer.provider,
         ownerName: viewer.name || viewer.email || spaceName,
         ownerAvatar: viewer.avatar || '',
+        title: '',
         bio: '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -473,11 +542,11 @@ function registerMockApi(middlewares) {
         projectionSlug,
         description: String(payload?.description || '').slice(0, 4000),
         visibility: payload?.visibility === 'private' ? 'private' : 'public',
-        fileName: String(payload?.fileName || 'uploaded.litematic').slice(0, 240),
-        mimeType: String(payload?.mimeType || 'application/octet-stream').slice(0, 120),
+        fileName: sourceFileMeta.fileName,
+        mimeType: sourceFileMeta.mimeType,
         sourceFile: {
-          fileName: String(payload?.fileName || 'uploaded.litematic').slice(0, 240),
-          mimeType: String(payload?.mimeType || 'application/octet-stream').slice(0, 120),
+          fileName: sourceFileMeta.fileName,
+          mimeType: sourceFileMeta.mimeType,
           fileBase64: String(payload?.fileBase64 || ''),
         },
         schematic: payload?.schematic || null,
@@ -540,10 +609,14 @@ function registerMockApi(middlewares) {
         profile: nextProfile,
       }))
     }
-    catch {
-      res.statusCode = 400
+    catch (error) {
+      res.statusCode = error?.message === 'invalid_source_file_type' ? 415 : 400
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
-      res.end(JSON.stringify({ error: 'gallery_item_create_failed' }))
+      res.end(JSON.stringify({
+        error: error?.message === 'invalid_source_file_type'
+          ? 'invalid_source_file_type'
+          : 'gallery_item_create_failed',
+      }))
     }
   })
 
@@ -577,6 +650,19 @@ function registerMockApi(middlewares) {
       const profilePath = resolveGalleryProfilePath(spaceName)
       const manifestPath = resolveGalleryManifestPath(spaceName)
       const existingProfile = await readJsonFileOr(profilePath, null)
+      const existingManifest = await readJsonFileOr(manifestPath, {
+        space: spaceName,
+        ownerAccountId: viewer.id,
+        updatedAt: Date.now(),
+        items: [],
+      })
+
+      if (hasLegacyGalleryContent(existingProfile, existingManifest)) {
+        res.statusCode = 409
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'gallery_legacy_claim_blocked' }))
+        return
+      }
 
       if (existingProfile && existingProfile.ownerAccountId !== viewer.id) {
         res.statusCode = 409
@@ -591,17 +677,13 @@ function registerMockApi(middlewares) {
         ownerProvider: viewer.provider,
         ownerName: String(payload?.displayName || existingProfile?.ownerName || viewer.name || viewer.email || spaceName).slice(0, 120),
         ownerAvatar: viewer.avatar || '',
+        title: String(payload?.title ?? existingProfile?.title ?? '').slice(0, 160),
         bio: String(payload?.bio || existingProfile?.bio || '').slice(0, 4000),
         createdAt: existingProfile?.createdAt || Date.now(),
         updatedAt: Date.now(),
         itemCount: Number(existingProfile?.itemCount || 0),
       }
-      const manifest = await readJsonFileOr(manifestPath, {
-        space: spaceName,
-        ownerAccountId: viewer.id,
-        updatedAt: Date.now(),
-        items: [],
-      })
+      const manifest = existingManifest
 
       await writeJsonFile(profilePath, profile)
       await writeJsonFile(manifestPath, manifest)
@@ -646,10 +728,12 @@ function registerMockApi(middlewares) {
       space: spaceName,
       profile,
       items,
+      legacyContent: hasLegacyGalleryContent(profile, manifest),
+      spaceExists: !!profile || (Array.isArray(manifest?.items) && manifest.items.length > 0),
       viewer: {
         authenticated: !!viewer,
         account: viewer,
-        canManage: !!viewer?.id && viewer.id === profile?.ownerAccountId,
+        canManage: canManageMockGallery(viewer, profile),
       },
     }))
   })
@@ -697,6 +781,28 @@ function registerMockApi(middlewares) {
 
     if (req.method === 'POST') {
       try {
+        if (!spaceName) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'invalid_space_name' }))
+          return
+        }
+
+        const viewer = readMockAccount(req)
+        const profile = await readJsonFileOr(resolveGalleryProfilePath(spaceName), null)
+        if (!viewer) {
+          res.statusCode = 401
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'authentication_required' }))
+          return
+        }
+        if (!isLocalDevMockAccount(viewer) && !canManageMockGallery(viewer, profile)) {
+          res.statusCode = 403
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'world_write_forbidden' }))
+          return
+        }
+
         const rawBody = await readRequestBody(req)
         const payload = rawBody ? JSON.parse(rawBody) : {}
         if (!payload || typeof payload !== 'object') {
@@ -743,6 +849,28 @@ function registerMockApi(middlewares) {
 
     if (req.method === 'POST') {
       try {
+        if (!spaceName) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'invalid_space_name' }))
+          return
+        }
+
+        const viewer = readMockAccount(req)
+        const profile = await readJsonFileOr(resolveGalleryProfilePath(spaceName), null)
+        if (!viewer) {
+          res.statusCode = 401
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'authentication_required' }))
+          return
+        }
+        if (!isLocalDevMockAccount(viewer) && !canManageMockGallery(viewer, profile)) {
+          res.statusCode = 403
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'world_write_forbidden' }))
+          return
+        }
+
         const rawBody = await readRequestBody(req)
         const payload = rawBody ? JSON.parse(rawBody) : {}
         const hasCompactChunks = payload?.format === 'chunk-v2'

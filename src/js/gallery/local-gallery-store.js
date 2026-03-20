@@ -299,6 +299,7 @@ function buildLocalProfile(spaceName, previousProfile = null) {
     ownerProvider: LOCAL_DEV_ACCOUNT.provider,
     ownerName: previousProfile?.ownerName || LOCAL_DEV_ACCOUNT.name,
     ownerAvatar: previousProfile?.ownerAvatar || LOCAL_DEV_ACCOUNT.avatar,
+    title: previousProfile?.title ? String(previousProfile.title).trim() : '',
     bio: previousProfile?.bio || 'Local development gallery',
     createdAt: previousProfile?.createdAt || now,
     updatedAt: now,
@@ -544,7 +545,14 @@ export async function deleteLocalGalleryItem(spaceName, itemId) {
   }
 }
 
-export async function claimLocalGallerySpace({ spaceName, displayName = '', bio = '' }) {
+export async function claimLocalGallerySpace(options = {}) {
+  const {
+    spaceName,
+    displayName = '',
+    bio = '',
+    title,
+  } = options
+
   const normalizedSpaceName = normalizeSpaceName(spaceName)
   const { profile: currentProfile, manifest } = await readSpaceState(normalizedSpaceName)
   const nextProfile = buildLocalProfile(normalizedSpaceName, currentProfile)
@@ -553,6 +561,9 @@ export async function claimLocalGallerySpace({ spaceName, displayName = '', bio 
   }
   if (bio) {
     nextProfile.bio = String(bio || '').trim()
+  }
+  if (title !== undefined) {
+    nextProfile.title = String(title || '').trim()
   }
   nextProfile.itemCount = Array.isArray(manifest?.items) ? manifest.items.length : 0
   nextProfile.updatedAt = Date.now()

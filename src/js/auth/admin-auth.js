@@ -2,7 +2,6 @@ const ADMIN_AUTH_SESSION_KEY = 'mc-admin-auth-session'
 const ADMIN_AUTH_OAUTH_RESULT_KEY = 'mc-admin-oauth-result'
 const OAUTH_POPUP_TIMEOUT_MS = 120000
 const ADMIN_AUTH_SESSION_TTL_MS = 1000 * 60 * 60 * 24
-const TEMP_ADMIN_PASSWORD = 'admin123'
 const OAUTH_POPUP_CLOSE_GRACE_MS = 1500
 const CONFIGURED_OAUTH_CALLBACK_ORIGIN = typeof import.meta !== 'undefined'
   ? String(import.meta.env.VITE_OAUTH_CALLBACK_ORIGIN || '').trim()
@@ -303,6 +302,11 @@ export function loadAdminAuthSession() {
     if (!session?.account?.id || !session?.account?.provider) {
       return fallbackLocalSession
     }
+    if (session.account.provider === 'password') {
+      localStorage.removeItem(ADMIN_AUTH_SESSION_KEY)
+      emitAdminAuthChanged(null)
+      return fallbackLocalSession
+    }
 
     const updatedAt = Number(session.updatedAt || 0)
     const expiresAt = Number(session.expiresAt || 0)
@@ -338,18 +342,6 @@ export function saveAdminAuthSession(account) {
 export function clearAdminAuthSession() {
   localStorage.removeItem(ADMIN_AUTH_SESSION_KEY)
   emitAdminAuthChanged(null)
-}
-
-export async function signInWithPassword(password) {
-  if (String(password || '') !== TEMP_ADMIN_PASSWORD) {
-    throw new Error('密码错误')
-  }
-
-  return saveAdminAuthSession({
-    id: 'temp-admin',
-    provider: 'password',
-    name: 'Temporary Admin',
-  })
 }
 
 export async function signInWithProvider(provider) {

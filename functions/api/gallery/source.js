@@ -18,17 +18,33 @@ function getRequestedItemId(request) {
   }
 }
 
+function normalizeDownloadFileName(value = '') {
+  const normalized = String(value || '')
+    .replace(/[\\/\r\n"]/g, '-')
+    .trim()
+  return normalized || 'download.schematic'
+}
+
+function buildContentDisposition(fileName = '') {
+  const normalized = normalizeDownloadFileName(fileName)
+  const asciiFallback = normalized.replace(/[^\x20-\x7E]/g, '_') || 'download.schematic'
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(normalized)}`
+}
+
 function buildSourceResponse(item, buffer) {
   const size = buffer.byteLength || 0
+  const fileName = normalizeDownloadFileName(item?.sourceFile?.fileName || item?.fileName || '')
   return new Response(buffer, {
     status: 200,
     headers: {
-      'Content-Type': String(item?.sourceFile?.mimeType || 'application/octet-stream'),
+      'Content-Type': 'application/octet-stream',
       'Content-Length': String(size),
+      'Content-Disposition': buildContentDisposition(fileName),
       'Cache-Control': item?.visibility === 'public'
         ? 'public, max-age=31536000, immutable'
         : 'private, max-age=3600',
       'X-Content-Type-Options': 'nosniff',
+      'X-Download-Options': 'noopen',
     },
   })
 }

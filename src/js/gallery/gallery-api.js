@@ -548,10 +548,11 @@ export async function checkSpaceNameAvailability(spaceName, session = null) {
 
   try {
     const galleryPayload = await fetchGallery(normalizedSpaceName, session)
-    if (galleryPayload?.profile) {
+    const items = Array.isArray(galleryPayload?.items) ? galleryPayload.items : []
+    if (galleryPayload?.profile || galleryPayload?.spaceExists || items.length > 0) {
       return {
         available: false,
-        reason: 'already_claimed',
+        reason: galleryPayload?.profile ? 'already_claimed' : 'legacy_space_exists',
       }
     }
   }
@@ -582,12 +583,21 @@ export async function checkSpaceNameAvailability(spaceName, session = null) {
   }
 }
 
-export async function claimGallerySpace({ spaceName, displayName = '', bio = '', session = null }) {
+export async function claimGallerySpace(options = {}) {
+  const {
+    spaceName,
+    displayName = '',
+    bio = '',
+    title,
+    session = null,
+  } = options
+
   const payload = shouldUseLocalGalleryApi()
     ? await claimLocalGallerySpace({
       spaceName,
       displayName,
       bio,
+      title,
     })
     : await requestJson('/api/gallery/claim', {
       method: 'POST',
@@ -598,6 +608,7 @@ export async function claimGallerySpace({ spaceName, displayName = '', bio = '',
         space: spaceName,
         displayName,
         bio,
+        title,
       }),
     })
 

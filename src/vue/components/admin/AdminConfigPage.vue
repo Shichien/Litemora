@@ -2,7 +2,6 @@
 import {
   getAuthProviders,
   loadAdminAuthSession,
-  signInWithPassword,
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
 import {
@@ -53,7 +52,6 @@ const authProviders = getAuthProviders()
 const authSession = ref(loadAdminAuthSession())
 const isAuthenticating = ref(false)
 const authError = ref('')
-const tempAdminPassword = ref('')
 const configDraft = ref(structuredClone(DEFAULT_BACKEND_WORLD_CONFIG))
 const statusText = ref('')
 const statusType = ref('neutral')
@@ -287,28 +285,6 @@ async function handleProviderAuth(provider) {
     const session = await signInWithProvider(provider)
     authSession.value = session
     setStatus(`已使用 ${session.account.provider} 登录: ${session.account.name || session.account.email || session.account.id}`, 'success')
-    await hydrateCurrentAccountData()
-  }
-  catch (error) {
-    authError.value = error?.message || '登录失败'
-  }
-  finally {
-    isAuthenticating.value = false
-  }
-}
-
-async function handlePasswordAuth() {
-  if (isAuthenticating.value) {
-    return
-  }
-
-  isAuthenticating.value = true
-  authError.value = ''
-  try {
-    const session = await signInWithPassword(tempAdminPassword.value)
-    authSession.value = session
-    tempAdminPassword.value = ''
-    setStatus('已使用临时密码登录', 'success')
     await hydrateCurrentAccountData()
   }
   catch (error) {
@@ -751,14 +727,14 @@ onBeforeUnmount(() => {
 <template>
   <div class="admin-overlay">
     <!-- 认证守卫 -->
-    <div v-if="!isAuthenticated" class="auth-modal">
-      <div class="auth-container">
-        <h2>管理后台</h2>
-        <p class="auth-tip">
-          使用管理员 OAuth 账户登录，或输入临时密码
-        </p>
-        <div class="oauth-actions">
-          <button
+      <div v-if="!isAuthenticated" class="auth-modal">
+        <div class="auth-container">
+          <h2>管理后台</h2>
+          <p class="auth-tip">
+            使用管理员 OAuth 账户登录
+          </p>
+          <div class="oauth-actions">
+            <button
             v-for="provider in authProviders"
             :key="provider.id"
             class="btn primary oauth-btn"
@@ -773,29 +749,18 @@ onBeforeUnmount(() => {
               </span>
               <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
             </span>
-          </button>
-        </div>
-        <input
-          v-model="tempAdminPassword"
-          type="password"
-          placeholder="临时密码"
-          autocomplete="current-password"
-          :disabled="isAuthenticating"
-          @keydown.enter.prevent="handlePasswordAuth"
-        >
-        <p v-if="authError" class="error">
-          {{ authError }}
-        </p>
-        <div class="auth-actions">
-          <button class="btn primary" :disabled="isAuthenticating || !tempAdminPassword" @click="handlePasswordAuth">
-            {{ isAuthenticating ? '登录中...' : '使用密码登录' }}
-          </button>
-          <button class="btn ghost" @click="backToGame">
-            返回
-          </button>
+            </button>
+          </div>
+          <p v-if="authError" class="error">
+            {{ authError }}
+          </p>
+          <div class="auth-actions">
+            <button class="btn ghost" @click="backToGame">
+              返回
+            </button>
+          </div>
         </div>
       </div>
-    </div>
 
     <!-- 管理后台界面 -->
     <div v-else class="admin-shell">

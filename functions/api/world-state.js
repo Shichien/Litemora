@@ -10,6 +10,7 @@ import {
   sendJson,
   writeSpaceJson,
 } from './_space.js'
+import { requireSpaceWriteAccess } from './_space-access.js'
 
 function chunkStoragePrefix(spaceName, projectionId = '') {
   return getScopedKey('world-state-chunk', spaceName, projectionId)
@@ -76,9 +77,12 @@ export async function onRequestPost(context) {
       return sendError(400, 'invalid_world_state_payload')
     }
 
-    const spaceName = getSpaceName(context.request)
-    const projectionId = getProjectionId(context.request)
-    const kv = getKv(context.env)
+    const access = await requireSpaceWriteAccess(context)
+    if (access.response) {
+      return access.response
+    }
+
+    const { kv, projectionId, spaceName } = access
     const key = getScopedKey('world-state', spaceName, projectionId)
     const payload = normalizeWorldStatePayload(rawPayload, spaceName, projectionId)
 
@@ -86,9 +90,6 @@ export async function onRequestPost(context) {
     return sendJson(200, { ok: true, mode: 'single' })
   }
   catch (error) {
-    if (String(error?.message || '') === 'missing_kv_binding') {
-      return sendError(500, 'missing_kv_binding', 'Please bind LITEMORA_SPACE_KV in Cloudflare Pages settings')
-    }
     return sendError(500, 'world_state_write_failed', error?.message || 'unknown_error')
   }
 }

@@ -1015,18 +1015,24 @@ export default class World {
 
     try {
       const payload = this.chunkManager.persistence.exportSnapshot()
-        const compactPayload = encodeWorldStateSnapshot(payload, {
-          chunkWidth: this.chunkManager.chunkWidth,
-        })
-        const activeSpace = getActiveSpaceName()
-        const activeProjectionId = getActiveProjectionId()
-        const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace, activeProjectionId)
+      const compactPayload = encodeWorldStateSnapshot(payload, {
+        chunkWidth: this.chunkManager.chunkWidth,
+      })
+      const activeSpace = getActiveSpaceName()
+      const activeProjectionId = getActiveProjectionId()
+      const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace, activeProjectionId)
 
       try {
         await persistWorldStateLocally(storageKey, compactPayload)
       }
       catch {
         // ignore local persistence failures and still try remote
+      }
+
+      const session = loadAdminAuthSession()
+      const token = String(session?.token || '').trim()
+      if (!token) {
+        return false
       }
 
       const url = new URL('/api/world-state', window.location.origin)
@@ -1042,6 +1048,7 @@ export default class World {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(compactPayload),
       })

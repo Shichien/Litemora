@@ -7,6 +7,8 @@ const MAX_FILE_BASE64_LENGTH = 20 * 1024 * 1024
 const MAX_SOURCE_FILE_BYTES = 15 * 1024 * 1024
 const MAX_PREVIEW_BLOCKS = 40000
 const MAX_THUMBNAIL_DATA_URL_LENGTH = 1.5 * 1024 * 1024
+const ALLOWED_SOURCE_FILE_EXTENSIONS = new Set(['.litematic', '.schem', '.schematic'])
+const SAFE_SOURCE_MIME_TYPE = 'application/octet-stream'
 
 function toNumber(value, fallback = 0) {
   const numberValue = Number(value)
@@ -19,6 +21,25 @@ function sanitizeText(value, maxLength = 240) {
 
 function sanitizeLongText(value) {
   return sanitizeText(value, MAX_TEXT_LENGTH)
+}
+
+function sanitizeFileName(value, fallbackValue = 'uploaded.schematic') {
+  const fallback = sanitizeText(fallbackValue, 240)
+    .replace(/[\\/\r\n"]/g, '-')
+    .trim()
+  return sanitizeText(value, 240)
+    .replace(/[\\/\r\n"]/g, '-')
+    .trim() || fallback || 'uploaded.schematic'
+}
+
+function getFileExtension(fileName = '') {
+  const normalized = String(fileName || '').trim().toLowerCase()
+  const dotIndex = normalized.lastIndexOf('.')
+  if (dotIndex <= 0 || dotIndex === normalized.length - 1) {
+    return ''
+  }
+
+  return normalized.slice(dotIndex)
 }
 
 function sanitizeThumbnailDataUrl(value = '') {
@@ -76,6 +97,10 @@ export function gallerySourceKey(spaceName, itemId) {
 
 export function galleryDiscoverKey() {
   return 'gallery:discover:public'
+}
+
+export function hasLegacyGalleryContent(profile = null, manifest = null) {
+  return !profile && Array.isArray(manifest?.items) && manifest.items.length > 0
 }
 
 export async function readGalleryJson(kv, key, fallbackValue = null) {
@@ -185,6 +210,7 @@ export function createGalleryProfile(spaceName, account, input = {}) {
     ownerProvider: trimString(account?.provider),
     ownerName: sanitizeText(input?.displayName || account?.name || account?.email || spaceName, 120),
     ownerAvatar: sanitizeText(account?.avatar, 1024),
+    title: sanitizeText(input?.title, 160),
     bio: sanitizeLongText(input?.bio),
     createdAt: now,
     updatedAt: now,
@@ -198,6 +224,7 @@ export function updateGalleryProfile(profile, account, input = {}) {
     ...profile,
     ownerName: sanitizeText(input?.displayName || profile?.ownerName || account?.name || account?.email || profile?.space, 120),
     ownerAvatar: sanitizeText(account?.avatar || profile?.ownerAvatar, 1024),
+    title: input?.title === undefined ? sanitizeText(profile?.title, 160) : sanitizeText(input?.title, 160),
     bio: sanitizeLongText(input?.bio ?? profile?.bio),
     updatedAt: now,
   }
@@ -358,9 +385,14 @@ export function normalizeFilePayload(body = {}) {
     throw new Error('file_too_large_for_kv')
   }
 
+  const fileName = sanitizeFileName(body?.fileName, 'uploaded.schematic')
+  if (!ALLOWED_SOURCE_FILE_EXTENSIONS.has(getFileExtension(fileName))) {
+    throw new Error('invalid_source_file_type')
+  }
+
   return {
-    fileName: sanitizeText(body?.fileName, 240) || 'uploaded.schematic',
-    mimeType: sanitizeText(body?.mimeType, 120) || 'application/octet-stream',
+    fileName,
+    mimeType: SAFE_SOURCE_MIME_TYPE,
     size: estimateBase64ByteLength(fileBase64),
     fileBase64,
   }
@@ -372,9 +404,14 @@ export function normalizeSourceFileMetadata(value = {}) {
     throw new Error('file_too_large_for_kv')
   }
 
+  const fileName = sanitizeFileName(value?.fileName, 'uploaded.schematic')
+  if (!ALLOWED_SOURCE_FILE_EXTENSIONS.has(getFileExtension(fileName))) {
+    throw new Error('invalid_source_file_type')
+  }
+
   return {
-    fileName: sanitizeText(value?.fileName, 240) || 'uploaded.schematic',
-    mimeType: sanitizeText(value?.mimeType, 120) || 'application/octet-stream',
+    fileName,
+    mimeType: SAFE_SOURCE_MIME_TYPE,
     size,
   }
 }

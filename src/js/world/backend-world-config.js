@@ -1,4 +1,5 @@
 import { buildSpaceScopedKey, getActiveProjectionId, getActiveSpaceName } from '../utils/space-context.js'
+import { getAdminAuthToken } from '../auth/admin-auth.js'
 
 const BACKEND_CONFIG_URLS = [
   '/api/world-config',
@@ -218,11 +219,17 @@ export function clearAdminWorldConfig(accountId = '', options = {}) {
 export async function saveBackendWorldConfigRemote(raw = {}, accountId = '', options = {}) {
   const normalized = mergeBackendConfig(raw)
   const requestUrl = buildWorldConfigRequestUrl('/api/world-config', options)
+  const token = getAdminAuthToken()
+
+  if (!token) {
+    throw new Error('authentication_required')
+  }
 
   const response = await fetch(requestUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(normalized),
   })

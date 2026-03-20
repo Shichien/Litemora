@@ -7,14 +7,15 @@ import {
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
 import {
+  claimGallerySpace,
   deleteGalleryItem,
   fetchGallery,
 } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
-import { buildSpaceProjectionUrl, buildSpaceWorldsAdminUrl } from '@three/utils/space-context.js'
+import { buildSpaceProjectionUrl, buildSpaceWorldsAdminUrl, buildSpaceWorldsUrl } from '@three/utils/space-context.js'
 import SpaceNotFoundPage from '@ui-components/space/SpaceNotFoundPage.vue'
-import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import SpaceProfileSettingsPage from '@ui-components/space/SpaceProfileSettingsPage.vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   spaceName: {
@@ -22,6 +23,9 @@ const props = defineProps({
     default: '',
   },
 })
+
+const LITEMORA_REPOSITORY_URL = 'https://github.com/Shichien/Litemora'
+const PROFILE_SETTINGS_HASH = '#profile-settings'
 
 const authProviders = getAuthProviders()
 
@@ -43,6 +47,15 @@ const actionTone = ref('neutral')
 const pendingDeleteItemId = ref('')
 const authMenuOpen = ref(false)
 const authMenuRef = ref(null)
+const isSavingProfile = ref(false)
+
+let activeRssFeedUrl = ''
+
+function resolveCurrentView() {
+  return window.location.hash === PROFILE_SETTINGS_HASH ? 'profile-settings' : 'gallery'
+}
+
+const currentView = ref(resolveCurrentView())
 
 function openAdminConfigPage() {
   if (!props.spaceName) {
@@ -65,13 +78,66 @@ const viewerAvatar = computed(() => authSession.value?.account?.avatar || '')
 const viewerInitial = computed(() => viewerDisplayName.value.slice(0, 1).toUpperCase() || 'L')
 
 const isLocalDevSession = computed(() => isLocalDevAuthSession(authSession.value))
+const isProfileSettingsView = computed(() => currentView.value === 'profile-settings')
+const canEditProfileSettings = computed(() => {
+  if (!authSession.value) {
+    return false
+  }
+
+  if (!galleryProfile.value) {
+    return galleryItems.value.length === 0
+  }
+
+  return !!galleryViewer.value?.canManage
+})
+const brandOwnerName = computed(() => {
+  return String(
+    galleryProfile.value?.ownerName
+    || viewerDisplayName.value
+    || props.spaceName
+    || 'Litemora',
+  ).trim()
+})
+const defaultBrandTitle = computed(() => {
+  if (!brandOwnerName.value) {
+    return 'Litemora Worlds'
+  }
+
+  if (/worlds$/iu.test(brandOwnerName.value)) {
+    return brandOwnerName.value
+  }
+
+  return `${brandOwnerName.value}'s Worlds`
+})
+const brandTitle = computed(() => {
+  const customTitle = String(galleryProfile.value?.title || '').trim()
+  return customTitle || defaultBrandTitle.value
+})
+const brandSubtitle = computed(() => {
+  if (isProfileSettingsView.value) {
+    return `Profile Settings for ${props.spaceName}`
+  }
+
+  const itemLabel = galleryItems.value.length === 1 ? 'World' : 'Worlds'
+  return `${galleryItems.value.length} ${itemLabel} in ${props.spaceName}`
+})
+const brandAvatar = computed(() => {
+  if (canEditProfileSettings.value && viewerAvatar.value) {
+    return viewerAvatar.value
+  }
+
+  return String(galleryProfile.value?.ownerAvatar || viewerAvatar.value || '').trim()
+})
+const brandAvatarInitial = computed(() => {
+  return brandTitle.value.slice(0, 1).toUpperCase() || viewerInitial.value || 'L'
+})
 
 const canManageProjections = computed(() => {
   if (!authSession.value) {
     return false
   }
 
-  return !!galleryViewer.value?.canManage || (!galleryProfile.value && galleryItems.value.length > 0)
+  return !!galleryViewer.value?.canManage
 })
 const isMissingSpace = computed(() => {
   return !galleryProfile.value && galleryItems.value.length === 0 && !canManageProjections.value
@@ -147,6 +213,9 @@ function generateProjectionThumbnailSvg(item) {
   const displayWidth = width * scale
   const displayHeight = height * scale
   const displayDepth = depth * scale
+  const safeGradientId = String(item?.id || 'projection')
+    .replace(/[^a-z0-9_-]/giu, '')
+    .slice(0, 48) || 'projection'
 
   // 生成 3D 效果的 SVG
   const centerX = 12
@@ -158,7 +227,7 @@ function generateProjectionThumbnailSvg(item) {
     svg: `
       <svg width="100%" height="100%" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="grad-${item.id}" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="grad-${safeGradientId}" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" style="stop-color:${highlightColor};stop-opacity:0.8" />
             <stop offset="100%" style="stop-color:${baseColor};stop-opacity:0.6" />
           </linearGradient>
@@ -170,7 +239,7 @@ function generateProjectionThumbnailSvg(item) {
                 fill="${highlightColor}" fill-opacity="0.7" />
           <!-- 正面 -->
           <rect x="0" y="${displayHeight * 0.2}" width="${displayWidth}" height="${displayHeight * 0.6}"
-                fill="url(#grad-${item.id})" />
+                fill="url(#grad-${safeGradientId})" />
           <!-- 右侧面 -->
           <path d="M${displayWidth},${displayHeight * 0.2} L${displayWidth * 0.7},${displayHeight * 0.4} L${displayWidth * 0.7},${displayHeight} L${displayWidth},${displayHeight * 0.8} Z"
                 fill="${baseColor}" fill-opacity="0.5" />
@@ -186,6 +255,93 @@ function setActionMessage(message, tone = 'neutral') {
   actionTone.value = tone
 }
 
+function escapeXmlText(value = '') {
+  return String(value || '').replace(/[<>&'"]/g, (char) => {
+    return {
+      '<': '&lt;',
+      '>': '&gt;',
+      '&': '&amp;',
+      '\'': '&apos;',
+      '"': '&quot;',
+    }[char] || char
+  })
+}
+
+function formatRssDate(value = 0) {
+  const timestamp = Number(value || 0)
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return new Date().toUTCString()
+  }
+
+  return new Date(timestamp).toUTCString()
+}
+
+function buildRssFeedXml() {
+  const feedUrl = buildSpaceWorldsUrl(props.spaceName)
+  const channelTitle = `${brandTitle.value} RSS`
+  const channelDescription = String(galleryProfile.value?.bio || `Recent projections from ${brandTitle.value}`).trim()
+  const itemsXml = galleryItems.value.map((item) => {
+    const routeId = getProjectionRouteId(item)
+    const itemUrl = routeId ? buildSpaceProjectionUrl(props.spaceName, routeId) : feedUrl
+    const itemTitle = item?.title || item?.schematic?.name || routeId || 'World'
+    const itemDescription = item?.description || `${getProjectionBlockCount(item)} blocks`
+    const itemDate = formatRssDate(item?.updatedAt || item?.createdAt)
+    const guid = `${props.spaceName}:${routeId || item?.id || itemTitle}`
+
+    return [
+      '    <item>',
+      `      <title>${escapeXmlText(itemTitle)}</title>`,
+      `      <description>${escapeXmlText(itemDescription)}</description>`,
+      `      <link>${escapeXmlText(itemUrl)}</link>`,
+      `      <guid>${escapeXmlText(guid)}</guid>`,
+      `      <pubDate>${escapeXmlText(itemDate)}</pubDate>`,
+      '    </item>',
+    ].join('\n')
+  }).join('\n')
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<rss version="2.0">',
+    '  <channel>',
+    `    <title>${escapeXmlText(channelTitle)}</title>`,
+    `    <link>${escapeXmlText(feedUrl)}</link>`,
+    `    <description>${escapeXmlText(channelDescription)}</description>`,
+    `    <lastBuildDate>${escapeXmlText(formatRssDate(Date.now()))}</lastBuildDate>`,
+    itemsXml,
+    '  </channel>',
+    '</rss>',
+  ].filter(Boolean).join('\n')
+}
+
+function releaseActiveRssFeedUrl() {
+  if (activeRssFeedUrl) {
+    URL.revokeObjectURL(activeRssFeedUrl)
+    activeRssFeedUrl = ''
+  }
+}
+
+function openRssFeed() {
+  if (!props.spaceName) {
+    return
+  }
+
+  releaseActiveRssFeedUrl()
+
+  const xml = buildRssFeedXml()
+  const blob = new Blob([xml], { type: 'application/rss+xml;charset=utf-8' })
+  activeRssFeedUrl = URL.createObjectURL(blob)
+
+  const openedWindow = window.open(activeRssFeedUrl, '_blank', 'noopener')
+  if (!openedWindow) {
+    const anchor = document.createElement('a')
+    anchor.href = activeRssFeedUrl
+    anchor.download = `${props.spaceName}-feed.xml`
+    anchor.click()
+  }
+
+  setActionMessage('已生成当前 Space 的 RSS Feed', 'success')
+}
+
 function handleDocumentClick(event) {
   if (!authMenuRef.value?.contains?.(event.target)) {
     authMenuOpen.value = false
@@ -194,6 +350,89 @@ function handleDocumentClick(event) {
 
 function toggleAuthMenu() {
   authMenuOpen.value = !authMenuOpen.value
+}
+
+function syncCurrentView() {
+  currentView.value = resolveCurrentView()
+}
+
+function openProfileSettings() {
+  if (!canEditProfileSettings.value) {
+    if (!authSession.value) {
+      authMenuOpen.value = true
+      setActionMessage('登录后可进入 Profile Settings', 'neutral')
+    }
+    else {
+      setActionMessage('当前账号没有编辑这个 Space Profile 的权限', 'warning')
+    }
+    return
+  }
+
+  authMenuOpen.value = false
+  navigateToUrl(`${buildSpaceWorldsUrl(props.spaceName)}${PROFILE_SETTINGS_HASH}`)
+}
+
+function closeProfileSettings() {
+  authMenuOpen.value = false
+  navigateToUrl(buildSpaceWorldsUrl(props.spaceName))
+}
+
+function openProfileSettingsFromMenu() {
+  authMenuOpen.value = false
+  openProfileSettings()
+}
+
+async function persistProfileTitle(nextTitle, { closeAfterSave = false } = {}) {
+  if (!authSession.value || !canEditProfileSettings.value) {
+    setActionMessage('当前账号无法保存这个 Space 的 Profile Title', 'warning')
+    return
+  }
+
+  isSavingProfile.value = true
+
+  try {
+    const payload = await claimGallerySpace({
+      spaceName: props.spaceName,
+      displayName: galleryProfile.value?.ownerName || viewerDisplayName.value || props.spaceName,
+      bio: galleryProfile.value?.bio || '',
+      title: String(nextTitle || '').trim(),
+      session: authSession.value,
+    })
+
+    if (payload?.profile) {
+      galleryProfile.value = payload.profile
+    }
+
+    setActionMessage(
+      String(nextTitle || '').trim()
+        ? 'Profile Title 已保存'
+        : '已恢复默认 Title',
+      'success',
+    )
+
+    if (closeAfterSave) {
+      closeProfileSettings()
+    }
+  }
+  catch (error) {
+    setActionMessage(error?.message || '保存 Profile Title 失败', 'warning')
+  }
+  finally {
+    isSavingProfile.value = false
+  }
+}
+
+function handleSaveProfileTitle(nextTitle) {
+  void persistProfileTitle(nextTitle, { closeAfterSave: true })
+}
+
+function handleResetProfileTitle() {
+  void persistProfileTitle('', { closeAfterSave: false })
+}
+
+function handleRouteChanged() {
+  syncCurrentView()
+  authMenuOpen.value = false
 }
 
 async function loadWorlds() {
@@ -271,6 +510,10 @@ function logout() {
   }
   authMenuOpen.value = false
   setActionMessage('已退出登录', 'neutral')
+
+  if (isProfileSettingsView.value) {
+    closeProfileSettings()
+  }
 }
 
 async function handleDeleteProjection(itemOrId) {
@@ -303,6 +546,7 @@ function enterProjection(itemId) {
 function handleAuthChanged(event) {
   authSession.value = event?.detail?.session || loadAdminAuthSession()
   authMenuOpen.value = false
+  syncCurrentView()
   void loadWorlds()
 }
 
@@ -318,15 +562,29 @@ function handleGalleryChanged(event) {
 onMounted(() => {
   window.addEventListener('admin-auth-changed', handleAuthChanged)
   window.addEventListener('gallery:changed', handleGalleryChanged)
+  window.addEventListener('popstate', handleRouteChanged)
+  window.addEventListener('hashchange', handleRouteChanged)
   document.addEventListener('click', handleDocumentClick)
+  syncCurrentView()
   void loadWorlds()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('admin-auth-changed', handleAuthChanged)
   window.removeEventListener('gallery:changed', handleGalleryChanged)
+  window.removeEventListener('popstate', handleRouteChanged)
+  window.removeEventListener('hashchange', handleRouteChanged)
   document.removeEventListener('click', handleDocumentClick)
+  releaseActiveRssFeedUrl()
 })
+
+watch(
+  () => props.spaceName,
+  () => {
+    syncCurrentView()
+    void loadWorlds()
+  },
+)
 </script>
 
 <template>
@@ -337,35 +595,77 @@ onBeforeUnmount(() => {
 
   <main v-else class="worlds-shell">
     <header class="worlds-topbar">
-      <SpaceBreadcrumbs :space-name="spaceName" />
+      <div class="worlds-brand">
+        <button
+          type="button"
+          class="brand-avatar-button"
+          :class="{ disabled: !canEditProfileSettings }"
+          :disabled="!canEditProfileSettings"
+          @click="openProfileSettings"
+        >
+          <span class="brand-avatar">
+            <img v-if="brandAvatar" :src="brandAvatar" :alt="brandTitle">
+            <span v-else>{{ brandAvatarInitial }}</span>
+          </span>
+        </button>
 
-        <div ref="authMenuRef" class="worlds-topbar-actions">
+        <div class="brand-copy">
+          <button
+            type="button"
+            class="brand-title-button"
+            :disabled="!isProfileSettingsView && !canEditProfileSettings"
+            @click="isProfileSettingsView ? closeProfileSettings() : openProfileSettings()"
+          >
+            <strong>{{ brandTitle }}</strong>
+            <span>{{ brandSubtitle }}</span>
+          </button>
+        </div>
+
+        <div class="brand-icon-row">
+          <a
+            class="brand-icon-button"
+            :href="LITEMORA_REPOSITORY_URL"
+            target="_blank"
+            rel="noreferrer"
+            title="Open GitHub repository"
+            aria-label="Open GitHub repository"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
+            </svg>
+          </a>
+          <button
+            type="button"
+            class="brand-icon-button"
+            title="Open RSS feed"
+            aria-label="Open RSS feed"
+            @click="openRssFeed"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 11a9 9 0 0 1 9 9"></path>
+              <path d="M4 4a16 16 0 0 1 16 16"></path>
+              <circle cx="5" cy="19" r="1"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div ref="authMenuRef" class="worlds-topbar-actions">
         <div class="auth-popover">
           <button type="button" class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
-            <span class="auth-rail" aria-hidden="true">
-              <span class="auth-rail-block wide"></span>
-              <span class="auth-rail-block"></span>
-              <span class="auth-rail-block"></span>
-              <span class="auth-rail-block narrow"></span>
-            </span>
-            <span class="auth-trigger-divider" aria-hidden="true"></span>
+            <span class="auth-trigger-label">{{ authSession ? 'Account' : 'Login' }}</span>
             <template v-if="authSession">
-              <span class="auth-account">
-                <span class="auth-avatar">
+              <span class="auth-account compact">
+                <span class="auth-avatar compact">
                   <img v-if="viewerAvatar" :src="viewerAvatar" :alt="viewerDisplayName">
                   <span v-else>{{ viewerInitial }}</span>
-                </span>
-                <span class="auth-copy">
-                  <strong>{{ viewerDisplayName }}</strong>
-                  <small>{{ viewerRole }}</small>
                 </span>
               </span>
             </template>
             <template v-else>
               <span class="auth-trigger-arrow">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M5 12h14"></path>
-                  <path d="m12 5 7 7-7 7"></path>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
                 </svg>
               </span>
             </template>
@@ -376,27 +676,18 @@ onBeforeUnmount(() => {
               <div class="auth-menu-header">
                 <div class="menu-account-copy">
                   <strong>{{ viewerDisplayName }}</strong>
-                  <span>{{ viewerEmail || 'local@litemora.dev' }}</span>
+                  <span>{{ viewerEmail || 'local@litemora.dev' }} · {{ viewerRole }}</span>
                 </div>
               </div>
 
-              <button type="button" class="auth-menu-item placeholder" @click="authMenuOpen = false">
+              <button type="button" class="auth-menu-item placeholder" @click="openProfileSettingsFromMenu">
                 <span class="menu-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"></path>
                     <path d="M4 20a8 8 0 0 1 16 0"></path>
                   </svg>
                 </span>
-                <span>Account Settings</span>
-              </button>
-              <button type="button" class="auth-menu-item placeholder" @click="authMenuOpen = false">
-                <span class="menu-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82 2 2 0 1 1-2.83 2.83 1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 2 2 0 1 1-4 0 1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33 2 2 0 1 1-2.83-2.83 1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 2 2 0 1 1 0-4 1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82 2 2 0 1 1 2.83-2.83 1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 2.6a2 2 0 1 1 4 0 1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33 2 2 0 1 1 2.83 2.83 1.65 1.65 0 0 0-.33 1.82v.01A1.65 1.65 0 0 0 21.4 10a2 2 0 1 1 0 4 1.65 1.65 0 0 0-1.51 1Z"></path>
-                  </svg>
-                </span>
-                <span>Preferences</span>
+                <span>Profile Settings</span>
               </button>
               <button type="button" class="auth-menu-item danger" @click="logout">
                 <span class="menu-icon" aria-hidden="true">
@@ -434,17 +725,34 @@ onBeforeUnmount(() => {
     </header>
 
     <section class="worlds-main">
-        <div v-if="actionMessage" class="banner" :class="actionTone">
-          {{ actionMessage }}
-        </div>
-        <div v-if="loadError" class="banner warning">
-          {{ loadError }}
-        </div>
-        <div v-if="authError" class="banner warning">
-          {{ authError }}
-        </div>
+      <div v-if="actionMessage" class="banner" :class="actionTone">
+        {{ actionMessage }}
+      </div>
+      <div v-if="loadError" class="banner warning">
+        {{ loadError }}
+      </div>
+      <div v-if="authError" class="banner warning">
+        {{ authError }}
+      </div>
 
-        <div class="worlds-gallery">
+      <SpaceProfileSettingsPage
+        v-if="isProfileSettingsView"
+        :space-name="spaceName"
+        :title-value="galleryProfile?.title || ''"
+        :preview-title="brandTitle"
+        :display-name="brandOwnerName"
+        :avatar-url="brandAvatar"
+        :avatar-fallback="brandAvatarInitial"
+        :is-authenticated="!!authSession"
+        :can-edit="canEditProfileSettings"
+        :is-saving="isSavingProfile"
+        @back="closeProfileSettings"
+        @save-title="handleSaveProfileTitle"
+        @reset-title="handleResetProfileTitle"
+        @open-rss="openRssFeed"
+      />
+
+      <div v-else class="worlds-gallery">
           <div class="gallery-head">
             <h2>所有投影</h2>
             <span class="count-badge">{{ galleryItems.length }} Worlds</span>
@@ -592,7 +900,7 @@ onBeforeUnmount(() => {
               </div>
             </article>
           </div>
-        </div>
+      </div>
     </section>
   </main>
 </template>
@@ -617,20 +925,135 @@ onBeforeUnmount(() => {
 }
 
 .worlds-topbar {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  flex-wrap: wrap;
-  padding: 1.35rem 0 0.9rem;
+  padding: 1rem 1.1rem;
+  margin-top: 0.75rem;
+  border-radius: 20px;
+  border: 1px solid rgba(112, 159, 197, 0.22);
+  background:
+    linear-gradient(180deg, rgba(17, 19, 22, 0.98) 0%, rgba(22, 25, 28, 0.98) 100%);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.22);
+}
+
+.worlds-topbar::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(90, 171, 255, 0.9) 0%, rgba(111, 210, 255, 0.7) 55%, rgba(90, 171, 255, 0.4) 100%);
+}
+
+.worlds-brand {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+}
+
+.brand-avatar-button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.brand-avatar-button.disabled {
+  cursor: default;
+}
+
+.brand-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #213241 0%, #6a8da7 100%);
+  border: 1px solid rgba(116, 181, 236, 0.25);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+  color: #f4f8ff;
+  font-weight: 700;
+}
+
+.brand-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.brand-title-button {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.brand-title-button:disabled {
+  cursor: default;
+}
+
+.brand-title-button strong {
+  max-width: min(48vw, 620px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(1.15rem, 2vw, 2rem);
+  letter-spacing: -0.04em;
+  font-weight: 700;
+}
+
+.brand-title-button span {
+  color: #8da8b8;
+  font-size: 0.88rem;
+}
+
+.brand-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: 0.3rem;
+}
+
+.brand-icon-button {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd9e2;
+  text-decoration: none;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.brand-icon-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(116, 181, 236, 0.24);
+  color: #f4fbff;
 }
 
 .worlds-topbar-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.75rem;
-  flex-wrap: wrap;
   margin-left: auto;
 }
 
@@ -639,19 +1062,17 @@ onBeforeUnmount(() => {
 }
 
 .auth-trigger {
-  min-width: 312px;
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.9rem;
-  padding: 0.65rem 0.8rem;
+  gap: 0.6rem;
+  padding: 0.42rem 0.55rem 0.42rem 0.78rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0 0 0 18px;
-  background: rgba(19, 24, 28, 0.92);
+  border-radius: 999px;
+  background: rgba(19, 24, 28, 0.88);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   color: #edf4f7;
   cursor: pointer;
-  min-height: 78px;
+  min-height: 44px;
 }
 
 .auth-trigger:hover,
@@ -660,63 +1081,32 @@ onBeforeUnmount(() => {
   border-color: rgba(126, 188, 211, 0.18);
 }
 
-.auth-rail {
-  min-width: 142px;
-  height: 40px;
-  padding: 0.45rem 0.55rem;
-  border-radius: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  background:
-    linear-gradient(180deg, rgba(28, 34, 39, 0.95) 0%, rgba(21, 26, 31, 0.95) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.auth-rail-block {
-  width: 28px;
-  height: 28px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, rgba(51, 57, 62, 0.86) 0%, rgba(40, 45, 50, 0.74) 100%);
-}
-
-.auth-rail-block.wide {
-  width: 42px;
-}
-
-.auth-rail-block.narrow {
-  width: 18px;
-}
-
-.auth-trigger-divider {
-  width: 1px;
-  align-self: stretch;
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .auth-account {
   display: inline-flex;
   align-items: center;
-  gap: 0.8rem;
-  min-width: 0;
+  gap: 0.45rem;
+}
+
+.auth-account.compact {
   margin-left: auto;
+}
+
+.auth-trigger-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .auth-trigger-arrow {
-  width: 34px;
-  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  margin-left: auto;
-  background: rgba(255, 255, 255, 0.04);
+  color: #d7e4ed;
 }
 
-.auth-avatar,
-.menu-avatar {
-  width: 44px;
-  height: 44px;
+.auth-avatar {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
@@ -729,14 +1119,17 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.auth-avatar img,
-.menu-avatar img {
+.auth-avatar.compact {
+  width: 28px;
+  height: 28px;
+}
+
+.auth-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.auth-copy,
 .menu-account-copy {
   display: flex;
   flex-direction: column;
@@ -745,7 +1138,6 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.auth-copy strong,
 .menu-account-copy strong {
   max-width: 140px;
   overflow: hidden;
@@ -756,7 +1148,6 @@ onBeforeUnmount(() => {
   color: #edf4f7;
 }
 
-.auth-copy small,
 .menu-account-copy span {
   max-width: 220px;
   overflow: hidden;
@@ -768,16 +1159,16 @@ onBeforeUnmount(() => {
 
 .auth-menu {
   position: absolute;
-  top: calc(100% + 0.15rem);
+  top: calc(100% + 0.35rem);
   right: 0;
-  width: min(372px, calc(100vw - 2rem));
-  padding: 1.15rem 1.2rem 0.95rem;
-  border-radius: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(24, 28, 29, 0.98);
+  width: min(320px, calc(100vw - 2rem));
+  padding: 1rem 1rem 0.85rem;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(16, 21, 25, 0.98);
   backdrop-filter: blur(14px);
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.38);
-  z-index: 10;
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.34);
+  z-index: 20;
 }
 
 .auth-menu-header {
@@ -799,9 +1190,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.9rem;
-  padding: 1rem 0.25rem;
+  padding: 0.9rem 0.25rem;
   border: none;
-  border-radius: 0;
+  border-radius: 12px;
   background: transparent;
   color: #edf4f7;
   font: inherit;
@@ -820,6 +1211,7 @@ onBeforeUnmount(() => {
 
 .auth-menu-item.placeholder {
   border-bottom: 1px solid rgba(45, 111, 132, 0.26);
+  border-radius: 0;
 }
 
 .auth-menu-item.placeholder:last-of-type {
@@ -1482,47 +1874,37 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 760px) {
+  .worlds-topbar {
+    align-items: flex-start;
+    padding: 0.85rem 0.9rem;
+  }
+
+  .worlds-brand {
+    flex-wrap: wrap;
+    gap: 0.7rem;
+  }
+
+  .brand-title-button strong {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .brand-icon-row {
+    margin-left: 0;
+  }
+
   .auth-trigger {
-    min-width: 220px;
-    padding: 0.55rem 0.65rem;
-    min-height: 64px;
-  }
-
-  .auth-rail {
-    min-width: 94px;
-    height: 32px;
-    gap: 0.28rem;
-  }
-
-  .auth-rail-block {
-    width: 18px;
-    height: 18px;
-  }
-
-  .auth-rail-block.wide {
-    width: 26px;
-  }
-
-  .auth-rail-block.narrow {
-    width: 12px;
+    padding: 0.4rem 0.5rem 0.4rem 0.72rem;
+    min-height: 40px;
   }
 
   .auth-avatar {
-    width: 36px;
-    height: 36px;
-  }
-
-  .auth-copy strong {
-    max-width: 92px;
-    font-size: 0.86rem;
-  }
-
-  .auth-copy small {
-    font-size: 0.74rem;
+    width: 32px;
+    height: 32px;
   }
 
   .auth-menu {
-    width: min(332px, calc(100vw - 1rem));
+    width: min(320px, calc(100vw - 1rem));
     padding: 1rem 1rem 0.85rem;
   }
 

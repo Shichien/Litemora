@@ -4,6 +4,7 @@ import {
   createGalleryProfile,
   galleryManifestKey,
   galleryProfileKey,
+  hasLegacyGalleryContent,
   loadGalleryState,
   requireGalleryAccount,
   sendError,
@@ -23,6 +24,14 @@ export async function onRequestPost(context) {
     const state = await loadGalleryState(context, body)
     if (state.response) {
       return state.response
+    }
+
+    if (hasLegacyGalleryContent(state.profile, state.manifest)) {
+      return sendError(
+        409,
+        'gallery_legacy_claim_blocked',
+        'This gallery space contains legacy content and cannot be claimed automatically',
+      )
     }
 
     if (state.profile && state.profile.ownerAccountId !== auth.account.id) {

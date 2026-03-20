@@ -1,6 +1,7 @@
 import { readAccountSession } from './auth/_shared.js'
 import {
   canManageGallery,
+  hasLegacyGalleryContent,
   loadGalleryState,
   publicGalleryItems,
   sendError,
@@ -24,6 +25,8 @@ export async function onRequestGet(context) {
       space: state.spaceName,
       profile,
       items,
+      legacyContent: hasLegacyGalleryContent(profile, manifest),
+      spaceExists: !!profile || (Array.isArray(manifest?.items) && manifest.items.length > 0),
       viewer: {
         authenticated: !!viewerAccount,
         account: viewerAccount,

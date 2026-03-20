@@ -14,6 +14,7 @@ import {
   galleryManifestKey,
   galleryProfileKey,
   gallerySourceKey,
+  hasLegacyGalleryContent,
   loadGalleryState,
   normalizeFilePayload,
   normalizeSourceFileMetadata,
@@ -110,6 +111,14 @@ export async function onRequestPost(context) {
     }
 
     let profile = state.profile
+    if (hasLegacyGalleryContent(profile, state.manifest)) {
+      return sendError(
+        409,
+        'gallery_legacy_claim_blocked',
+        'This gallery space contains legacy content and must be migrated before it can be modified',
+      )
+    }
+
     if (!profile) {
       profile = createGalleryProfile(state.spaceName, auth.account, body)
       await writeGalleryJson(state.kv, galleryProfileKey(state.spaceName), profile)
@@ -184,6 +193,9 @@ export async function onRequestPost(context) {
     }
     if (error?.message === 'file_too_large_for_kv') {
       return sendError(413, 'file_too_large', 'The current gallery storage can only accept files up to roughly 15 MB raw size')
+    }
+    if (error?.message === 'invalid_source_file_type') {
+      return sendError(415, 'invalid_source_file_type', 'Only .litematic, .schem, and .schematic files are allowed')
     }
     return sendError(500, 'gallery_item_create_failed', error?.message || 'unknown_error')
   }

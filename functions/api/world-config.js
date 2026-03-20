@@ -9,6 +9,7 @@ import {
   sendJson,
   writeSpaceJson,
 } from './_space.js'
+import { requireSpaceWriteAccess } from './_space-access.js'
 
 export async function onRequestGet(context) {
   try {
@@ -40,18 +41,18 @@ export async function onRequestPost(context) {
       return sendError(400, 'invalid_world_config_payload')
     }
 
-    const spaceName = getSpaceName(context.request)
-    const projectionId = getProjectionId(context.request)
-    const kv = getKv(context.env)
+    const access = await requireSpaceWriteAccess(context)
+    if (access.response) {
+      return access.response
+    }
+
+    const { kv, projectionId, spaceName } = access
     const key = getScopedKey('world-config', spaceName, projectionId)
 
     await writeSpaceJson(kv, key, payload)
     return sendJson(200, { ok: true })
   }
   catch (error) {
-    if (String(error?.message || '') === 'missing_kv_binding') {
-      return sendError(500, 'missing_kv_binding', 'Please bind LITEMORA_SPACE_KV in Cloudflare Pages settings')
-    }
     return sendError(500, 'world_config_write_failed', error?.message || 'unknown_error')
   }
 }
