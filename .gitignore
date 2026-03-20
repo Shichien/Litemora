@@ -47,3 +47,6 @@ yarn-error.log*
 /output/
 /progress.md
 /tmp-terrain-renderer-prev.js
+/.npm-cache/
+/package-lock.json
+/public/spaces/deralive/projections/
