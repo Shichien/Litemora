@@ -88,6 +88,14 @@ export class PlayerMovementController {
     return this.renderPosition.clone()
   }
 
+  getPortalProbeState() {
+    return {
+      basePosition: this.position.clone(),
+      radius: this.capsule.radius,
+      bodyHeight: (this.capsule.halfHeight * 2) + (this.capsule.radius * 2),
+    }
+  }
+
   getEyeHeight() {
     return this.poses[this.currentPoseKey]?.eyeHeight ?? 1.62
   }

@@ -881,6 +881,31 @@ onBeforeUnmount(() => {
             </label>
             <div />
           </div>
+          <div class="subsection-title">
+            传送门跳转
+          </div>
+          <div class="setting-row grid-three">
+            <label class="full">
+              地狱传送门 URL
+              <input
+                v-model.trim="configDraft.settings.portalLinks.netherPortalUrl"
+                placeholder="https://example.com/nether 或 /yourspace/worlds/demo"
+                type="text"
+              >
+            </label>
+            <label class="full">
+              末地传送门 URL
+              <input
+                v-model.trim="configDraft.settings.portalLinks.endPortalUrl"
+                placeholder="https://example.com/end 或 /yourspace/worlds/demo"
+                type="text"
+              >
+            </label>
+            <div />
+          </div>
+          <p class="schematic-preview-hint">
+            玩家身体触碰到对应传送门方块时会跳转。留空则不触发，支持站内路径或完整网址。
+          </p>
           <div class="setting-row setting-row-spacer-top setting-preset-row">
             <span class="row-label">相机风格</span>
             <div class="option-group">

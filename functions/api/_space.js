@@ -8,6 +8,10 @@ export const DEFAULT_WORLD_CONFIG = {
   settings: {
     cameraPreset: 'default',
     visualPreset: 'default',
+    portalLinks: {
+      netherPortalUrl: '',
+      endPortalUrl: '',
+    },
     chunk: {
       height: 256,
       viewDistance: 2,

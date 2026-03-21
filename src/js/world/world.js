@@ -16,6 +16,7 @@ import BlockRaycaster from '../interaction/block-raycaster.js'
 import BlockSelectionHelper from '../interaction/block-selection-helper.js'
 import ItemPickupAnimator from '../interaction/item-pickup-animator.js'
 import emitter from '../utils/event/event-bus.js'
+import { navigateToUrl } from '../utils/navigation.js'
 import { buildSpaceScopedKey, getActiveProjectionId, getActiveSpaceName } from '../utils/space-context.js'
 import {
   loadBackendWorldConfig,
@@ -25,6 +26,7 @@ import {
   saveBackendWorldConfigRemote,
 } from './backend-world-config.js'
 import Environment from './environment.js'
+import PortalLinkController from './portal-link-controller.js'
 import Player from './player/player.js'
 import ChunkManager from './terrain/chunk-manager.js'
 import MinecraftSchematicRenderLayer from './terrain/minecraft-schematic-render-layer.js'
@@ -622,6 +624,7 @@ export default class World {
     const config = runtimeConfig || await loadBackendWorldConfig()
     this._applyBackendUi(config.ui)
     await this._applyBackendSettings(config.settings)
+    this._applyPortalLinks(config.settings?.portalLinks)
     this._applyBackendSpawn(config.player, { movePlayer })
   }
 
@@ -745,6 +748,10 @@ export default class World {
     if (playerConfig.flight) {
       this.player.setFlightOptions(playerConfig.flight)
     }
+  }
+
+  _applyPortalLinks(portalLinkConfig = {}) {
+    this.portalLinkController?.setConfig(portalLinkConfig)
   }
 
   async _ensureMinecraftSchematicRenderLayer() {
@@ -1108,6 +1115,19 @@ export default class World {
   /** 玩家 + 相机 Rig，依赖地形（贴地/碰撞用 terrainDataManager） */
   _initPlayerAndCamera() {
     this.player = new Player(this.experience)
+    this.portalLinkController = new PortalLinkController({
+      player: this.player,
+      getTerrainProvider: () => this.experience.terrainDataManager,
+      onPortalTrigger: ({ type, url }) => {
+        const navigated = navigateToUrl(url)
+        if (!navigated) {
+          console.warn('[World] Ignored invalid portal link target', {
+            type,
+            url,
+          })
+        }
+      },
+    })
     this.cameraRig = new CameraRig()
     this.cameraRig.attachPlayer(this.player)
     this.experience.camera.attachRig(this.cameraRig)
@@ -1184,6 +1204,8 @@ export default class World {
       this.blockMiningController.update()
     if (this.player)
       this.player.update()
+    if (this.portalLinkController)
+      this.portalLinkController.update()
     if (this.environment)
       this.environment.update()
     if (this.blockRaycaster)
@@ -1228,6 +1250,7 @@ export default class World {
     this.environment?.destroy()
     this.cameraRig?.destroy()
     this.player?.destroy()
+    this.portalLinkController = null
     this.minecraftSchematicRenderLayer?.dispose()
     this.chunkManager?.destroy()
 

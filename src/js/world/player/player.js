@@ -281,6 +281,10 @@ export default class Player {
     return this.movement.getEyeHeight()
   }
 
+  getPortalProbeState() {
+    return this.movement.getPortalProbeState()
+  }
+
   /**
    * 获取角色朝向角度
    * @returns {number}

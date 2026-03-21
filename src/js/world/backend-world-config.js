@@ -53,6 +53,10 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
   settings: {
     cameraPreset: 'default',
     visualPreset: 'default',
+    portalLinks: {
+      netherPortalUrl: '',
+      endPortalUrl: '',
+    },
     chunk: {
       height: 256,
       viewDistance: 2,
@@ -117,6 +121,16 @@ function mergeBackendConfig(raw = {}) {
       ...DEFAULT_BACKEND_WORLD_CONFIG.settings,
       cameraPreset: settings.cameraPreset ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.cameraPreset,
       visualPreset: settings.visualPreset ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.visualPreset,
+      portalLinks: {
+        netherPortalUrl: String(
+          settings.portalLinks?.netherPortalUrl
+          ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.portalLinks.netherPortalUrl,
+        ).trim(),
+        endPortalUrl: String(
+          settings.portalLinks?.endPortalUrl
+          ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.portalLinks.endPortalUrl,
+        ).trim(),
+      },
       chunk: {
         height: clamp(
           toInt(settings.chunk?.height, DEFAULT_BACKEND_WORLD_CONFIG.settings.chunk.height),
