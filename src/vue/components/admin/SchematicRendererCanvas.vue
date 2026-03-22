@@ -15,6 +15,34 @@ const SCHEMATIC_RENDERER_CDN_URLS = [
   'https://esm.sh/schematic-renderer@1.1.23?bundle&target=es2022',
   'https://esm.sh/schematic-renderer@1.1.23?bundle',
 ]
+const PREVIEW_NOISE_PATTERNS = [
+  /^HoverHighlight (?:activated|deactivated)$/,
+  /^Recording complete$/,
+  /^FFmpeg not found/,
+  /^Recording will not work$/,
+  /^FFmpeg not found in options$/,
+  /^AssetLoader disposed$/,
+  /^Cubane: All caches cleared$/,
+  /^\[ResourcePackManager\] Database initialized$/,
+  /^\[ResourcePackManager\] State saved$/,
+  /^🔧 Starting atlas building with /,
+  /^📊 IndexedDB cache hit:/,
+  /^✅ Loaded atlas from cache$/,
+  /^🎯 Atlas loaded from cache with /,
+  /^📊 Loaded \d+ textures from cache$/,
+]
+const PREVIEW_NOOP_FFMPEG = Object.freeze({
+  on() {},
+  off() {},
+  exec: async () => {},
+  readFile: async () => new Uint8Array(),
+  writeFile: async () => {},
+  deleteFile: async () => {},
+  terminate() {},
+})
+
+let previewConsoleFilterDepth = 0
+let previewConsoleOriginalMethods = null
 
 const props = defineProps({
   schematic: {
@@ -68,6 +96,123 @@ let stopCanvasWheelPassthrough = null
 let canvasBlockPickListener = null
 let selectedBlockLocalPosition = null
 let selectedBlockHighlightMesh = null
+
+function shouldSuppressPreviewConsole(args = []) {
+  const [first] = args
+  if (typeof first !== 'string') {
+    return false
+  }
+
+  return PREVIEW_NOISE_PATTERNS.some(pattern => pattern.test(first))
+}
+
+function installPreviewConsoleFilter() {
+  if (previewConsoleFilterDepth > 0) {
+    previewConsoleFilterDepth++
+    return
+  }
+
+  previewConsoleFilterDepth = 1
+  previewConsoleOriginalMethods = {
+    log: console.log,
+    info: console.info,
+    warn: console.warn,
+    error: console.error,
+    debug: console.debug,
+  }
+
+  for (const methodName of Object.keys(previewConsoleOriginalMethods)) {
+    const original = previewConsoleOriginalMethods[methodName]
+    console[methodName] = (...args) => {
+      if (shouldSuppressPreviewConsole(args)) {
+        return
+      }
+
+      return original.apply(console, args)
+    }
+  }
+}
+
+function uninstallPreviewConsoleFilter() {
+  if (previewConsoleFilterDepth <= 0) {
+    return
+  }
+
+  previewConsoleFilterDepth--
+  if (previewConsoleFilterDepth > 0 || !previewConsoleOriginalMethods) {
+    return
+  }
+
+  Object.assign(console, previewConsoleOriginalMethods)
+  previewConsoleOriginalMethods = null
+}
+
+function getRendererCamera(renderer) {
+  return renderer?.cameraManager?.activeCamera?.camera || null
+}
+
+function syncRendererViewport(renderer, width, height) {
+  const renderManager = renderer?.renderManager
+  const camera = getRendererCamera(renderer)
+  if (!renderManager || !camera || width <= 0 || height <= 0) {
+    return
+  }
+
+  renderManager.resize?.(width, height)
+  camera.aspect = width / height
+  camera.updateProjectionMatrix?.()
+  renderManager.requestRender?.()
+}
+
+function patchRendererRuntime(renderer) {
+  const renderManager = renderer?.renderManager
+  if (renderManager && !renderManager.__litemoraSafeResizePatched) {
+    const originalResize = renderManager.resize?.bind(renderManager)
+    renderManager.resize = (width, height) => {
+      const camera = getRendererCamera(renderer)
+      if (!camera || renderManager.disposed || renderManager.contextLost) {
+        return
+      }
+
+      originalResize?.(width, height)
+    }
+
+    renderManager.updateCanvasSize = () => {
+      const canvas = renderer?.canvas
+      const parent = canvas?.parentElement
+      const camera = getRendererCamera(renderer)
+      if (!canvas || !parent || !camera || renderManager.disposed || renderManager.contextLost) {
+        return
+      }
+
+      const width = Number(parent.clientWidth || 0)
+      const height = Number(parent.clientHeight || 0)
+      if (!width || !height) {
+        return
+      }
+
+      canvas.style.width = `${width}px`
+      canvas.style.height = `${height}px`
+      syncRendererViewport(renderer, width, height)
+    }
+
+    renderManager.__litemoraSafeResizePatched = true
+  }
+
+  const recordingManager = renderer?.cameraManager?.recordingManager
+  if (recordingManager && !recordingManager.__litemoraSilentDisposePatched) {
+    const originalDispose = recordingManager.dispose?.bind(recordingManager)
+    recordingManager.dispose = () => {
+      if (recordingManager.isRecording) {
+        return originalDispose?.()
+      }
+
+      recordingManager.cleanup?.()
+      recordingManager.ffmpeg?.terminate?.()
+    }
+    recordingManager.__litemoraSilentDisposePatched = true
+  }
+}
 
 const hasRenderableSource = computed(() => {
   return Boolean(props.sourceFile || props.schematic)
@@ -322,7 +467,7 @@ function setupCanvasResize(renderer) {
 
   const syncCanvasSize = () => {
     const canvas = canvasRef.value
-    if (!canvas || !renderer?.renderManager) {
+    if (!canvas || !canvas.isConnected || !renderer?.renderManager || renderer !== rendererInstance) {
       return
     }
 
@@ -334,9 +479,7 @@ function setupCanvasResize(renderer) {
     const pixelRatio = window.devicePixelRatio || 1
     canvas.width = Math.max(1, Math.round(rect.width * pixelRatio))
     canvas.height = Math.max(1, Math.round(rect.height * pixelRatio))
-    renderer.renderManager.resize?.(rect.width, rect.height)
-    renderer.renderManager.updateCanvasSize?.()
-    renderer.renderManager.requestRender?.()
+    syncRendererViewport(renderer, rect.width, rect.height)
   }
 
   const observer = typeof ResizeObserver === 'function'
@@ -438,9 +581,10 @@ async function ensureRenderer() {
       enableGizmos: false,
       enableProgressBar: false,
       enableAdaptiveFPS: true,
-      enableInteraction: true,
+      enableInteraction: false,
       meshBuildingMode: 'batched',
       singleSchematicMode: true,
+      ffmpeg: PREVIEW_NOOP_FFMPEG,
       wasmMeshBuilderOptions: {
         enabled: true,
         greedyMeshingEnabled: false,
@@ -473,6 +617,7 @@ async function ensureRenderer() {
       },
     })
 
+    patchRendererRuntime(rendererInstance)
     setupPreviewBlockPicking(rendererInstance)
     updateSelectedBlockHighlight()
     setupCanvasResize(rendererInstance)
@@ -903,12 +1048,14 @@ watch(
 )
 
 onMounted(() => {
+  installPreviewConsoleFilter()
   void renderCurrentSchematic()
 })
 
 onBeforeUnmount(() => {
   renderToken++
   disposeRenderer()
+  uninstallPreviewConsoleFilter()
 })
 </script>
 

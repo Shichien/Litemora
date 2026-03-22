@@ -44,8 +44,6 @@ export function createDebugPlugin() {
     return () => {}
   }
 
-  console.warn('[PiniaDebugPlugin] Initialized')
-
   return ({ store, _options }) => {
     // 保存 store 初始状态用于比较
     const storeId = store.$id

@@ -200,7 +200,6 @@ export default class TerrainPersistence {
       const data = this.serialize()
       localStorage.setItem(this._modsStorageKey(), JSON.stringify(data))
       localStorage.setItem(this._stateStorageKey(), JSON.stringify(this.worldState))
-      console.warn(`[TerrainPersistence] 已保存 ${this.modifications.size} 个 chunk 的修改`)
     }
     catch (error) {
       console.error('[TerrainPersistence] localStorage 保存失败:', error)
@@ -213,7 +212,6 @@ export default class TerrainPersistence {
       if (json) {
         const data = JSON.parse(json)
         this.deserialize(data)
-        console.warn(`[TerrainPersistence] 已加载 ${this.modifications.size} 个 chunk 的修改`)
       }
 
       const worldStateRaw = localStorage.getItem(this._stateStorageKey())
@@ -247,12 +245,10 @@ export default class TerrainPersistence {
   // IndexedDB 实现（可选，用于大规模数据）
   async _saveToIndexedDB() {
     // TODO: 实现 IndexedDB 版本（适合大世界）
-    console.warn('[TerrainPersistence] IndexedDB 尚未实现，回退到 localStorage')
     this._saveToLocalStorage()
   }
 
   async _loadFromIndexedDB() {
-    console.warn('[TerrainPersistence] IndexedDB 尚未实现，回退到 localStorage')
     this._loadFromLocalStorage()
   }
 

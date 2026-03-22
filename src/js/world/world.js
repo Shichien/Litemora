@@ -38,6 +38,15 @@ const WORLD_STATE_DB_NAME = 'mc-world-state-storage'
 const WORLD_STATE_DB_STORE = 'snapshots'
 const WORLD_STATE_DB_VERSION = 1
 const DEFAULT_PROJECTION_SPAWN_LIFT = 2
+const WORLD_DEBUG_ENABLED = import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('world-debug')
+
+function debugWorld(...args) {
+  if (WORLD_DEBUG_ENABLED) {
+    console.info(...args)
+  }
+}
 
 function decodeBase64ToArrayBuffer(base64Text = '') {
   const binary = atob(String(base64Text || ''))
@@ -357,7 +366,7 @@ export default class World {
           this._scheduleInitialMinecraftSchematicRenderLayerRestore()
         }
 
-        console.info('[World] Scene ready', {
+        debugWorld('[World] Scene ready', {
           projectionId: this.activeProjectionContext?.projectionId || '',
           bootstrapApplied: this._projectionBootstrapApplied,
           deferredRenderLayerRestore: this._needsMinecraftSchematicRenderLayerRestore || !this._projectionBootstrapApplied,
@@ -406,9 +415,9 @@ export default class World {
   async _loadActiveProjectionContext() {
     const spaceName = getActiveSpaceName()
     const projectionId = getActiveProjectionId()
-    console.log('[World Debug] _loadActiveProjectionContext:', { spaceName, projectionId, pathname: window.location.pathname, search: window.location.search })
+    debugWorld('[World Debug] _loadActiveProjectionContext:', { spaceName, projectionId, pathname: window.location.pathname, search: window.location.search })
     if (!spaceName || !projectionId) {
-      console.log('[World Debug] _loadActiveProjectionContext returning null: no spaceName or projectionId')
+      debugWorld('[World Debug] _loadActiveProjectionContext returning null: no spaceName or projectionId')
       return null
     }
 
@@ -423,7 +432,7 @@ export default class World {
       }
     }
     catch (error) {
-      console.warn('[World] Failed to load projection metadata:', error)
+      debugWorld('[World] Failed to load projection metadata:', error)
       emitter.emit('projection:bootstrap-error', {
         spaceName,
         projectionId,
@@ -439,7 +448,7 @@ export default class World {
 
   async _ensureProjectionWorldInitialized(sharedWorldState = null, backendConfig = null) {
     const projectionContext = this.activeProjectionContext
-    console.log('[World Debug] _ensureProjectionWorldInitialized called:', {
+    debugWorld('[World Debug] _ensureProjectionWorldInitialized called:', {
       hasProjectionContext: !!projectionContext,
       projectionId: projectionContext?.projectionId,
       hasSharedWorldState: !!sharedWorldState,
@@ -452,7 +461,7 @@ export default class World {
       } : null,
     })
     if (!projectionContext?.projectionId) {
-      console.log('[World Debug] Early return: no projectionId')
+      debugWorld('[World Debug] Early return: no projectionId')
       return backendConfig
     }
 
@@ -463,7 +472,7 @@ export default class World {
       Object.keys(sharedWorldState.modifications).length > 0
 
     if (hasValidSchematicContent) {
-      console.log('[World Debug] Early return: has valid schematic block content')
+      debugWorld('[World Debug] Early return: has valid schematic block content')
       return backendConfig
     }
 
@@ -472,10 +481,10 @@ export default class World {
 
     // Even if there's existing world state, we need to apply the projection schematic
     // if it doesn't have schematic content yet
-    console.log('[World Debug] Proceeding to load schematic (no existing schematic content)')
+    debugWorld('[World Debug] Proceeding to load schematic (no existing schematic content)')
 
     const sourceFile = projectionContext.item?.sourceFile
-    console.log('[World Debug] Parsed projection context item:', projectionContext.item)
+    debugWorld('[World Debug] Parsed projection context item:', projectionContext.item)
     try {
       let buffer = null
 
@@ -501,7 +510,7 @@ export default class World {
         return backendConfig
       }
 
-      console.log('[World Debug] Decoded buffer length:', buffer.byteLength)
+      debugWorld('[World Debug] Decoded buffer length:', buffer.byteLength)
       await schematicService.parseArrayBuffer(buffer)
       const preview = schematicService.getPreview()
       const placementOffset = {
@@ -509,7 +518,7 @@ export default class World {
         y: Number(projectionContext.item?.placement?.offset?.y || 0),
         z: Number(projectionContext.item?.placement?.offset?.z || 0),
       }
-      console.log('[World Debug] Parsing schematic complete, bounds:', preview?.bounds)
+      debugWorld('[World Debug] Parsing schematic complete, bounds:', preview?.bounds)
       let nextConfig = backendConfig
 
       if (!this.backendConfigRecord?.exists || !hasSpawnPoint(nextConfig)) {
@@ -553,7 +562,7 @@ export default class World {
       return nextConfig
     }
     catch (error) {
-      console.warn('[World] Failed to initialize projection world:', error)
+      debugWorld('[World] Failed to initialize projection world:', error)
       emitter.emit('projection:bootstrap-error', {
         spaceName: projectionContext.spaceName,
         projectionId: projectionContext.projectionId,
@@ -730,7 +739,7 @@ export default class World {
       this.blockInteractionManager.chunkManager = nextManager
     }
 
-    console.info(`[World] Chunk height updated: ${previousManager.chunkHeight} -> ${nextHeight}`)
+    debugWorld(`[World] Chunk height updated: ${previousManager.chunkHeight} -> ${nextHeight}`)
   }
 
   _applyBackendSpawn(playerConfig = {}, options = {}) {
@@ -768,7 +777,7 @@ export default class World {
   async _syncMinecraftSchematicRenderLayer(options = {}) {
     const schematicLayer = this.chunkManager?.minecraftSchematicLayer
     const stats = schematicLayer?.getStats?.() || { blockCount: 0 }
-    console.log('[World Debug] _syncMinecraftSchematicRenderLayer:', { blockCount: stats.blockCount, hasSchematicLayer: !!schematicLayer })
+    debugWorld('[World Debug] _syncMinecraftSchematicRenderLayer:', { blockCount: stats.blockCount, hasSchematicLayer: !!schematicLayer })
 
     if (!stats.blockCount) {
       this.chunkManager?.setMinecraftRenderOverlayActive?.(false)
@@ -796,7 +805,7 @@ export default class World {
     const startedAt = performance.now()
     try {
       const result = await this._syncMinecraftSchematicRenderLayer(options)
-      console.info('[World] Restored Minecraft schematic render layer', {
+      debugWorld('[World] Restored Minecraft schematic render layer', {
         progressive: options.progressive !== false,
         builtMeshes: result?.builtMeshes ?? 0,
         uniqueBlockStates: result?.uniqueBlockStates ?? 0,
@@ -824,7 +833,7 @@ export default class World {
 
   _scheduleInitialMinecraftSchematicRenderLayerRestore(delayMs = 48) {
     this._cancelInitialMinecraftSchematicRenderLayerRestore()
-    console.info('[World] Scheduling initial Minecraft schematic render layer restore', {
+    debugWorld('[World] Scheduling initial Minecraft schematic render layer restore', {
       delayMs,
       projectionId: this.activeProjectionContext?.projectionId || '',
     })
@@ -922,8 +931,8 @@ export default class World {
       : null
 
     if (localDecoded && hasSnapshotContent(localDecoded)) {
-      console.info('[World Debug] Loaded local world-state FULL:', localDecoded)
-      console.info('[World Debug] Loaded local world-state SUMMARY', {
+      debugWorld('[World Debug] Loaded local world-state FULL:', localDecoded)
+      debugWorld('[World Debug] Loaded local world-state SUMMARY', {
         source: localRecord?.source || 'local',
         space: activeSpace || 'default',
         storageKey,
@@ -946,7 +955,7 @@ export default class World {
           if (data && typeof data === 'object') {
             const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
             if (hasSnapshotContent(decoded) || !localDecoded) {
-              console.info('[World Debug] Loaded remote world-state (space-first)', {
+              debugWorld('[World Debug] Loaded remote world-state (space-first)', {
                 source: 'remote-space-first',
                 space: activeSpace || 'default',
                 storageKey,
@@ -964,7 +973,7 @@ export default class World {
     }
 
     if (localDecoded) {
-      console.info('[World Debug] Loaded local fallback world-state', {
+      debugWorld('[World Debug] Loaded local fallback world-state', {
         source: localRecord?.source || 'local-fallback',
         space: activeSpace || 'default',
         storageKey,
@@ -997,7 +1006,7 @@ export default class World {
       }
 
       const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
-      console.info('[World Debug] Loaded remote world-state (fallback path)', {
+      debugWorld('[World Debug] Loaded remote world-state (fallback path)', {
         source: 'remote-fallback',
         space: activeSpace || 'default',
         storageKey,
@@ -1064,7 +1073,7 @@ export default class World {
         throw new Error(`remote_world_state_save_failed_${response.status}`)
       }
 
-      console.info('[World Debug] Saved world-state', {
+      debugWorld('[World Debug] Saved world-state', {
         space: activeSpace || 'default',
         requestUrl,
         ...summarizeSnapshotForDebug(payload),
@@ -1121,7 +1130,7 @@ export default class World {
       onPortalTrigger: ({ type, url }) => {
         const navigated = navigateToUrl(url)
         if (!navigated) {
-          console.warn('[World] Ignored invalid portal link target', {
+          debugWorld('[World] Ignored invalid portal link target', {
             type,
             url,
           })
@@ -1224,7 +1233,7 @@ export default class World {
    * @param {object} [options.trees] - Tree generation params
    */
   reset({ seed, terrain, trees } = {}) {
-    console.info('[World] Procedural generation is disabled; ignoring reset_world request.', {
+    debugWorld('[World] Procedural generation is disabled; ignoring reset_world request.', {
       seed,
       terrain,
       trees,

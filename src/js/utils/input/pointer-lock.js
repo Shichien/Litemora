@@ -91,11 +91,9 @@ export default class PointerLockManager {
 
     // 状态发生变化时发送事件
     if (this.isLocked && !previousState) {
-      console.log('[PointerLock] 鼠标已锁定')
       emitter.emit('pointer:locked')
     }
     else if (!this.isLocked && previousState) {
-      console.log('[PointerLock] 鼠标已解锁')
       emitter.emit('pointer:unlocked')
     }
   }
