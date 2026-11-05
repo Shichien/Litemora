@@ -15,6 +15,7 @@
     "gen:litematic:portal-link-demo": "node ./scripts/generate-portal-link-demo-litematic.mjs",
     "redstone:registry": "node ./scripts/prepare-redstone-registry.mjs",
     "redstone:replay": "node ./scripts/generate-redstone-archive-replay.mjs",
+    "kv:seed": "node ./scripts/build-kv-seed.mjs",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "dev": "vite --host localhost",
