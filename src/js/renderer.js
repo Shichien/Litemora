@@ -363,6 +363,28 @@ export default class Renderer {
   }
 
   /**
+   * 在后台编译 object 用到的着色器（KHR_parallel_shader_compile），避免第一次绘制时主线程同步等编译。
+   * 场景实际画在 composer 的离屏目标上，着色器变体（色彩空间、色调映射）取决于当前渲染目标，
+   * 所以编译时要切到同一个目标，否则编出来的是用不上的变体。
+   * @param {THREE.Object3D} object - 要编译的对象（可以尚未加入场景）
+   * @param {THREE.Scene} [targetScene] - object 将加入的场景，用来收集灯光
+   */
+  async compileAsync(object, targetScene = this.scene) {
+    const camera = this.renderPass?.camera || this.camera.instance
+    const previousTarget = this.instance.getRenderTarget()
+    this.instance.setRenderTarget(this.composer.readBuffer)
+    let pending
+    try {
+      // compileAsync 的同步部分完成程序创建，之后只是轮询编译状态
+      pending = this.instance.compileAsync(object, camera, targetScene)
+    }
+    finally {
+      this.instance.setRenderTarget(previousTarget)
+    }
+    await pending
+  }
+
+  /**
    * 当相机切换时更新 RenderPass 的相机引用
    * @param {THREE.Camera} cameraInstance - 当前激活的相机
    */

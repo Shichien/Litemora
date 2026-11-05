@@ -29,7 +29,8 @@ import {
 import Environment from './environment.js'
 import Player from './player/player.js'
 import PortalLinkController from './portal-link-controller.js'
-import RedstoneReplayController, { fetchRedstoneReplay, resolveRedstoneReplayUrl } from './redstone-replay-controller.js'
+import RedstoneReplayController, { resolveRedstoneReplayUrl } from './redstone-replay-controller.js'
+import { loadRedstoneReplayTimeline } from './redstone-replay-loader.js'
 import ChunkManager from './terrain/chunk-manager.js'
 import MinecraftSchematicRenderLayer from './terrain/minecraft-schematic-render-layer.js'
 import schematicService from './terrain/schematic-service.js'
@@ -578,7 +579,8 @@ export default class World {
       if (!replayUrl) {
         return null
       }
-      return { url: replayUrl, data: silence(fetchRedstoneReplay(replayUrl)) }
+      // 下载、解压、解析、预处理都在 worker 里，和区块加载并行
+      return { url: replayUrl, data: silence(loadRedstoneReplayTimeline(replayUrl)) }
     }))
 
     return {
@@ -627,7 +629,7 @@ export default class World {
       if (entry?.url === replayUrl) {
         return entry.data
       }
-      return fetchRedstoneReplay(replayUrl)
+      return loadRedstoneReplayTimeline(replayUrl)
     })
   }
 

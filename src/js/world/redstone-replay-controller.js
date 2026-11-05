@@ -2,28 +2,20 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import emitter from '../utils/event/event-bus.js'
+import {
+  AIR_BLOCK_STRING,
+  blockKey,
+  MOTION_CAUSE_MOVING_BLOCK,
+  packRedstoneReplay,
+  PISTON_MOTION_DURATION_TICKS,
+} from './redstone-replay-data.js'
+import { loadRedstoneReplayTimeline } from './redstone-replay-loader.js'
 
-const REPLAY_FORMAT = 'litemora-redstone-replay-v1'
 const DEFAULT_SPEED = 1
-const PISTON_MOTION_DURATION_TICKS = 2
-const AIR_BLOCK_STRING = 'minecraft:air'
 const INITIAL_INSTANCE_CAPACITY = 16
-
-const BLOCK_DIRECTIONS = Object.freeze({
-  down: Object.freeze({ x: 0, y: -1, z: 0 }),
-  east: Object.freeze({ x: 1, y: 0, z: 0 }),
-  north: Object.freeze({ x: 0, y: 0, z: -1 }),
-  south: Object.freeze({ x: 0, y: 0, z: 1 }),
-  up: Object.freeze({ x: 0, y: 1, z: 0 }),
-  west: Object.freeze({ x: -1, y: 0, z: 0 }),
-})
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
-}
-
-function blockKey(x, y, z) {
-  return `${x},${y},${z}`
 }
 
 function normalizeOffset(offset = {}) {
@@ -34,258 +26,12 @@ function normalizeOffset(offset = {}) {
   }
 }
 
-function getBlockProperty(blockString, propertyName) {
-  const propertiesMatch = String(blockString || '').match(/\[([^\]]*)\]$/u)
-  if (!propertiesMatch) {
-    return ''
-  }
-
-  for (const entry of propertiesMatch[1].split(',')) {
-    const separatorIndex = entry.indexOf('=')
-    if (separatorIndex < 0) {
-      continue
-    }
-    if (entry.slice(0, separatorIndex).trim() === propertyName) {
-      return entry.slice(separatorIndex + 1).trim()
-    }
-  }
-  return ''
-}
-
-function isMovingPistonBlock(blockString) {
-  return String(blockString || '').startsWith('minecraft:moving_piston')
-}
-
-function createPistonHeadBlockString(facing, type) {
-  return `minecraft:piston_head[facing=${facing},short=false,type=${type === 'sticky' ? 'sticky' : 'normal'}]`
-}
-
-function isRetractionBlockMovement(sourceClearMicroSteps, change, direction) {
-  const sourceX = Number(change.x) + direction.x
-  const sourceY = Number(change.y) + direction.y
-  const sourceZ = Number(change.z) + direction.z
-  const movingMicroStep = Number(change.microStep || 0)
-  const latestSourceClear = sourceClearMicroSteps.get(blockKey(sourceX, sourceY, sourceZ))
-  return Number.isFinite(latestSourceClear) && latestSourceClear >= movingMicroStep
-}
-
-function buildPistonMotionTimeline(replay) {
-  const motions = []
-  const motionByChange = new WeakMap()
-  const motionBlockStrings = new Set()
-  const motionStarts = []
-  const unsettledByPosition = new Map()
-
-  for (const frame of replay.frames) {
-    let frameMotionCount = 0
-    const sourceClearMicroSteps = new Map()
-    for (const change of frame.changes || []) {
-      if (change.cause !== 'piston_source_clear') {
-        continue
-      }
-      const key = blockKey(change.x, change.y, change.z)
-      const microStep = Number(change.microStep || 0)
-      sourceClearMicroSteps.set(key, Math.max(sourceClearMicroSteps.get(key) || 0, microStep))
-    }
-
-    for (const change of frame.changes || []) {
-      const key = blockKey(change.x, change.y, change.z)
-      const blockString = replay.palette[change.state]
-
-      if (!isMovingPistonBlock(blockString)) {
-        const unsettled = unsettledByPosition.get(key)
-        if (unsettled) {
-          unsettled.settledBlockString = blockString
-          unsettledByPosition.delete(key)
-        }
-        continue
-      }
-
-      const facing = getBlockProperty(blockString, 'facing')
-      const direction = BLOCK_DIRECTIONS[facing]
-      if (!direction) {
-        throw new Error(`活塞运动缺少有效朝向: ${blockString}`)
-      }
-
-      const cause = String(change.cause || '')
-      const isRetraction = cause === 'piston_retracting_base'
-        || (
-          cause === 'piston_moving_block'
-          && isRetractionBlockMovement(sourceClearMicroSteps, change, direction)
-        )
-      const startDirection = isRetraction ? 1 : -1
-      const pistonType = getBlockProperty(blockString, 'type')
-      const fullHeadBlockString = createPistonHeadBlockString(facing, pistonType)
-      const shortHeadBlockString = fullHeadBlockString.replace('short=false', 'short=true')
-      const motion = {
-        key,
-        cause,
-        isRetraction,
-        startTick: frame.tick,
-        destination: {
-          x: Number(change.x),
-          y: Number(change.y),
-          z: Number(change.z),
-        },
-        start: {
-          x: Number(change.x) + (direction.x * startDirection),
-          y: Number(change.y) + (direction.y * startDirection),
-          z: Number(change.z) + (direction.z * startDirection),
-        },
-        settledBlockString: '',
-        visualBlockString: cause === 'piston_moving_block'
-          ? ''
-          : fullHeadBlockString,
-        shortVisualBlockString: cause === 'piston_moving_block'
-          ? ''
-          : shortHeadBlockString,
-        baseBlockString: cause === 'piston_retracting_base'
-          ? replay.palette[change.previousState]
-          : AIR_BLOCK_STRING,
-      }
-
-      motions.push(motion)
-      frameMotionCount += 1
-      motionByChange.set(change, motion)
-      unsettledByPosition.set(key, motion)
-    }
-    if (frameMotionCount > 0) {
-      motionStarts.push({ tick: frame.tick, count: frameMotionCount })
-    }
-  }
-
-  for (const motion of motions) {
-    if (!motion.settledBlockString) {
-      throw new Error(`活塞运动没有稳定状态: ${motion.key} @ ${motion.startTick}`)
-    }
-    if (motion.cause === 'piston_moving_block') {
-      motion.visualBlockString = motion.settledBlockString
-    }
-    for (const blockString of [
-      motion.visualBlockString,
-      motion.shortVisualBlockString,
-      motion.baseBlockString,
-    ]) {
-      if (blockString && blockString !== AIR_BLOCK_STRING) {
-        motionBlockStrings.add(blockString)
-      }
-    }
-  }
-
-  let maxConcurrentMotions = 0
-  let activeMotionCount = 0
-  const activeMotionStarts = []
-  for (const entry of motionStarts) {
-    activeMotionStarts.push(entry)
-    activeMotionCount += entry.count
-    while ((entry.tick - activeMotionStarts[0].tick) > PISTON_MOTION_DURATION_TICKS) {
-      activeMotionCount -= activeMotionStarts.shift().count
-    }
-    maxConcurrentMotions = Math.max(maxConcurrentMotions, activeMotionCount)
-  }
-
-  return {
-    maxConcurrentMotions,
-    motionBlockStrings,
-    motionByChange,
-    motionCount: motions.length,
-  }
-}
-
-function getMaxActiveBlockCount(replay) {
-  const states = new Map()
-  let activeBlockCount = 0
-  for (const entry of replay.baseline || []) {
-    const key = blockKey(entry.x, entry.y, entry.z)
-    states.set(key, entry.state)
-    if (replay.palette[entry.state] !== AIR_BLOCK_STRING) {
-      activeBlockCount += 1
-    }
-  }
-
-  let maxActiveBlockCount = activeBlockCount
-  for (const frame of replay.frames || []) {
-    for (const change of frame.changes || []) {
-      const key = blockKey(change.x, change.y, change.z)
-      const previousState = states.get(key) ?? 0
-      const wasActive = replay.palette[previousState] !== AIR_BLOCK_STRING
-      const isActive = replay.palette[change.state] !== AIR_BLOCK_STRING
-      if (wasActive !== isActive) {
-        activeBlockCount += isActive ? 1 : -1
-      }
-      states.set(key, change.state)
-      maxActiveBlockCount = Math.max(maxActiveBlockCount, activeBlockCount)
-    }
-  }
-  return maxActiveBlockCount
-}
-
-// Long replays are stored as `.replay.json.gz` to stay under the static hosting
-// per-file limit. The server may or may not add `Content-Encoding: gzip`, so the
-// payload is sniffed for the gzip magic bytes instead of trusting headers.
-async function parseReplayResponse(response) {
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  const isGzip = bytes.length >= 2 && bytes[0] === 0x1F && bytes[1] === 0x8B
-  if (!isGzip) {
-    return JSON.parse(new TextDecoder().decode(bytes))
-  }
-  if (typeof DecompressionStream !== 'function') {
-    throw new TypeError('当前浏览器不支持解压红石回放')
-  }
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
-  return JSON.parse(await new Response(stream).text())
-}
-
 export function resolveRedstoneReplayUrl(item = null, backendConfig = null) {
   return String(
     item?.redstoneReplayUrl
     || backendConfig?.settings?.redstoneArchive?.replayUrl
     || '',
   ).trim()
-}
-
-export async function fetchRedstoneReplay(replayUrl) {
-  const response = await fetch(replayUrl, { cache: 'no-store' })
-  if (!response.ok) {
-    throw new Error(`红石回放请求失败: ${response.status}`)
-  }
-  return parseReplayResponse(response)
-}
-
-function validateReplay(replay) {
-  if (!replay || typeof replay !== 'object') {
-    throw new Error('红石回放文件不是有效对象')
-  }
-  if (replay.format !== REPLAY_FORMAT) {
-    throw new Error(`不支持的红石回放格式: ${replay.format || 'unknown'}`)
-  }
-  if (!Array.isArray(replay.palette) || !replay.palette.length) {
-    throw new Error('红石回放缺少方块状态表')
-  }
-  if (!Array.isArray(replay.baseline) || !Array.isArray(replay.frames)) {
-    throw new TypeError('红石回放缺少初始状态或时间线')
-  }
-
-  const paletteSize = replay.palette.length
-  const validateState = (entry, label) => {
-    if (!Number.isInteger(entry?.state) || entry.state < 0 || entry.state >= paletteSize) {
-      throw new Error(`${label}引用了不存在的方块状态`)
-    }
-  }
-
-  for (const entry of replay.baseline) {
-    validateState(entry, '初始状态')
-  }
-  for (const frame of replay.frames) {
-    if (!Number.isInteger(frame?.tick) || frame.tick < 0) {
-      throw new Error('红石回放包含无效游戏刻')
-    }
-    for (const change of frame.changes || []) {
-      validateState(change, `第 ${frame.tick} 游戏刻`)
-    }
-  }
-
-  return replay
 }
 
 function getMaterialBatchSignature(material) {
@@ -466,7 +212,10 @@ class BatchedBlockLayer {
       mesh.castShadow = false
       mesh.receiveShadow = false
       mesh.frustumCulled = false
-      mesh.perObjectFrustumCulled = true
+      // 回放方块几何很小（整层十万三角形以内），交给 GPU 全画比每帧在 CPU 上逐个实例
+      // 做视锥剔除便宜得多：大场景里有上万个实例，逐个剔除每帧要几毫秒。
+      // 关掉后 BatchedMesh 只在可见性变化时才重建绘制列表。
+      mesh.perObjectFrustumCulled = false
       mesh.sortObjects = false
       mesh.renderOrder = 10
       parent.add(mesh)
@@ -630,8 +379,8 @@ export default class RedstoneReplayController {
     this._interactionBlockStrings = []
     this._commandHandler = this._handleCommand.bind(this)
     this._useBlockInterceptor = this._handleUseBlock.bind(this)
-    this._motionByChange = new WeakMap()
-    this._motionBlockStrings = new Set()
+    // 预处理后的时间线（见 redstone-replay-data.js 的 packRedstoneReplay）
+    this._timeline = null
     this._motionCount = 0
     this._maxConcurrentMotions = 0
     this._maxActiveBlockCount = 0
@@ -639,10 +388,14 @@ export default class RedstoneReplayController {
     this._activeMotions = new Map()
     this._blockModelRegistry = null
     this._motionLayer = null
-    this._dynamicPositionKeys = new Set()
-    this._dynamicPositions = new Map()
+    // posIndex -> 坐标键 "x,y,z"；坐标键 -> posIndex
+    this._posKeys = []
+    this._posIndexByKey = new Map()
     this._dynamicLayer = null
-    this._simulationStates = new Map()
+    // 当前模拟状态：每个坐标最近一次的方块状态和触发的活塞运动，-1 表示没有
+    this._simState = null
+    this._simMotion = null
+    this._simStateCount = 0
     this._motionResourcesPromise = null
     this._destroyed = false
     this._motionGroup = new THREE.Group()
@@ -660,57 +413,42 @@ export default class RedstoneReplayController {
 
   async initialize() {
     try {
-      const replaySource = await this._resolveReplaySource()
-      if (!replaySource) {
+      const timeline = await this._resolveReplayTimeline()
+      if (!timeline) {
         return false
       }
 
-      this.replay = validateReplay(replaySource)
+      this._timeline = timeline
+      this.replay = { ...timeline.meta, palette: timeline.palette }
       this.offset = normalizeOffset(this.world._getProjectionPlacementOffset?.())
-      const motionTimeline = buildPistonMotionTimeline(this.replay)
-      this._motionByChange = motionTimeline.motionByChange
-      this._motionBlockStrings = motionTimeline.motionBlockStrings
-      this._motionCount = motionTimeline.motionCount
-      this._maxConcurrentMotions = motionTimeline.maxConcurrentMotions
-      this._maxActiveBlockCount = getMaxActiveBlockCount(this.replay)
-      for (const entry of this.replay.baseline) {
-        const key = blockKey(entry.x, entry.y, entry.z)
-        this._dynamicPositionKeys.add(key)
-        this._dynamicPositions.set(key, {
-          x: Number(entry.x),
-          y: Number(entry.y),
-          z: Number(entry.z),
-        })
+      this._motionCount = timeline.motionCount
+      this._maxConcurrentMotions = timeline.maxConcurrentMotions
+      this._maxActiveBlockCount = timeline.maxActiveBlockCount
+
+      const { posX, posY, posZ } = timeline
+      this._posKeys = Array.from({ length: timeline.positionCount })
+      this._posIndexByKey = new Map()
+      for (let index = 0; index < timeline.positionCount; index += 1) {
+        const key = blockKey(posX[index], posY[index], posZ[index])
+        this._posKeys[index] = key
+        this._posIndexByKey.set(key, index)
       }
-      for (const frame of this.replay.frames) {
-        for (const change of frame.changes || []) {
-          const key = blockKey(change.x, change.y, change.z)
-          this._dynamicPositionKeys.add(key)
-          this._dynamicPositions.set(key, {
-            x: Number(change.x),
-            y: Number(change.y),
-            z: Number(change.z),
-          })
-        }
-      }
+      this._simState = new Int32Array(timeline.positionCount)
+      this._simMotion = new Int32Array(timeline.positionCount)
       this._resetSimulationStates()
+
       const actionTargetPositions = new Map()
-      for (const frame of this.replay.frames) {
-        for (const entry of frame.actions || []) {
-          const pos = entry?.action?.pos
-          if (!pos) {
-            continue
-          }
-          const worldBlock = {
-            x: Math.floor(Number(pos.x)) + this.offset.x,
-            y: Math.floor(Number(pos.y)) + this.offset.y,
-            z: Math.floor(Number(pos.z)) + this.offset.z,
-          }
-          actionTargetPositions.set(
-            blockKey(worldBlock.x, worldBlock.y, worldBlock.z),
-            worldBlock,
-          )
+      const { actionTargets } = timeline
+      for (let offset = 0; offset < actionTargets.length; offset += 3) {
+        const worldBlock = {
+          x: actionTargets[offset] + this.offset.x,
+          y: actionTargets[offset + 1] + this.offset.y,
+          z: actionTargets[offset + 2] + this.offset.z,
         }
+        actionTargetPositions.set(
+          blockKey(worldBlock.x, worldBlock.y, worldBlock.z),
+          worldBlock,
+        )
       }
       this._actionTargetPositions = [...actionTargetPositions.values()]
       this._actionTargets = new Set(actionTargetPositions.keys())
@@ -728,11 +466,11 @@ export default class RedstoneReplayController {
     }
   }
 
-  async _resolveReplaySource() {
+  async _resolveReplayTimeline() {
     const item = this.world.activeProjectionContext?.item || null
     const embeddedReplay = item?.redstoneReplay
     if (embeddedReplay && typeof embeddedReplay === 'object') {
-      return embeddedReplay
+      return packRedstoneReplay(embeddedReplay)
     }
 
     const replayUrl = resolveRedstoneReplayUrl(item, this.world.backendConfig)
@@ -745,13 +483,63 @@ export default class RedstoneReplayController {
       return prefetched
     }
 
-    return fetchRedstoneReplay(replayUrl)
+    return loadRedstoneReplayTimeline(replayUrl)
   }
 
   _resetSimulationStates() {
-    this._simulationStates.clear()
-    for (const entry of this.replay?.baseline || []) {
-      this._simulationStates.set(blockKey(entry.x, entry.y, entry.z), entry)
+    const { baselinePos, baselineState } = this._timeline
+    this._simState.fill(-1)
+    this._simMotion.fill(-1)
+    this._simStateCount = 0
+    for (let index = 0; index < baselinePos.length; index += 1) {
+      this._writeSimulationState(baselinePos[index], baselineState[index], -1)
+    }
+  }
+
+  _writeSimulationState(posIndex, state, motionIndex) {
+    if (this._simState[posIndex] < 0) {
+      this._simStateCount += 1
+    }
+    this._simState[posIndex] = state
+    this._simMotion[posIndex] = motionIndex
+  }
+
+  /** 坐标当前应显示的方块：活塞运动结束后的稳定状态优先，没有则用记录的状态 */
+  _getSettledBlockString(posIndex) {
+    const motionIndex = this._simMotion[posIndex]
+    if (motionIndex >= 0) {
+      const settled = this._timeline.strings[this._timeline.motionSettled[motionIndex]]
+      if (settled) {
+        return settled
+      }
+    }
+    return this.replay.palette[this._simState[posIndex]]
+  }
+
+  _createMotion(motionIndex) {
+    const timeline = this._timeline
+    const posIndex = timeline.motionPos[motionIndex]
+    const string = index => (index >= 0 ? timeline.strings[index] : '')
+    return {
+      key: this._posKeys[posIndex],
+      posIndex,
+      cause: string(timeline.motionCause[motionIndex]),
+      isRetraction: timeline.motionRetraction[motionIndex] === 1,
+      startTick: timeline.motionStartTick[motionIndex],
+      destination: {
+        x: timeline.posX[posIndex],
+        y: timeline.posY[posIndex],
+        z: timeline.posZ[posIndex],
+      },
+      start: {
+        x: timeline.motionStartX[motionIndex],
+        y: timeline.motionStartY[motionIndex],
+        z: timeline.motionStartZ[motionIndex],
+      },
+      settledBlockString: string(timeline.motionSettled[motionIndex]),
+      visualBlockString: string(timeline.motionVisual[motionIndex]),
+      shortVisualBlockString: string(timeline.motionShortVisual[motionIndex]),
+      baseBlockString: string(timeline.motionBase[motionIndex]),
     }
   }
 
@@ -785,30 +573,8 @@ export default class RedstoneReplayController {
 
   async _prepareMotionResources() {
     const renderLayer = this.world.minecraftSchematicRenderLayer
-    const blockStrings = new Set()
-    const collectState = (entry) => {
-      if (!entry || !this._dynamicPositionKeys.has(blockKey(entry.x, entry.y, entry.z))) {
-        return
-      }
-      const blockString = this.replay.palette[entry.state]
-      if (blockString && blockString !== AIR_BLOCK_STRING && !isMovingPistonBlock(blockString)) {
-        blockStrings.add(blockString)
-      }
-    }
-
-    for (const entry of this.replay.baseline) {
-      collectState(entry)
-    }
-    for (const frame of this.replay.frames) {
-      for (const change of frame.changes || []) {
-        collectState(change)
-      }
-    }
-    for (const blockString of this._motionBlockStrings) {
-      blockStrings.add(blockString)
-    }
-
-    const pendingBlockStrings = [...blockStrings]
+    // worker 已经按出现顺序收集好：baseline/changes 里的方块，再加活塞运动用到的方块
+    const pendingBlockStrings = this._timeline.templateBlockStrings
     let nextBlockStringIndex = 0
     const workerCount = Math.min(8, pendingBlockStrings.length)
     await Promise.all(Array.from({ length: workerCount }, async () => {
@@ -840,22 +606,46 @@ export default class RedstoneReplayController {
       })
     }
 
-    const clearPatches = [...this._dynamicPositions.values()]
-      .map(position => this._buildWorldPatch(position, AIR_BLOCK_STRING))
+    // 动态方块层先离场填好、在后台编译着色器，再和"静态区块清空"同时生效。
+    // 以前它直接挂在场景里，第一帧绘制时同步编译，主线程卡 ~175 ms。
+    this.scene.remove(this._dynamicGroup)
+    for (let posIndex = 0; posIndex < this._posKeys.length; posIndex += 1) {
+      const state = this._simState[posIndex]
+      this._setDynamicBlock(posIndex, state >= 0 ? this.replay.palette[state] : AIR_BLOCK_STRING)
+    }
+    // 交互碰撞体也要在预编译之前建好，否则它的着色器会在第一帧同步编译
+    this._prepareActionTargetCollider()
+    // 同时把场景里已加载的区块材质也编译掉：玩家传送到出生点那一帧通常就是它们第一次被画
+    await Promise.all([
+      this._precompileObject(this._dynamicGroup),
+      this._precompileObject(this.scene),
+    ])
+    if (this._destroyed) {
+      return
+    }
+
+    const clearPatches = this._posKeys
+      .map((_key, posIndex) => this._buildWorldPatch(posIndex, AIR_BLOCK_STRING))
     const cleared = await renderLayer.setRuntimeBlocksAtWorldAsync(clearPatches)
     if (!cleared) {
       throw new Error('无法建立独立活塞渲染层')
     }
+    this.scene.add(this._dynamicGroup)
 
-    for (const key of this._dynamicPositions.keys()) {
-      const state = this._simulationStates.get(key)
-      const blockString = state
-        ? this.replay.palette[state.state]
-        : AIR_BLOCK_STRING
-      this._setDynamicBlock(key, blockString)
-    }
-    this._prepareActionTargetCollider()
     await this._prewarmMotionLayer()
+  }
+
+  async _precompileObject(object) {
+    const renderer = this.experience.renderer
+    if (!renderer?.compileAsync) {
+      return
+    }
+    try {
+      await renderer.compileAsync(object, this.scene)
+    }
+    catch (error) {
+      console.warn('[RedstoneReplay] Shader precompile failed:', error)
+    }
   }
 
   async _prewarmMotionLayer() {
@@ -887,10 +677,10 @@ export default class RedstoneReplayController {
     try {
       const renderer = this.experience.renderer
       const camera = this.experience.camera?.instance
-      if (!renderer?.instance?.compileAsync || !renderer?.renderFrame || !camera) {
+      if (!renderer?.compileAsync || !renderer?.renderFrame || !camera) {
         throw new Error('活塞运动合批无法预热显卡资源')
       }
-      await renderer.instance.compileAsync(this.scene, camera)
+      await renderer.compileAsync(this._motionGroup, this.scene)
       renderer.renderFrame()
     }
     finally {
@@ -934,9 +724,10 @@ export default class RedstoneReplayController {
         worldBlock.y - this.offset.y,
         worldBlock.z - this.offset.z,
       )
-      const state = this._simulationStates.get(replayKey)
-      this._interactionBlockStrings[index] = state
-        ? this.replay.palette[state.state]
+      const posIndex = this._posIndexByKey.get(replayKey)
+      const state = posIndex === undefined ? -1 : this._simState[posIndex]
+      this._interactionBlockStrings[index] = state >= 0
+        ? this.replay.palette[state]
         : AIR_BLOCK_STRING
       this._actionTargetIndexByKey.set(replayKey, index)
       matrix.makeTranslation(worldBlock.x, worldBlock.y, worldBlock.z)
@@ -1051,70 +842,71 @@ export default class RedstoneReplayController {
     )
     this._resetSimulationStates()
 
+    const timeline = this._timeline
     let nextFrameIndex = 0
     while (
-      nextFrameIndex < this.replay.frames.length
-      && this.replay.frames[nextFrameIndex].tick <= nextTick
+      nextFrameIndex < timeline.frameCount
+      && timeline.frameTicks[nextFrameIndex] <= nextTick
     ) {
-      const frame = this.replay.frames[nextFrameIndex]
-      for (const change of frame.changes || []) {
-        this._simulationStates.set(blockKey(change.x, change.y, change.z), change)
+      const end = timeline.frameChangeStart[nextFrameIndex + 1]
+      for (let change = timeline.frameChangeStart[nextFrameIndex]; change < end; change += 1) {
+        this._writeSimulationState(
+          timeline.changePos[change],
+          timeline.changeState[change],
+          timeline.changeMotion[change],
+        )
       }
       nextFrameIndex += 1
     }
 
+    // 模拟状态里的坐标全部属于独立渲染层，静态区块里早已清空，不需要再打补丁
     this._clearDynamicBlocks()
-    const patches = []
-    for (const entry of this._simulationStates.values()) {
-      const key = blockKey(entry.x, entry.y, entry.z)
-      const blockString = this._motionByChange.get(entry)?.settledBlockString
-        || this.replay.palette[entry.state]
-      if (this._dynamicPositionKeys.has(key)) {
-        this._setDynamicBlock(key, blockString)
+    for (let posIndex = 0; posIndex < this._posKeys.length; posIndex += 1) {
+      if (this._simState[posIndex] >= 0) {
+        this._setDynamicBlock(posIndex, this._getSettledBlockString(posIndex))
       }
-      else {
-        patches.push(this._buildWorldPatch(entry, blockString))
-      }
-    }
-    if (patches.length) {
-      await this.world.minecraftSchematicRenderLayer?.setRuntimeBlocksAtWorldAsync?.(patches)
     }
     this.currentTick = nextTick
     this.currentFrameIndex = nextFrameIndex
     this.tickAccumulator = 0
-    this.lastChangedBlocks = this._simulationStates.size
+    this.lastChangedBlocks = this._simStateCount
     this._emitState()
   }
 
-  _buildWorldPatch(change, blockString = this.replay.palette[change.state]) {
+  _buildWorldPatch(posIndex, blockString) {
+    const timeline = this._timeline
     return {
-      worldX: Math.floor(Number(change.x)) + this.offset.x,
-      worldY: Math.floor(Number(change.y)) + this.offset.y,
-      worldZ: Math.floor(Number(change.z)) + this.offset.z,
+      worldX: Math.floor(timeline.posX[posIndex]) + this.offset.x,
+      worldY: Math.floor(timeline.posY[posIndex]) + this.offset.y,
+      worldZ: Math.floor(timeline.posZ[posIndex]) + this.offset.z,
       blockString,
     }
   }
 
   _advanceToTick(targetTick) {
     const changedPositions = new Set()
+    const timeline = this._timeline
     while (
-      this.currentFrameIndex < this.replay.frames.length
-      && this.replay.frames[this.currentFrameIndex].tick <= targetTick
+      this.currentFrameIndex < timeline.frameCount
+      && timeline.frameTicks[this.currentFrameIndex] <= targetTick
     ) {
-      const frame = this.replay.frames[this.currentFrameIndex]
-      this._updatePistonMotions(frame.tick)
-      for (const change of frame.changes || []) {
-        const key = blockKey(change.x, change.y, change.z)
-        const motion = this._motionByChange.get(change) || null
-        this._simulationStates.set(key, change)
-        changedPositions.add(key)
+      this._updatePistonMotions(timeline.frameTicks[this.currentFrameIndex])
+      const end = timeline.frameChangeStart[this.currentFrameIndex + 1]
+      for (let change = timeline.frameChangeStart[this.currentFrameIndex]; change < end; change += 1) {
+        const posIndex = timeline.changePos[change]
+        const state = timeline.changeState[change]
+        const motionIndex = timeline.changeMotion[change]
+        const key = this._posKeys[posIndex]
+        this._writeSimulationState(posIndex, state, motionIndex)
+        changedPositions.add(posIndex)
 
-        if (motion) {
+        if (motionIndex >= 0) {
+          const motion = this._createMotion(motionIndex)
           this._activateMotion(motion)
-          this._setDynamicBlock(key, motion.baseBlockString)
+          this._setDynamicBlock(posIndex, motion.baseBlockString)
         }
         else if (!this._activeMotions.has(key)) {
-          this._setDynamicBlock(key, this.replay.palette[change.state])
+          this._setDynamicBlock(posIndex, this.replay.palette[state])
         }
       }
       this.currentFrameIndex += 1
@@ -1128,19 +920,20 @@ export default class RedstoneReplayController {
     this._emitState()
   }
 
-  _setDynamicBlock(key, blockString) {
-    const position = this._dynamicPositions.get(key)
-    if (!position) {
-      throw new Error(`独立方块渲染缺少坐标: ${key}`)
+  _setDynamicBlock(posIndex, blockString) {
+    const key = this._posKeys[posIndex]
+    if (key === undefined) {
+      throw new Error(`独立方块渲染缺少坐标: ${posIndex}`)
     }
     if (!this._dynamicLayer) {
       throw new Error('独立方块渲染层尚未准备完成')
     }
+    const timeline = this._timeline
     const normalizedBlockString = String(blockString || AIR_BLOCK_STRING)
     this._dynamicLayer.set(key, normalizedBlockString, {
-      x: this.offset.x + position.x,
-      y: this.offset.y + position.y,
-      z: this.offset.z + position.z,
+      x: this.offset.x + timeline.posX[posIndex],
+      y: this.offset.y + timeline.posY[posIndex],
+      z: this.offset.z + timeline.posZ[posIndex],
     })
     const actionTargetIndex = this._actionTargetIndexByKey.get(key)
     if (actionTargetIndex !== undefined) {
@@ -1176,7 +969,7 @@ export default class RedstoneReplayController {
   }
 
   _getMotionVisualBlockString(motion, progress) {
-    if (motion.cause === 'piston_moving_block') {
+    if (motion.cause === MOTION_CAUSE_MOVING_BLOCK) {
       return motion.visualBlockString
     }
     if (motion.isRetraction) {
@@ -1228,16 +1021,11 @@ export default class RedstoneReplayController {
 
   _completeMotion(motion) {
     motion.completing = true
-    const state = this._simulationStates.get(motion.key)
-    if (!state) {
+    if (this._simState[motion.posIndex] < 0) {
       throw new Error(`活塞运动结束时缺少方块状态: ${motion.key}`)
     }
 
-    const currentMotion = this._motionByChange.get(state) || null
-    const blockString = currentMotion
-      ? currentMotion.settledBlockString
-      : this.replay.palette[state.state]
-    this._setDynamicBlock(motion.key, blockString)
+    this._setDynamicBlock(motion.posIndex, this._getSettledBlockString(motion.posIndex))
     this._removeMotionBlock(motion.key)
     this._activeMotions.delete(motion.key)
   }
@@ -1273,7 +1061,7 @@ export default class RedstoneReplayController {
     }
 
     return {
-      dynamicPositions: this._dynamicPositionKeys.size,
+      dynamicPositions: this._posKeys.length,
       pistonMotions: this._motionCount,
       materialBatches: this._blockModelRegistry?.pools?.size || 0,
       dynamic: this._dynamicLayer?.getStats() || emptyStats,
