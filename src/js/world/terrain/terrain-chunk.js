@@ -41,8 +41,6 @@ export default class TerrainChunk {
 
     this.renderer = new TerrainRenderer(this.container, {
       sharedParams: sharedRenderParams,
-      debugEnabled: false,
-      listenDataReady: false,
       chunkName: `${this.chunkX}, ${this.chunkZ}`,
       visibilityFilter: blockVisibilityFilter,
     })

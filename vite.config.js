@@ -2,7 +2,6 @@ import { Buffer } from 'node:buffer'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-import { partytownVite } from '@builder.io/partytown/utils'
 import vue from '@vitejs/plugin-vue'
 import glsl from 'vite-plugin-glsl'
 
@@ -1066,7 +1065,6 @@ export default {
     target: 'es2022',
     modulePreload: false,
     rollupOptions: {
-      external: ['/_vercel/insights/script.js'],
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) {
@@ -1129,8 +1127,5 @@ export default {
     externalizeInlineWasm(),
     glsl(),
     vue(),
-    partytownVite({
-      dest: path.join(__dirname, 'dist', '~partytown'),
-    }),
   ],
 }

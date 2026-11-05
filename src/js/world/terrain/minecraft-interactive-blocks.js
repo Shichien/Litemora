@@ -38,19 +38,19 @@ function withOpenState(properties = {}, open = false) {
   }
 }
 
-export function isMinecraftDoorBlockName(blockName = '') {
+function isMinecraftDoorBlockName(blockName = '') {
   return normalizeMinecraftBlockName(blockName).endsWith('_door')
 }
 
-export function isMinecraftTrapdoorBlockName(blockName = '') {
+function isMinecraftTrapdoorBlockName(blockName = '') {
   return normalizeMinecraftBlockName(blockName).endsWith('_trapdoor')
 }
 
-export function isMinecraftFenceGateBlockName(blockName = '') {
+function isMinecraftFenceGateBlockName(blockName = '') {
   return normalizeMinecraftBlockName(blockName).endsWith('_fence_gate')
 }
 
-export function isMinecraftOpenableBlockName(blockName = '') {
+function isMinecraftOpenableBlockName(blockName = '') {
   return isMinecraftDoorBlockName(blockName)
     || isMinecraftTrapdoorBlockName(blockName)
     || isMinecraftFenceGateBlockName(blockName)

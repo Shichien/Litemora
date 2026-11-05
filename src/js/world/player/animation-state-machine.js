@@ -3,7 +3,7 @@ import { AnimationClips, AnimationStates } from './animation-config.js'
 /**
  * 基礎狀態機類，提供狀態註冊與切換邏輯
  */
-export class AnimationStateMachine {
+class AnimationStateMachine {
   constructor() {
     this.states = {}
     this.currentState = null

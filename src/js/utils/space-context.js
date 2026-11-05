@@ -19,17 +19,12 @@ export function isValidSpaceName(rawName = '') {
   return SPACE_NAME_REGEX.test(name)
 }
 
-export function isRootPortalHost(hostname = window.location.hostname) {
+function isRootPortalHost(hostname = window.location.hostname) {
   const host = normalizeHost(hostname)
   return host === ROOT_DOMAIN || host === `www.${ROOT_DOMAIN}`
 }
 
-export function isLocalDevHost(hostname = window.location.hostname) {
-  const host = normalizeHost(hostname)
-  return host === 'localhost' || host === '127.0.0.1'
-}
-
-export function getSpaceNameFromHost(hostname = window.location.hostname) {
+function getSpaceNameFromHost(hostname = window.location.hostname) {
   const host = normalizeHost(hostname)
 
   if (!host || isRootPortalHost(host)) {
@@ -45,7 +40,7 @@ export function getSpaceNameFromHost(hostname = window.location.hostname) {
   return ''
 }
 
-export function getSpaceNameFromPathname(pathname = window.location.pathname) {
+function getSpaceNameFromPathname(pathname = window.location.pathname) {
   const segments = getPathSegments(pathname)
   if (!segments.length) {
     return ''
@@ -83,7 +78,7 @@ export function isGalleryRoute(pathname = window.location.pathname) {
   return section === 'gallery' && isValidSpaceName(gallerySpaceName)
 }
 
-export function getSpaceProjectionIdFromPathname(pathname = window.location.pathname) {
+function getSpaceProjectionIdFromPathname(pathname = window.location.pathname) {
   const spaceName = getSpaceNameFromPathname(pathname)
   if (!spaceName) {
     return ''
@@ -102,7 +97,7 @@ export function getSpaceProjectionIdFromPathname(pathname = window.location.path
   return String(decodeURIComponent(segments[2] || '')).trim()
 }
 
-export function getWorldsProjectionIdFromSearch(search = window.location.search, pathname = window.location.pathname) {
+function getWorldsProjectionIdFromSearch(search = window.location.search, pathname = window.location.pathname) {
   if (!isSpaceWorldsRoute(pathname)) {
     return ''
   }
@@ -165,18 +160,6 @@ export function buildSpaceWorldsAdminUrl(spaceName, projectionId = '') {
     url.searchParams.set('projection', normalizedProjectionId)
   }
   url.hash = 'admin-config'
-  return url.toString()
-}
-
-export function buildGalleryUrl(spaceName) {
-  const normalized = normalizeSpaceName(spaceName)
-  if (!isValidSpaceName(normalized)) {
-    throw new Error('invalid_space_name')
-  }
-
-  const url = new URL(window.location.origin)
-  url.pathname = `/gallery/${normalized}`
-  url.search = ''
   return url.toString()
 }
 

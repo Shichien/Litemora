@@ -83,7 +83,8 @@ export default class InputManager {
     // 鼠标按键事件
     window.addEventListener('mousedown', this._onMouseDown)
     window.addEventListener('mouseup', this._onMouseUp)
-    window.addEventListener('wheel', this._onWheel, { passive: false })
+    // 处理器从不调用 preventDefault，使用 passive 监听避免阻塞滚动
+    window.addEventListener('wheel', this._onWheel, { passive: true })
 
     // 阻止右键菜单（避免影响 PointerLock / 场景交互）
     window.addEventListener('contextmenu', this._onContextMenu)

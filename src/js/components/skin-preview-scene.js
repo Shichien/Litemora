@@ -47,7 +47,6 @@ export default class SkinPreviewScene {
 
     // 加载控制（防止重复加载）
     this.loadingId = 0
-    this.currentLoadingId = 0
 
     // 时钟（用于动画更新）
     this.clock = new THREE.Clock()
@@ -275,7 +274,6 @@ export default class SkinPreviewScene {
         return
       }
 
-      this.currentLoadingId = currentLoadId
       this.currentModel = gltf.scene
 
       // 设置初始旋转
@@ -333,33 +331,11 @@ export default class SkinPreviewScene {
   }
 
   /**
-   * 获取当前可用的动画列表
-   * @returns {Array<string>} 动画名称数组
-   */
-  getAvailableAnimations() {
-    return this.animations.map(clip => clip.name)
-  }
-
-  /**
    * 按钮控制旋转
    * @param {number} angle - 旋转角度（弧度），正值为顺时针
    */
   rotate(angle) {
     this.targetRotation += angle
-  }
-
-  /**
-   * 向左旋转（顺时针 45 度）
-   */
-  rotateLeft() {
-    this.rotate(Math.PI / 4)
-  }
-
-  /**
-   * 向右旋转（逆时针 45 度）
-   */
-  rotateRight() {
-    this.rotate(-Math.PI / 4)
   }
 
   /**

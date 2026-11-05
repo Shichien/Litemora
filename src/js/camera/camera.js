@@ -33,12 +33,18 @@ export default class Camera {
       BIRD_PERSPECTIVE: 'bird-perspective',
     }
     this.currentMode = null
-    this.previousMode = null
     this.allowPerspectiveToggle = true
 
     this.position = new THREE.Vector3(0, 0, 0)
     this.target = new THREE.Vector3(0, 0, 0)
-    this._terrainInfo = this._getTerrainInfo()
+    // Fixed bird-view framing bounds (no runtime terrain bounding provider exists).
+    this._terrainInfo = {
+      center: new THREE.Vector3(0, 0, 0),
+      width: 128,
+      depth: 128,
+      height: 10,
+      radius: 90,
+    }
     this._topViewConfig = {
       birdDistanceRatio: 1.6,
       birdHeightRatio: 1.2,
@@ -72,27 +78,21 @@ export default class Camera {
     this.switchMode(this.cameraModes.FIRST_PERSON)
     this.setDebug()
 
-    emitter.on('input:toggle_camera_side', () => {
+    this._handleToggleCameraSide = () => {
       this.toggleSide()
-    })
-    emitter.on('input:toggle_perspective', () => {
+    }
+    this._handleTogglePerspective = () => {
       if (!this.allowPerspectiveToggle) {
         return
       }
       this._cycleGameplayPerspective()
-    })
-    emitter.on('ui:control-permissions-changed', (payload = {}) => {
+    }
+    this._handleControlPermissionsChanged = (payload = {}) => {
       if (payload.allowPerspectiveToggle !== undefined) {
         this.allowPerspectiveToggle = !!payload.allowPerspectiveToggle
       }
-    })
-    emitter.on('terrain:data-ready', () => {
-      this._terrainInfo = this._getTerrainInfo()
-      if (this.currentMode === this.cameraModes.BIRD_PERSPECTIVE) {
-        this._applyTopViewPlacement()
-      }
-    })
-    emitter.on('input:mouse_move', ({ movementY }) => {
+    }
+    this._handleMouseMove = ({ movementY }) => {
       if (this.currentMode === this.cameraModes.BIRD_PERSPECTIVE) {
         return
       }
@@ -102,8 +102,8 @@ export default class Camera {
         this.gameplayPitchMin,
         this.gameplayPitchMax,
       )
-    })
-    emitter.on('settings:mouse-sensitivity-changed', (value) => {
+    }
+    this._handleMouseSensitivityChanged = (value) => {
       const numericValue = Number(value)
       if (!Number.isFinite(numericValue)) {
         return
@@ -113,8 +113,8 @@ export default class Camera {
         0.0001,
         numericValue * FIRST_PERSON_MOUSE_SENSITIVITY_RATIO,
       )
-    })
-    emitter.on('settings:camera-rig-changed', ({ fov } = {}) => {
+    }
+    this._handleCameraRigChanged = ({ fov } = {}) => {
       if (fov?.baseFov !== undefined) {
         const nextFov = Number(fov.baseFov)
         if (Number.isFinite(nextFov)) {
@@ -123,10 +123,18 @@ export default class Camera {
           this.currentGameplayFov = this.baseGameplayFov
         }
       }
-    })
-    emitter.on('pointer:unlocked', () => {
+    }
+    this._handlePointerUnlocked = () => {
       this.gameplayPitchTarget = this.gameplayPitch
-    })
+    }
+
+    emitter.on('input:toggle_camera_side', this._handleToggleCameraSide)
+    emitter.on('input:toggle_perspective', this._handleTogglePerspective)
+    emitter.on('ui:control-permissions-changed', this._handleControlPermissionsChanged)
+    emitter.on('input:mouse_move', this._handleMouseMove)
+    emitter.on('settings:mouse-sensitivity-changed', this._handleMouseSensitivityChanged)
+    emitter.on('settings:camera-rig-changed', this._handleCameraRigChanged)
+    emitter.on('pointer:unlocked', this._handlePointerUnlocked)
   }
 
   attachRig(rig) {
@@ -190,7 +198,6 @@ export default class Camera {
       return
     }
 
-    this.previousMode = this.currentMode
     this.currentMode = mode
     this.instance = this.perspectiveCamera
     this.instance.fov = this.currentGameplayFov
@@ -267,21 +274,6 @@ export default class Camera {
     this.instance.position.copy(center).add(offset)
     this.instance.lookAt(center)
     this.orbitControls.target.copy(center)
-  }
-
-  _getTerrainInfo() {
-    const terrainRenderer = this.experience.world?.terrainRenderer
-    if (terrainRenderer?.getBoundingInfo) {
-      return terrainRenderer.getBoundingInfo()
-    }
-
-    return {
-      center: new THREE.Vector3(0, 0, 0),
-      width: 128,
-      depth: 128,
-      height: 10,
-      radius: 90,
-    }
   }
 
   attachRenderer(renderer) {
@@ -372,15 +364,6 @@ export default class Camera {
         this.cameraHelper.update()
       }
     })
-  }
-
-  updateCamera() {
-    this.instance.position.copy(this.position)
-    this.instance.lookAt(this.target)
-    this.orbitControls.target.copy(this.target)
-    this.trackballControls.target.copy(this.target)
-    this.orbitControls.update()
-    this.trackballControls.update()
   }
 
   resize() {
@@ -546,6 +529,14 @@ export default class Camera {
   }
 
   destroy() {
+    emitter.off('input:toggle_camera_side', this._handleToggleCameraSide)
+    emitter.off('input:toggle_perspective', this._handleTogglePerspective)
+    emitter.off('ui:control-permissions-changed', this._handleControlPermissionsChanged)
+    emitter.off('input:mouse_move', this._handleMouseMove)
+    emitter.off('settings:mouse-sensitivity-changed', this._handleMouseSensitivityChanged)
+    emitter.off('settings:camera-rig-changed', this._handleCameraRigChanged)
+    emitter.off('pointer:unlocked', this._handlePointerUnlocked)
+
     if (this.orbitControls) {
       this.orbitControls.dispose()
       this.orbitControls = null

@@ -256,7 +256,7 @@ export default class BlockBreakParticles {
 
       // 物理模拟：重力 + 速度衰减
       p.velocity.y += this.params.gravity * dt
-      p.sprite.position.add(p.velocity.clone().multiplyScalar(dt))
+      p.sprite.position.addScaledVector(p.velocity, dt)
 
       // 透明度渐变
       const lifeRatio = age / p.lifetime

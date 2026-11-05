@@ -222,7 +222,12 @@ export default class BlockMiningController {
     // Mining complete
     if (this.miningProgress >= 1) {
       this.isCompletingMining = true
-      void this._completeMining()
+      this._completeMining().catch((error) => {
+        // Always release the completing lock, otherwise mining stays blocked forever
+        console.warn('[BlockMiningController] Failed to complete mining:', error)
+        this._resetMining()
+        emitter.emit('game:mining-cancel')
+      })
     }
   }
 

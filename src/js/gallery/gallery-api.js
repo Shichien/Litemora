@@ -3,15 +3,6 @@ import {
   ensureProjectionDisplayName,
   normalizeProjectionSlug,
 } from '../utils/projection-name.js'
-import {
-  claimLocalGallerySpace,
-  createLocalGalleryItem,
-  deleteLocalGalleryItem,
-  fetchLocalGallery,
-  fetchLocalGalleryItem,
-  fetchLocalGalleryItemSource,
-  isLocalGalleryStoreEnabled,
-} from './local-gallery-store.js'
 
 const PROJECTION_CACHE_PREFIX = 'mc-projection-cache'
 
@@ -149,29 +140,6 @@ function normalizeProjectionItemIdentifier(identifier = null) {
   }
 }
 
-function buildProjectionListItem(item = null) {
-  if (!item || typeof item !== 'object') {
-    return null
-  }
-
-  const preview = buildProjectionPreview({ item })
-  return {
-    id: String(item.id || '').trim(),
-    title: String(item.title || item.schematic?.name || item.sourceFile?.fileName || 'World').trim(),
-    projectionSlug: String(item.projectionSlug || '').trim(),
-    description: String(item.description || '').trim(),
-    visibility: String(item.visibility || 'public').trim(),
-    fileName: String(item.fileName || item.sourceFile?.fileName || '').trim(),
-    schematic: item.schematic || null,
-    placement: item.placement || null,
-    preview,
-    thumbnailDataUrl: String(item.thumbnailDataUrl || '').trim(),
-    createdAt: Number(item.createdAt || 0),
-    updatedAt: Number(item.updatedAt || 0),
-    localOnly: !!item.localOnly,
-  }
-}
-
 function getProjectionCacheKeys(spaceName = '', identifier = '') {
   const normalizedSpace = normalizeProjectionIdentifier(spaceName)
   const normalizedIdentifier = normalizeProjectionIdentifier(identifier)
@@ -260,56 +228,6 @@ function removeProjectionCache(spaceName = '', identifier = '') {
   }
 }
 
-function listProjectionCacheItems(spaceName = '') {
-  if (typeof window === 'undefined') {
-    return []
-  }
-
-  const normalizedSpace = normalizeProjectionIdentifier(spaceName)
-  if (!normalizedSpace) {
-    return []
-  }
-
-  const prefix = `${PROJECTION_CACHE_PREFIX}:space:${encodeURIComponent(normalizedSpace)}:projection:`
-  const entries = []
-
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index)
-    if (!key || !key.startsWith(prefix)) {
-      continue
-    }
-
-    try {
-      const parsed = JSON.parse(localStorage.getItem(key) || 'null')
-      if (!parsed?.item) {
-        continue
-      }
-      entries.push(parsed.item)
-    }
-    catch {
-      // ignore malformed cache entry
-    }
-  }
-
-  const deduped = []
-  const seen = new Set()
-  for (const entry of entries) {
-    const cacheKey = getProjectionIdentity(entry)
-
-    if (!cacheKey || seen.has(cacheKey)) {
-      continue
-    }
-
-    seen.add(cacheKey)
-    const summary = buildProjectionListItem(entry)
-    if (summary?.id || summary?.projectionSlug) {
-      deduped.push(summary)
-    }
-  }
-
-  return deduped.sort((left, right) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
-}
-
 function listAllProjectionCacheItems() {
   if (typeof window === 'undefined') {
     return []
@@ -395,29 +313,6 @@ function buildCachedDiscoverProjectionFeed(limit = 12) {
     .slice(0, Math.max(1, Math.round(Number(limit) || 12)))
 }
 
-function mergeProjectionLists(primaryItems = [], cachedItems = []) {
-  const merged = []
-  const seen = new Set()
-
-  for (const item of [...primaryItems, ...cachedItems]) {
-    const summary = buildProjectionListItem(item)
-    if (!summary) {
-      continue
-    }
-
-    const dedupeKey = getProjectionIdentity(summary)
-
-    if (!dedupeKey || seen.has(dedupeKey)) {
-      continue
-    }
-
-    seen.add(dedupeKey)
-    merged.push(summary)
-  }
-
-  return merged.sort((left, right) => Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0))
-}
-
 function buildProjectionCacheItem({
   spaceName,
   item,
@@ -500,16 +395,17 @@ async function requestBinary(url, options = {}) {
   const response = await fetch(url, options)
   if (!response.ok) {
     const rawText = await response.text().catch(() => '')
-    try {
-      const payload = rawText ? JSON.parse(rawText) : null
-      throw new Error(payload?.details || payload?.error || 'request_failed')
-    }
-    catch (error) {
-      if (error instanceof Error && error.message !== 'Unexpected end of JSON input') {
-        throw error
+    let payload = null
+    if (rawText) {
+      try {
+        payload = JSON.parse(rawText)
       }
-      throw new Error(rawText || 'request_failed')
+      catch {
+        // Non-JSON error body (e.g. an HTML 404 page): surface the raw text.
+        throw new Error(rawText)
+      }
     }
+    throw new Error(payload?.details || payload?.error || 'request_failed')
   }
 
   return {
@@ -519,22 +415,7 @@ async function requestBinary(url, options = {}) {
   }
 }
 
-function shouldUseLocalGalleryApi() {
-  return !shouldUseMockGalleryApi() && isLocalGalleryStoreEnabled()
-}
-
 export async function fetchGallery(spaceName, session = null) {
-  if (shouldUseLocalGalleryApi()) {
-    const payload = await fetchLocalGallery(spaceName)
-    return {
-      ...payload,
-      items: mergeProjectionLists(
-        Array.isArray(payload?.items) ? payload.items : [],
-        listProjectionCacheItems(spaceName),
-      ),
-    }
-  }
-
   return requestJson(buildApiUrl('/api/gallery', { space: spaceName }), {
     headers: buildHeaders(session),
   })
@@ -542,14 +423,6 @@ export async function fetchGallery(spaceName, session = null) {
 
 export async function fetchDiscoverProjectionFeed(limit = 12) {
   const normalizedLimit = Math.min(24, Math.max(1, Math.round(Number(limit) || 12)))
-
-  if (shouldUseLocalGalleryApi()) {
-    return {
-      items: buildCachedDiscoverProjectionFeed(normalizedLimit),
-      cached: true,
-      localOnly: true,
-    }
-  }
 
   try {
     return await requestJson(buildApiUrl('/api/discover', {
@@ -622,25 +495,18 @@ export async function claimGallerySpace(options = {}) {
     session = null,
   } = options
 
-  const payload = shouldUseLocalGalleryApi()
-    ? await claimLocalGallerySpace({
-      spaceName,
+  const payload = await requestJson('/api/gallery/claim', {
+    method: 'POST',
+    headers: buildHeaders(session, {
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({
+      space: spaceName,
       displayName,
       bio,
       title,
-    })
-    : await requestJson('/api/gallery/claim', {
-      method: 'POST',
-      headers: buildHeaders(session, {
-        'Content-Type': 'application/json',
-      }),
-      body: JSON.stringify({
-        space: spaceName,
-        displayName,
-        bio,
-        title,
-      }),
-    })
+    }),
+  })
 
   emitGalleryChanged({
     type: 'claim',
@@ -722,19 +588,6 @@ export async function createGalleryItem({
         }),
       })
     })()
-    : shouldUseLocalGalleryApi()
-        ? await createLocalGalleryItem({
-            spaceName,
-            title,
-            description,
-            file,
-            schematic,
-            previewModel,
-            placement,
-            visibility,
-            thumbnailDataUrl,
-            projectionName,
-          })
     : await (async () => {
       const formData = new FormData()
       formData.set('space', String(spaceName || '').trim())
@@ -780,24 +633,6 @@ export async function createGalleryItem({
 }
 
 export async function fetchGalleryItem(spaceName, itemId, session = null) {
-  if (shouldUseLocalGalleryApi()) {
-    try {
-      return await fetchLocalGalleryItem(spaceName, itemId)
-    }
-    catch (error) {
-      const cachedItem = readProjectionCache(spaceName, itemId)
-      if (cachedItem) {
-        return {
-          item: cachedItem,
-          profile: null,
-          viewer: null,
-          cached: true,
-        }
-      }
-      throw error
-    }
-  }
-
   return requestJson(buildApiUrl('/api/gallery/item', {
     space: spaceName,
     item: itemId,
@@ -808,10 +643,6 @@ export async function fetchGalleryItem(spaceName, itemId, session = null) {
 
 export async function fetchGalleryItemSource(spaceName, itemId, session = null, sourceFile = null) {
   const fallbackFile = sourceFile && typeof sourceFile === 'object' ? sourceFile : {}
-
-  if (shouldUseLocalGalleryApi()) {
-    return fetchLocalGalleryItemSource(spaceName, itemId)
-  }
 
   const payload = await requestBinary(buildApiUrl('/api/gallery/source', {
     space: spaceName,
@@ -831,15 +662,13 @@ export async function fetchGalleryItemSource(spaceName, itemId, session = null, 
 export async function deleteGalleryItem(spaceName, identifier, session = null) {
   const { itemId, item } = normalizeProjectionItemIdentifier(identifier)
   const cachedItem = item || readProjectionCache(spaceName, itemId)
-  const payload = shouldUseLocalGalleryApi()
-    ? await deleteLocalGalleryItem(spaceName, itemId)
-    : await requestJson(buildApiUrl('/api/gallery/item', {
-      space: spaceName,
-      item: itemId,
-    }), {
-      method: 'DELETE',
-      headers: buildHeaders(session),
-    })
+  const payload = await requestJson(buildApiUrl('/api/gallery/item', {
+    space: spaceName,
+    item: itemId,
+  }), {
+    method: 'DELETE',
+    headers: buildHeaders(session),
+  })
 
   emitGalleryChanged({
     type: 'delete',

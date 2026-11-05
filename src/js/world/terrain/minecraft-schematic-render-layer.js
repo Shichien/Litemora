@@ -17,6 +17,7 @@ const STATE_PARTITION_CHUNK_SPAN = 2
 const PREVIEW_GAMMA = 0.5
 const PREVIEW_GAMMA_EXPONENT = 1 / PREVIEW_GAMMA
 const VISIBILITY_UPDATE_INTERVAL_MS = 80
+const RENDER_LAYER_DEBUG_ENABLED = import.meta.env.DEV
 
 function createEmptyBounds() {
   return {
@@ -332,38 +333,6 @@ export default class MinecraftSchematicRenderLayer {
     return this._runtimeActive && !!this._runtimeBridge
   }
 
-  setRuntimeBlockAtWorld(worldX, worldY, worldZ, blockString = 'minecraft:air') {
-    return this.setRuntimeBlocksAtWorld([{
-      worldX,
-      worldY,
-      worldZ,
-      blockString,
-    }])
-  }
-
-  setRuntimeBlocksAtWorld(worldBlocks = []) {
-    if (!this._runtimeBridge?.schematicObject) {
-      return false
-    }
-
-    const patched = this._runtimeBridge.setBlocksAtWorld(worldBlocks)
-    if (patched) {
-      this._lastBuildProfile = {
-        ...(this._lastBuildProfile || {}),
-        lastPatch: {
-          mode: 'schematic-renderer-wasm',
-          worldBlocks: (Array.isArray(worldBlocks) ? worldBlocks : []).map(worldBlock => ({
-            x: Math.floor(Number(worldBlock?.worldX ?? worldBlock?.x ?? 0)),
-            y: Math.floor(Number(worldBlock?.worldY ?? worldBlock?.y ?? 0)),
-            z: Math.floor(Number(worldBlock?.worldZ ?? worldBlock?.z ?? 0)),
-            blockString: String(worldBlock?.blockString || 'minecraft:air'),
-          })),
-        },
-      }
-    }
-    return patched
-  }
-
   async setRuntimeBlocksAtWorldAsync(worldBlocks = []) {
     if (!this._runtimeBridge?.schematicObject) {
       return false
@@ -504,7 +473,9 @@ export default class MinecraftSchematicRenderLayer {
       sourceSignature: runtimeStats.sourceSignature,
     }
 
-    console.debug('[MinecraftSchematicRenderLayer] Runtime build profile', this._lastBuildProfile)
+    if (RENDER_LAYER_DEBUG_ENABLED) {
+      console.debug('[MinecraftSchematicRenderLayer] Runtime build profile', this._lastBuildProfile)
+    }
 
     return {
       uniqueBlockStates: 0,
@@ -611,7 +582,9 @@ export default class MinecraftSchematicRenderLayer {
         }
       : nextProfile
 
-    console.debug('[MinecraftSchematicRenderLayer] Build profile', this._lastBuildProfile)
+    if (RENDER_LAYER_DEBUG_ENABLED) {
+      console.debug('[MinecraftSchematicRenderLayer] Build profile', this._lastBuildProfile)
+    }
 
     return {
       uniqueBlockStates: uniqueStateCount,

@@ -73,7 +73,6 @@ const viewerDisplayName = computed(() => {
   return account.name || account.email || account.id
 })
 const viewerEmail = computed(() => authSession.value?.account?.email || '')
-const viewerRole = computed(() => isLocalDevSession.value ? 'Admin' : 'Member')
 const viewerAvatar = computed(() => authSession.value?.account?.avatar || '')
 const viewerInitial = computed(() => viewerDisplayName.value.slice(0, 1).toUpperCase() || 'L')
 

@@ -168,10 +168,6 @@ async function handleSubmit() {
   }
 }
 
-function scrollToSection(id) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
 function providerLabel(provider) {
   if (!provider?.label) {
     return '登录'

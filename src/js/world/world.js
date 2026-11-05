@@ -373,12 +373,18 @@ function hasSchematicBlockContent(snapshot = null) {
   // Check if any chunk has actual block data
   for (const chunk of Object.values(minecraftChunks)) {
     if (chunk && typeof chunk === 'object') {
-      // Check for blocks or any meaningful data
+      // Legacy shape: { blocks: { [blockKey]: entry } }
       if (chunk.blocks && typeof chunk.blocks === 'object' && Object.keys(chunk.blocks).length > 0) {
         return true
       }
-      // Also check for other possible data structures
-      if (Object.keys(chunk).length > 0) {
+      // Packed shape written by MinecraftSchematicLayer.exportSnapshot(): { p, pos, pid, c }
+      if (
+        Array.isArray(chunk.p)
+        && chunk.p.length > 0
+        && String(chunk.pos || '').trim()
+        && String(chunk.pid || '').trim()
+        && Number(chunk.c || 0) > 0
+      ) {
         return true
       }
     }
@@ -553,14 +559,17 @@ export default class World {
    * schematic-renderer 的 WASM 和资源包也在这时预热，不再等地形/原理图处理完。
    */
   _startBootstrapPrefetch() {
-    const silence = (promise) => {
-      promise.catch(() => {})
+    // 预取 promise 先挂一个 catch，避免未处理拒绝；真正的消费方仍会 await 并处理错误
+    const silence = (promise, label = 'prefetch') => {
+      promise.catch((error) => {
+        console.warn(`[World] Bootstrap ${label} failed:`, error)
+      })
       return promise
     }
 
-    const projectionContext = silence(this._loadActiveProjectionContext())
-    const backendConfigRecord = silence(loadBackendWorldConfigRecord())
-    const sharedWorldState = silence(this._loadSharedWorldState())
+    const projectionContext = silence(this._loadActiveProjectionContext(), 'projection context')
+    const backendConfigRecord = silence(loadBackendWorldConfigRecord(), 'world config')
+    const sharedWorldState = silence(this._loadSharedWorldState(), 'world state')
 
     const sourcePayload = silence(projectionContext.then((context) => {
       if (!context?.projectionId || !context?.item?.sourceFile) {
@@ -568,7 +577,7 @@ export default class World {
       }
       this._prewarmMinecraftSchematicRuntime()
       return this._fetchProjectionSourcePayload(context)
-    }))
+    }), 'projection source')
 
     const replay = silence(Promise.all([projectionContext, backendConfigRecord]).then(([context, record]) => {
       const item = context?.item || null
@@ -580,8 +589,8 @@ export default class World {
         return null
       }
       // 下载、解压、解析、预处理都在 worker 里，和区块加载并行
-      return { url: replayUrl, data: silence(loadRedstoneReplayTimeline(replayUrl)) }
-    }))
+      return { url: replayUrl, data: silence(loadRedstoneReplayTimeline(replayUrl), 'redstone replay timeline') }
+    }), 'redstone replay')
 
     return {
       projectionContext,
@@ -818,7 +827,8 @@ export default class World {
               projectionId: projectionContext.projectionId,
             })
           }
-          catch {
+          catch (error) {
+            console.warn('[World] Failed to save derived spawn point remotely, falling back to local admin cache:', error)
             saveAdminWorldConfig(nextConfig, '', {
               spaceName: projectionContext.spaceName,
               projectionId: projectionContext.projectionId,

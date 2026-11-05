@@ -142,6 +142,3 @@ const debugEmitter = {
 
 // 兼容 mitt 的默认导出
 export default debugEmitter
-
-// 也导出命名导出，方便解构
-export const { emit, on, once, off, all } = debugEmitter

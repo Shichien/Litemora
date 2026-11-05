@@ -27,6 +27,14 @@ export default class PointerLockManager {
     this._onPointerLockError = this.onPointerLockError.bind(this)
     this._onMouseMove = this.onMouseMove.bind(this)
     this._onClick = this.onClick.bind(this)
+    this._onPauseChanged = (isPaused) => {
+      if (isPaused && this.isLocked) {
+        this.exitLock()
+      }
+    }
+    this._onRequestPointerLock = () => {
+      this.requestLock()
+    }
 
     this.init()
   }
@@ -43,16 +51,10 @@ export default class PointerLockManager {
     this.canvas.addEventListener('click', this._onClick)
 
     // 监听 UI 暂停事件 - 暂停时退出锁定
-    emitter.on('ui:pause-changed', (isPaused) => {
-      if (isPaused && this.isLocked) {
-        this.exitLock()
-      }
-    })
+    emitter.on('ui:pause-changed', this._onPauseChanged)
 
     // 监听请求锁定事件（从 Vue UI 触发）
-    emitter.on('game:request_pointer_lock', () => {
-      this.requestLock()
-    })
+    emitter.on('game:request_pointer_lock', this._onRequestPointerLock)
   }
 
   /**
@@ -128,6 +130,8 @@ export default class PointerLockManager {
     document.removeEventListener('pointerlockerror', this._onPointerLockError)
     document.removeEventListener('mousemove', this._onMouseMove)
     this.canvas.removeEventListener('click', this._onClick)
+    emitter.off('ui:pause-changed', this._onPauseChanged)
+    emitter.off('game:request_pointer_lock', this._onRequestPointerLock)
 
     // 如果当前锁定，退出锁定
     if (this.isLocked) {

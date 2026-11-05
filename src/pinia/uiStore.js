@@ -20,9 +20,6 @@ export const useUiStore = defineStore('ui', () => {
   /** Overlay sub-view for pause flow: 'root' | 'skinSelector' */
   const overlayView = ref('root')
 
-  /** Where to return after settings: 'pauseMenu' | null */
-  const returnTo = ref(null)
-
   /** Whether the game is paused */
   const isPaused = ref(false)
 
@@ -72,20 +69,27 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   /**
-   * Navigate to Settings
-   * @param {'pauseMenu'} from - Where to return after settings
+   * Navigate to Settings (opened from the pause menu, returns there)
    */
-  function toSettings(from) {
-    returnTo.value = from
+  function toSettings() {
     screen.value = 'settings'
   }
 
   /**
-   * Return from Settings to previous screen
+   * Return from Settings to the pause menu
    */
   function exitSettings() {
     screen.value = 'pauseMenu'
-    returnTo.value = null
+  }
+
+  /**
+   * Back to the loading screen when the current world is torn down,
+   * so the next world shows its own loading state.
+   */
+  function resetForNewWorld() {
+    screen.value = 'loading'
+    overlayView.value = 'root'
+    isPaused.value = false
   }
 
   // ----------------------------------------
@@ -165,7 +169,6 @@ export const useUiStore = defineStore('ui', () => {
     // State
     screen,
     overlayView,
-    returnTo,
     isPaused,
     pauseMenuConfig,
     controlPermissions,
@@ -186,6 +189,7 @@ export const useUiStore = defineStore('ui', () => {
     // World
     bootstrapBackendWorld,
     applyBackendUiConfig,
+    resetForNewWorld,
 
     // ESC
     handleEscape,

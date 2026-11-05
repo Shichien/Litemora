@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 
 import Experience from '../experience.js'
-import emitter from '../utils/event/event-bus.js'
 import { blocks } from '../world/terrain/blocks-config.js'
 
 // 默认使用屏幕中心作为射线发射点（适配 PointerLock/FPS 交互）
@@ -83,10 +82,7 @@ function axisNormal(axis, direction) {
  * BlockRaycaster
  * - 面向 InstancedMesh 的方块拾取
  * - 支持 chunk 场景：通过 chunk 的 group userData 还原世界坐标（网格坐标 + 真实世界坐标）
- *
- * 事件：
- * - game:block-hover：命中方块（持续更新，但仅在目标变化时 emit）
- * - game:block-hover-clear：没有命中
+ * - 结果保存在 this.current，由 BlockSelectionHelper 等在 update 中轮询读取
  */
 export default class BlockRaycaster {
   constructor(options = {}) {
@@ -223,8 +219,6 @@ World: ${info.worldBlock.x}, ${info.worldBlock.y}, ${info.worldBlock.z}
 Local: ${info.local.x}, ${info.local.y}, ${info.local.z}
 Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       }
-
-      emitter.emit('game:block-hover', info)
     }
   }
 
@@ -829,8 +823,6 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       if (this.debug.active) {
         this.debugInfo.log = 'No hit'
       }
-
-      emitter.emit('game:block-hover-clear')
     }
   }
 

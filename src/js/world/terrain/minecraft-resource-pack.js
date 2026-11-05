@@ -3,7 +3,7 @@ import { loadMinecraftResourcePack } from './minecraft-resource-pack-storage.js'
 const DEFAULT_RESOURCE_PACK_URL = '/minecraft-default-pack.pack'
 
 export const BUNDLED_MINECRAFT_RESOURCE_PACK_NAME = 'litemora-default-pack'
-export const BUNDLED_MINECRAFT_RESOURCE_PACK_URL = DEFAULT_RESOURCE_PACK_URL
+const BUNDLED_MINECRAFT_RESOURCE_PACK_URL = DEFAULT_RESOURCE_PACK_URL
 
 let bundledMinecraftResourcePackBlobPromise = null
 
@@ -34,10 +34,6 @@ export async function loadBundledMinecraftResourcePackBlob(options = {}) {
   })
 
   return bundledMinecraftResourcePackBlobPromise
-}
-
-export function clearBundledMinecraftResourcePackBlobCache() {
-  bundledMinecraftResourcePackBlobPromise = null
 }
 
 export async function loadPreferredMinecraftResourcePack(options = {}) {

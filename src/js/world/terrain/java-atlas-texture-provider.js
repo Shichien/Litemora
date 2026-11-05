@@ -4,6 +4,7 @@ import emitter from '../../utils/event/event-bus.js'
 
 const ATLAS_VIRTUAL_PREFIX = 'atlas:'
 const ATLAS_IMAGE_URL = '/textures/litematic/atlas.webp'
+const ATLAS_DEBUG_ENABLED = import.meta.env.DEV
 
 const LEGACY_TEXTURE_ALIAS_TO_ATLAS_RECT = {
   allium_plant_Texture: 'block/allium',
@@ -75,14 +76,14 @@ export function isAtlasTextureVirtualKey(textureKey) {
   return typeof textureKey === 'string' && textureKey.startsWith(ATLAS_VIRTUAL_PREFIX)
 }
 
-export function toAtlasVirtualTextureKey(rectKey) {
+function toAtlasVirtualTextureKey(rectKey) {
   if (typeof rectKey !== 'string' || !rectKey) {
     return null
   }
   return `${ATLAS_VIRTUAL_PREFIX}${rectKey}`
 }
 
-export function hasAtlasRectKey(rectKey) {
+function hasAtlasRectKey(rectKey) {
   return atlasRectKeySet.has(rectKey)
 }
 
@@ -169,12 +170,14 @@ function ensureAtlasImageLoaded() {
     image.onload = () => {
       atlasImage = image
       atlasSize = upperPowerOfTwo(Math.max(image.width, image.height))
-      console.debug('[AtlasTextureProvider] atlas loaded', {
-        url: ATLAS_IMAGE_URL,
-        width: image.width,
-        height: image.height,
-        atlasSize,
-      })
+      if (ATLAS_DEBUG_ENABLED) {
+        console.debug('[AtlasTextureProvider] atlas loaded', {
+          url: ATLAS_IMAGE_URL,
+          width: image.width,
+          height: image.height,
+          atlasSize,
+        })
+      }
       resolve(image)
     }
     image.onerror = (error) => {

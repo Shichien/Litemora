@@ -7,7 +7,7 @@ import { SHADOW_CONFIG, SHADOW_QUALITY, TREE_BLOCK_IDS } from '../../config/shad
 import Experience from '../../experience.js'
 import emitter from '../../utils/event/event-bus.js'
 
-import { ANIMATION_DEFAULTS, blocks, createMaterials, getBlockTypeById, getGeometryForBlockType, resources } from './blocks-config.js'
+import { blocks, createMaterials, getBlockTypeById, getGeometryForBlockType, resources } from './blocks-config.js'
 import { canResolveTextureKeyFromAtlas, isAtlasTextureVirtualKey, preloadAtlasTextureImage } from './java-atlas-texture-provider.js'
 import TerrainContainer from './terrain-container.js'
 
@@ -16,13 +16,12 @@ const RESOURCE_IDS = new Set(resources.map(r => r.id))
 export default class TerrainRenderer {
   /**
    * @param {*} container TerrainContainer
-   * @param {{ sharedParams?: any, debugEnabled?: boolean, debugTitle?: string, listenDataReady?: boolean }} options
+   * @param {{ sharedParams?: any, chunkName?: string, visibilityFilter?: Function | null }} options
    */
   constructor(container, options = {}) {
     this.experience = new Experience()
     this.scene = this.experience.scene
     this.resources = this.experience.resources
-    this.debug = this.experience.debug
     this.time = this.experience.time
 
     // 绑定容器（默认单例）
@@ -34,9 +33,6 @@ export default class TerrainRenderer {
       heightScale: 1, // 高度缩放，仅作用于 y 轴
       showOresOnly: false, // 仅显示矿产
     }
-    this._debugEnabled = options.debugEnabled ?? false
-    this._debugTitle = options.debugTitle || `地形渲染器 ${options.chunkName || ''}`.trim()
-    this._listenDataReady = options.listenDataReady ?? true
     this._visibilityFilter = typeof options.visibilityFilter === 'function'
       ? options.visibilityFilter
       : null
@@ -56,7 +52,6 @@ export default class TerrainRenderer {
     this._statsParams = {
       totalInstances: 0,
     }
-    this._statsBinding = null
 
     // ===== Mining System: Load crack textures =====
     this._crackTextures = []
@@ -80,12 +75,6 @@ export default class TerrainRenderer {
       uIsBeingMined: { value: false },
     }
 
-    // 事件绑定
-    this._handleDataReady = this._handleDataReady.bind(this)
-    if (this._listenDataReady) {
-      emitter.on('terrain:data-ready', this._handleDataReady)
-    }
-
     // Shadow quality event listener
     this._currentShadowQuality = SHADOW_CONFIG.quality
     this._handleShadowQuality = this._handleShadowQuality.bind(this)
@@ -106,10 +95,6 @@ export default class TerrainRenderer {
 
     // 若容器已有数据，立即绘制
     this._rebuildFromContainer()
-
-    if (this.debug.active && this._debugEnabled) {
-      this.debugInit()
-    }
   }
 
   /**
@@ -186,15 +171,6 @@ export default class TerrainRenderer {
 
   _handleAtlasTextureReady() {
     this._scheduleRebuildAfterTextureLoad()
-  }
-
-  /**
-   * 响应数据就绪事件
-   */
-  _handleDataReady(payload) {
-    if (payload?.container)
-      this.container = payload.container
-    this._rebuildFromContainer()
   }
 
   /**
@@ -303,12 +279,6 @@ export default class TerrainRenderer {
 
     // Apply shadow settings based on current quality
     this._applyShadowSettings()
-
-    this._updateStatsPanel()
-  }
-
-  setVisibilityFilter(filter = null) {
-    this._visibilityFilter = typeof filter === 'function' ? filter : null
   }
 
   _getMissingTextureNames(blockType) {
@@ -390,7 +360,6 @@ export default class TerrainRenderer {
     mesh.computeBoundingSphere()
     // 更新统计
     this._statsParams.totalInstances--
-    this._updateStatsPanel()
   }
 
   /**
@@ -438,136 +407,11 @@ export default class TerrainRenderer {
       mesh.computeBoundingSphere()
 
       this._statsParams.totalInstances++
-      this._updateStatsPanel()
     }
     else {
       // 容量不足，触发全量重建以扩容
       this._rebuildFromContainer()
     }
-  }
-
-  /**
-   * 调试面板
-   */
-  debugInit() {
-    this.debugFolder = this.debug.ui.addFolder({
-      title: this._debugTitle,
-      expanded: false,
-    })
-
-    const renderFolder = this.debugFolder.addFolder({
-      title: '渲染参数',
-      expanded: true,
-    })
-
-    renderFolder.addBinding(this.params, 'scale', {
-      label: '整体缩放',
-      min: 0.1,
-      max: 3,
-      step: 0.1,
-    }).on('change', () => {
-      this.group.scale.setScalar(this.params.scale)
-    })
-
-    renderFolder.addBinding(this.params, 'heightScale', {
-      label: '高度缩放',
-      min: 0.5,
-      max: 5,
-      step: 0.1,
-    }).on('change', () => {
-      // 重新刷写矩阵
-      this._rebuildFromContainer()
-    })
-
-    renderFolder.addBinding(this.params, 'showOresOnly', {
-      label: '仅显示矿产',
-    }).on('change', () => {
-      this._rebuildFromContainer()
-    })
-
-    const statsFolder = this.debugFolder.addFolder({
-      title: '统计信息',
-      expanded: false,
-    })
-    this._statsBinding = statsFolder.addBinding(this._statsParams, 'totalInstances', {
-      label: '实例总数',
-      readonly: true,
-    })
-
-    // 方块材质调试
-    const materialsFolder = this.debugFolder.addFolder({
-      title: '方块材质',
-      expanded: false,
-    })
-
-    materialsFolder.addBinding(blocks.treeLeaves, 'alphaTest', {
-      label: '树叶 AlphaTest',
-      min: 0,
-      max: 1,
-      step: 0.01,
-    }).on('change', () => {
-      this._rebuildFromContainer()
-    })
-
-    materialsFolder.addBinding(blocks.treeLeaves, 'transparent', {
-      label: '树叶 透明',
-    }).on('change', () => {
-      this._rebuildFromContainer()
-    })
-
-    // ===== 风动效果参数 =====
-    const windFolder = this.debugFolder.addFolder({
-      title: '风动效果',
-      expanded: false,
-    })
-
-    windFolder.addBinding(ANIMATION_DEFAULTS.wind, 'windSpeed', {
-      label: '风速',
-      min: 0.5,
-      max: 5,
-      step: 0.1,
-    }).on('change', () => {
-      // 实时更新所有动画材质的 windSpeed uniform
-      this._animatedMaterials.forEach((mat) => {
-        if (mat.uniforms?.uWindSpeed) {
-          mat.uniforms.uWindSpeed.value = ANIMATION_DEFAULTS.wind.windSpeed
-        }
-      })
-    })
-
-    windFolder.addBinding(ANIMATION_DEFAULTS.wind, 'swayAmplitude', {
-      label: '摇摆幅度',
-      min: 0,
-      max: 2,
-      step: 0.01,
-    }).on('change', () => {
-      this._animatedMaterials.forEach((mat) => {
-        if (mat.uniforms?.uSwayAmplitude) {
-          mat.uniforms.uSwayAmplitude.value = ANIMATION_DEFAULTS.wind.swayAmplitude
-        }
-      })
-    })
-
-    windFolder.addBinding(ANIMATION_DEFAULTS.wind, 'phaseScale', {
-      label: '相位差',
-      min: 0.1,
-      max: 3,
-      step: 0.1,
-    }).on('change', () => {
-      this._animatedMaterials.forEach((mat) => {
-        if (mat.uniforms?.uPhaseScale) {
-          mat.uniforms.uPhaseScale.value = ANIMATION_DEFAULTS.wind.phaseScale
-        }
-      })
-    })
-  }
-
-  /**
-   * 刷新统计显示（避免面板未初始化时报错）
-   */
-  _updateStatsPanel() {
-    if (this._statsBinding?.refresh)
-      this._statsBinding.refresh()
   }
 
   /**
@@ -610,9 +454,6 @@ export default class TerrainRenderer {
    * 释放资源
    */
   dispose() {
-    if (this._listenDataReady) {
-      emitter.off('terrain:data-ready', this._handleDataReady)
-    }
     emitter.off('shadow:quality-changed', this._handleShadowQuality)
     emitter.off('game:mining-progress', this._handleMiningProgress)
     emitter.off('game:mining-cancel', this._handleMiningCancel)

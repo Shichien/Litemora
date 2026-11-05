@@ -118,16 +118,6 @@ export const LocomotionProfiles = Object.freeze({
   },
 })
 
-export const CombatAnimations = Object.freeze([
-  AnimationClips.STRAIGHT_PUNCH,
-  AnimationClips.HOOK_PUNCH,
-  AnimationClips.QUICK_COMBO,
-  AnimationClips.BLOCK,
-  AnimationClips.RIGHT_STRAIGHT_PUNCH,
-  AnimationClips.RIGHT_HOOK_PUNCH,
-  AnimationClips.RIGHT_BLOCK,
-])
-
 // ===== 播放速率配置（层级化） =====
 export const timeScaleConfig = {
   global: 1.0,

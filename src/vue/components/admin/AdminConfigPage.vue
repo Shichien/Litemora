@@ -4,9 +4,9 @@ import {
   loadAdminAuthSession,
   signInWithProvider,
 } from '@three/auth/admin-auth.js'
+import { PRESET_NAMES } from '@three/config/settings-presets.js'
 import {
   buildSpaceProjectionUrl,
-  buildSpaceWorldsAdminUrl,
   buildSpaceWorldsUrl,
   getActiveProjectionId,
   getActiveSpaceName,
@@ -48,7 +48,7 @@ import {
 import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
 
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const authProviders = getAuthProviders()
 const authSession = ref(loadAdminAuthSession())
@@ -85,8 +85,8 @@ const isSavingResourcePack = ref(false)
 const schematicRendererCanvasRef = ref(null)
 const projectionSpawnSelection = ref(null)
 
-const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
-const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
+const cameraPresetOptions = PRESET_NAMES
+const visualPresetOptions = PRESET_NAMES
 const projectionVisibilityOptions = [
   { value: 'public', label: '公开' },
   { value: 'private', label: '私有' },
@@ -726,7 +726,6 @@ async function applySchematic() {
 
     const result = payload.result
     const renderMode = result?.importDiagnostics?.renderMode || 'minecraft-native'
-    const importedChunkCount = result?.importDiagnostics?.importedChunkCount || result?.touchedChunks || 0
     const persistenceSaved = result?.persistenceSaved !== false
     const minPlacedY = (schematicPreview.value?.yStats?.minY ?? 0) + offset.y
     if (minPlacedY < 0) {

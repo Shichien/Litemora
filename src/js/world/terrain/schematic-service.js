@@ -501,10 +501,6 @@ class SchematicService {
     return BigInt.asUintN(64, BigInt(source ?? 0))
   }
 
-  _toInt64BigInt(value) {
-    return BigInt.asIntN(64, this._toUint64BigInt(value))
-  }
-
   _decodeBlockIndices(blockData, paletteSize, totalBlocks) {
     if (!blockData || totalBlocks <= 0) {
       return []
@@ -549,80 +545,6 @@ class SchematicService {
     return region._decodedIndices
   }
 
-  _buildRuntimePalette(region) {
-    if (region._runtimePalette) {
-      return region._runtimePalette
-    }
-
-    region._runtimePalette = Object.values(region.palette || {}).map((entry) => {
-      return {
-        name: entry?.name || 'minecraft:air',
-        properties: Object.fromEntries(
-          Object.entries(entry?.properties || {}).map(([key, value]) => [String(key), String(value)]),
-        ),
-      }
-    })
-
-    return region._runtimePalette
-  }
-
-  _buildRuntimeBlockData(region) {
-    if (region._runtimeBlockData) {
-      return region._runtimeBlockData
-    }
-
-    const sourceValues = Array.from(region.blockData || [], value => this._toUint64BigInt(value))
-    const packed = new Int32Array(sourceValues.length * 2)
-
-    for (let index = 0; index < sourceValues.length; index++) {
-      const value = sourceValues[index]
-      packed[index * 2] = Number(BigInt.asIntN(32, value >> 32n))
-      packed[(index * 2) + 1] = Number(BigInt.asIntN(32, value & 0xFFFFFFFFn))
-    }
-
-    region._runtimeBlockData = packed
-
-    return region._runtimeBlockData
-  }
-
-  buildRuntimePayload(schematic = this.currentSchematic) {
-    if (!schematic) {
-      throw new Error('No schematic loaded')
-    }
-
-    const runtimeRegions = {}
-
-    for (const [regionName, region] of Object.entries(schematic.regions || {})) {
-      runtimeRegions[regionName] = {
-        position: {
-          x: Number(region?.position?.x || 0),
-          y: Number(region?.position?.y || 0),
-          z: Number(region?.position?.z || 0),
-        },
-        size: {
-          x: Number(region?.size?.x || 0),
-          y: Number(region?.size?.y || 0),
-          z: Number(region?.size?.z || 0),
-        },
-        palette: this._buildRuntimePalette(region),
-        blockData: this._buildRuntimeBlockData(region),
-        totalBlocks: Number(region?.totalBlocks || 0),
-      }
-    }
-
-    return {
-      name: schematic.name || 'Unknown',
-      author: schematic.author || 'Unknown',
-      dataVersion: Number(schematic.dataVersion) || null,
-      size: {
-        x: Number(schematic?.size?.x || 0),
-        y: Number(schematic?.size?.y || 0),
-        z: Number(schematic?.size?.z || 0),
-      },
-      regions: runtimeRegions,
-    }
-  }
-
   _countSolidBlocks(region) {
     if (typeof region._solidBlockCount === 'number') {
       return region._solidBlockCount
@@ -655,55 +577,6 @@ class SchematicService {
       x: this._regionAxisOrigin(region?.position?.x || 0, region?.size?.x || 0),
       y: this._regionAxisOrigin(region?.position?.y || 0, region?.size?.y || 0),
       z: this._regionAxisOrigin(region?.position?.z || 0, region?.size?.z || 0),
-    }
-  }
-
-  /**
-   * 遍历所有实体方块
-   * @param {(entry:{x:number,y:number,z:number,blockName:string,properties:Record<string,string>,paletteIndex:number,regionName:string,region:object})=>void} callback
-   * @param {object|null} schematic
-   */
-  forEachSolidBlock(callback, schematic = this.currentSchematic) {
-    if (!schematic) {
-      throw new Error('No schematic loaded')
-    }
-
-    for (const [regionName, region] of Object.entries(schematic.regions || {})) {
-      const sizeX = Math.abs(region.size.x)
-      const sizeY = Math.abs(region.size.y)
-      const sizeZ = Math.abs(region.size.z)
-      const totalBlocks = sizeX * sizeY * sizeZ
-      if (totalBlocks <= 0) {
-        continue
-      }
-
-      const blockIndices = this._getDecodedIndices(region)
-      const worldBase = this._getRegionWorldBase(region)
-
-      let linearIndex = 0
-      for (let y = 0; y < sizeY; y++) {
-        for (let z = 0; z < sizeZ; z++) {
-          for (let x = 0; x < sizeX; x++) {
-            const paletteIndex = blockIndices[linearIndex++] ?? 0
-            const paletteEntry = region.palette[paletteIndex]
-            const blockName = paletteEntry?.name || 'minecraft:air'
-            if (EMPTY_BLOCK_NAMES.has(blockName)) {
-              continue
-            }
-
-            callback({
-              x: worldBase.x + x,
-              y: worldBase.y + y,
-              z: worldBase.z + z,
-              blockName,
-              properties: paletteEntry?.properties || {},
-              paletteIndex,
-              regionName,
-              region,
-            })
-          }
-        }
-      }
     }
   }
 
@@ -884,8 +757,11 @@ class SchematicService {
   }
 
   /**
-   * 将原理图注入到世界
-   * 这是一个占位符，实现需要与 World/Terrain 系统集成
+   * 将当前原理图的实体方块写入 ChunkManager（逐块放置，按帧让出主线程）
+   * @param {object} chunkManager
+   * @param {{x:number,y:number,z:number}} worldOffset
+   * @param {{replaceWorld?:boolean,persistModifications?:boolean,onProgress?:Function}} options
+   *   replaceWorld 为 true（默认）时会先清空已加载区块与持久化修改
    */
   async applyToWorld(chunkManager, worldOffset = { x: 0, y: 0, z: 0 }, options = {}) {
     if (!this.currentSchematic) {

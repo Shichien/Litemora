@@ -47,25 +47,14 @@ export default class BlockSelectionHelper {
     this.object.renderOrder = 0
     this.scene.add(this.object)
 
-    // 移除旧的事件监听 (改为 update 轮询)
-    /*
-    emitter.on('game:block-hover', (info) => {
-      if (!this.params.enabled)
-        return
-      this.setTarget(info)
-    })
-    emitter.on('game:block-hover-clear', () => {
-      this.clear()
-    })
-    */
-
     // 监听编辑模式切换
-    emitter.on('game:block_edit_mode_changed', ({ mode }) => {
+    this._handleEditModeChanged = ({ mode }) => {
       this.mode = mode
       const color = this._colors[mode] || this._colors.remove
       this.material.color.copy(color)
       // 如果需要，可在此更新当前高亮位置（如果当前正选中方块）
-    })
+    }
+    emitter.on('game:block_edit_mode_changed', this._handleEditModeChanged)
 
     if (this.debug.active) {
       this.debugInit()
@@ -106,7 +95,6 @@ export default class BlockSelectionHelper {
     // add 模式：基于 face.normal 预览相邻格子
     if (this.mode === 'add' && info.face?.normal) {
       const normal = info.face.normal
-      // console.log(normal)
       // 注意高度可能有缩放
       const hScale = info.heightScale ?? 1
 
@@ -229,6 +217,7 @@ export default class BlockSelectionHelper {
   }
 
   dispose() {
+    emitter.off('game:block_edit_mode_changed', this._handleEditModeChanged)
     this.scene.remove(this.object)
     this.geometry?.dispose?.()
     this._geometryCache.forEach((geometry) => {

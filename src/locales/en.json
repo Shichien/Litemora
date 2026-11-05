@@ -1,27 +1,11 @@
 {
   "menu": {
-    "title": "Minecraft",
-    "createWorld": "Create World",
-    "newWorld": "New World",
-    "continue": "Continue",
     "settings": "Settings",
-    "howToPlay": "How to Play",
     "selectSkin": "Select Skin",
     "skins": "Skins",
     "paused": "Game Paused",
     "resume": "Resume",
-    "exitWorld": "Exit World",
-    "credits": "Credits",
-    "back": "Back",
-    "randomSeed": "Random Seed",
-    "create": "Create",
-    "seedPlaceholder": "Leave empty for random",
-    "seedLabel": "World Seed (optional)",
-    "advanced": "Advanced",
-    "worldType": "World Type",
-    "warningOverwrite": "Creating a new world will overwrite your current world.",
-    "cancel": "Cancel",
-    "confirm": "Confirm"
+    "exitWorld": "Exit World"
   },
   "settings": {
     "title": "Settings",
@@ -37,20 +21,11 @@
     "viewDistance": "View Distance",
     "unloadPadding": "Unload Padding",
     "speedLines": "Speed Lines",
-    "frontView": "Front View Preview",
-    "sky": "Sky",
     "sun": "Sun",
     "ambient": "Ambient",
     "fog": "Fog",
     "shadowQuality": "Shadow Quality",
     "sensitivity": "Mouse Sensitivity"
-  },
-  "howto": {
-    "title": "How to Play",
-    "controls": "Controls",
-    "prev": "Back",
-    "next": "Next",
-    "done": "Done"
   },
   "skin": {
     "steve": "Steve",
@@ -75,7 +50,6 @@
   },
   "home": {
     "nav": {
-      "create": "Create",
       "loginGithub": "Login with GitHub"
     },
     "hero": {

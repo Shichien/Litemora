@@ -1249,28 +1249,6 @@ export default class SchematicRendererRuntimeBridge {
     }
   }
 
-  _tagRuntimeMeshes() {
-    this.meshEntries = []
-    this._meshEntrySet.clear()
-
-    this.runtimeGroup?.traverse?.((child) => {
-      if (!child?.isMesh) {
-        return
-      }
-
-      child.userData.litemoraWasmSchematicLayer = true
-      child.userData.minecraftSchematicLayer = true
-      child.userData.bounds = this.bounds
-      child.visible = true
-      child.frustumCulled = true
-      child.castShadow = false
-      child.receiveShadow = false
-      forEachMaterial(child.material, normalizeRuntimeMaterial)
-      this.meshEntries.push(child)
-      this._meshEntrySet.add(child)
-    })
-  }
-
   _primeCollisionProfiles(palette = []) {
     for (const entry of (Array.isArray(palette) ? palette : [])) {
       const blockString = createMinecraftBlockString(entry?.name, entry?.properties)
@@ -1473,48 +1451,6 @@ export default class SchematicRendererRuntimeBridge {
     }
   }
 
-  async _rebuildRuntimeChunkWithoutFlicker(schematic, chunkX, chunkY, chunkZ) {
-    const chunkDimensions = schematic?.chunkDimensions || null
-    if (
-      !chunkDimensions
-      || !schematic?.worldMeshBuilder
-      || !schematic?.schematicWrapper
-    ) {
-      return false
-    }
-
-    const chunkOffset = {
-      x: chunkX * chunkDimensions.chunkWidth,
-      y: chunkY * chunkDimensions.chunkHeight,
-      z: chunkZ * chunkDimensions.chunkLength,
-    }
-
-    if (schematic.renderingBounds) {
-      const chunkMaxX = chunkOffset.x + chunkDimensions.chunkWidth
-      const chunkMaxY = chunkOffset.y + chunkDimensions.chunkHeight
-      const chunkMaxZ = chunkOffset.z + chunkDimensions.chunkLength
-      if (
-        chunkMaxX <= schematic.renderingBounds.min.x
-        || chunkOffset.x >= schematic.renderingBounds.max.x
-        || chunkMaxY <= schematic.renderingBounds.min.y
-        || chunkOffset.y >= schematic.renderingBounds.max.y
-        || chunkMaxZ <= schematic.renderingBounds.min.z
-        || chunkOffset.z >= schematic.renderingBounds.max.z
-      ) {
-        this._swapRuntimeChunkObjects(schematic, chunkX, chunkY, chunkZ, [])
-        return true
-      }
-    }
-
-    // Build the replacement chunk off-scene first, then hand it to
-    // _swapRuntimeChunkObjects() for an atomic replacement. That removes the
-    // whole-chunk flicker while still preserving chunk-local rebuild semantics.
-    const newChunkObjects = await this._buildRuntimeChunkObjects(schematic, chunkX, chunkY, chunkZ)
-
-    this._swapRuntimeChunkObjects(schematic, chunkX, chunkY, chunkZ, newChunkObjects)
-    return true
-  }
-
   getRaycastTargets() {
     if (this.runtimeGroup?.visible === false) {
       return []
@@ -1617,24 +1553,6 @@ export default class SchematicRendererRuntimeBridge {
       results[resultIndexes[index]] = this._createRuntimeBlockRecord(blockStrings?.[index])
     }
     return results
-  }
-
-  setBlockAtWorld(worldX, worldY, worldZ, blockString = 'minecraft:air', offset = this.runtimeOffset) {
-    return this.setBlocksAtWorld([{
-      worldX,
-      worldY,
-      worldZ,
-      blockString,
-    }], offset)
-  }
-
-  async setBlockAtWorldAsync(worldX, worldY, worldZ, blockString = 'minecraft:air', offset = this.runtimeOffset) {
-    return this.setBlocksAtWorldAsync([{
-      worldX,
-      worldY,
-      worldZ,
-      blockString,
-    }], offset)
   }
 
   _prepareRuntimePatches(worldBlocks = [], offset = this.runtimeOffset) {

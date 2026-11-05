@@ -65,23 +65,6 @@ async function writeTerrainRecord(id, value) {
   }
 }
 
-async function deleteTerrainRecord(id) {
-  const db = await openTerrainDb()
-  try {
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(TERRAIN_DB_STORE, 'readwrite')
-      const store = tx.objectStore(TERRAIN_DB_STORE)
-      store.delete(id)
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error || new Error('indexeddb_delete_failed'))
-      tx.onabort = () => reject(tx.error || new Error('indexeddb_delete_aborted'))
-    })
-  }
-  finally {
-    db.close()
-  }
-}
-
 function hasMeaningfulTerrainState(worldState = {}, modifications = {}) {
   if (modifications && typeof modifications === 'object') {
     for (const value of Object.values(modifications)) {
@@ -173,41 +156,6 @@ export default class TerrainPersistence {
   }
 
   /**
-   * 获取方块的存储 key（chunk 局部坐标）
-   */
-  _blockKey(localX, localY, localZ) {
-    return `${localX},${localY},${localZ}`
-  }
-
-  /**
-   * 记录方块修改
-   * @param {number} worldX 世界坐标 X
-   * @param {number} worldY 世界坐标 Y
-   * @param {number} worldZ 世界坐标 Z
-   * @param {number} blockId 方块 ID（0 表示删除）
-   * @param {number} chunkWidth chunk 宽度
-   */
-  recordModification(worldX, worldY, worldZ, blockId, chunkWidth) {
-    const chunkX = Math.floor(worldX / chunkWidth)
-    const chunkZ = Math.floor(worldZ / chunkWidth)
-    const localX = Math.floor(worldX - chunkX * chunkWidth)
-    const localZ = Math.floor(worldZ - chunkZ * chunkWidth)
-
-    this.recordChunkLocalModification(chunkX, chunkZ, localX, worldY, localZ, blockId)
-  }
-
-  recordChunkLocalModification(chunkX, chunkZ, localX, localY, localZ, blockId) {
-    const chunkKey = this._chunkKey(chunkX, chunkZ)
-    const blockKey = this._blockKey(localX, localY, localZ)
-
-    if (!this.modifications.has(chunkKey)) {
-      this.modifications.set(chunkKey, new Map())
-    }
-
-    this.modifications.get(chunkKey).set(blockKey, blockId)
-  }
-
-  /**
    * 获取某个 chunk 的所有修改
    * @returns {Map<string, number>} blockKey -> blockId
    */
@@ -230,14 +178,6 @@ export default class TerrainPersistence {
       coords.push({ chunkX, chunkZ })
     }
     return coords
-  }
-
-  /**
-   * 清除某个 chunk 的修改记录
-   */
-  clearChunkModifications(chunkX, chunkZ) {
-    const key = this._chunkKey(chunkX, chunkZ)
-    this.modifications.delete(key)
   }
 
   /**
@@ -416,27 +356,6 @@ export default class TerrainPersistence {
       console.error('[TerrainPersistence] localStorage 加载失败:', error)
       return false
     }
-  }
-
-  clearAllPersistedData() {
-    this.modifications.clear()
-    this.worldState = {
-      schematicOnlyMode: false,
-    }
-
-    try {
-      localStorage.removeItem(this._modsStorageKey())
-      localStorage.removeItem(this._stateStorageKey())
-    }
-    catch (error) {
-      console.error('[TerrainPersistence] 清理持久化数据失败:', error)
-    }
-
-    const deletes = [
-      deleteTerrainRecord(this._snapshotRecordKey()),
-      deleteTerrainRecord(this._worldStateRecordKey()),
-    ]
-    return Promise.allSettled(deletes)
   }
 
   // IndexedDB 实现（可选，用于大规模数据）

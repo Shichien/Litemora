@@ -1,4 +1,4 @@
-export const DEFAULT_PROJECTION_SPAWN_LIFT = 2
+const DEFAULT_PROJECTION_SPAWN_LIFT = 2
 
 function toFiniteNumber(value, fallback = 0) {
   const numeric = Number(value)

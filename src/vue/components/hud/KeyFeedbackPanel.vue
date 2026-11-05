@@ -70,7 +70,6 @@ onMounted(() => {
   emitter.on('input:update', handleInputUpdate)
   emitter.on('hud:flight-mode-changed', handleFlightModeChanged)
   emitter.on('hud:camera-perspective-changed', handleCameraPerspectiveChanged)
-  emitter.on('ui:chat-opened', resetKeys)
   window.addEventListener('blur', resetKeys)
 })
 
@@ -78,7 +77,6 @@ onUnmounted(() => {
   emitter.off('input:update', handleInputUpdate)
   emitter.off('hud:flight-mode-changed', handleFlightModeChanged)
   emitter.off('hud:camera-perspective-changed', handleCameraPerspectiveChanged)
-  emitter.off('ui:chat-opened', resetKeys)
   window.removeEventListener('blur', resetKeys)
 })
 </script>

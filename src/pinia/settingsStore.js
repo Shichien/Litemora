@@ -20,19 +20,11 @@ import {
 const STORAGE_KEY = 'mc-game-settings'
 
 const DEFAULT_SETTINGS = {
-  // General
-  language: 'zh', // 'en' | 'zh'
-
   // Graphics
   shadowQuality: 'high', // 'low' | 'medium' | 'high'
 
   // Controls
   mouseSensitivity: 0.03, // 0.01 - 0.1
-
-  // Audio (placeholder for future)
-  masterVolume: 1.0,
-  musicVolume: 0.7,
-  sfxVolume: 1.0,
 
   // Camera presets
   cameraPreset: 'default',
@@ -60,12 +52,8 @@ export const useSettingsStore = defineStore('settings', () => {
   // ----------------------------------------
   // State - Load from localStorage or use defaults
   // ----------------------------------------
-  const language = ref(DEFAULT_SETTINGS.language)
   const shadowQuality = ref(DEFAULT_SETTINGS.shadowQuality)
   const mouseSensitivity = ref(DEFAULT_SETTINGS.mouseSensitivity)
-  const masterVolume = ref(DEFAULT_SETTINGS.masterVolume)
-  const musicVolume = ref(DEFAULT_SETTINGS.musicVolume)
-  const sfxVolume = ref(DEFAULT_SETTINGS.sfxVolume)
 
   // Camera settings
   const cameraPreset = ref(DEFAULT_SETTINGS.cameraPreset)
@@ -96,18 +84,10 @@ export const useSettingsStore = defineStore('settings', () => {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
         const parsed = JSON.parse(saved)
-        if (parsed.language)
-          language.value = parsed.language
         if (parsed.shadowQuality)
           shadowQuality.value = parsed.shadowQuality
         if (parsed.mouseSensitivity)
           mouseSensitivity.value = parsed.mouseSensitivity
-        if (parsed.masterVolume !== undefined)
-          masterVolume.value = parsed.masterVolume
-        if (parsed.musicVolume !== undefined)
-          musicVolume.value = parsed.musicVolume
-        if (parsed.sfxVolume !== undefined)
-          sfxVolume.value = parsed.sfxVolume
 
         // Camera preset
         if (parsed.cameraPreset) {
@@ -150,12 +130,8 @@ export const useSettingsStore = defineStore('settings', () => {
   function saveSettings() {
     try {
       const settings = {
-        language: language.value,
         shadowQuality: shadowQuality.value,
         mouseSensitivity: mouseSensitivity.value,
-        masterVolume: masterVolume.value,
-        musicVolume: musicVolume.value,
-        sfxVolume: sfxVolume.value,
         cameraPreset: cameraPreset.value,
         visualPreset: visualPreset.value,
         envSunIntensity: envSunIntensity.value,
@@ -176,38 +152,15 @@ export const useSettingsStore = defineStore('settings', () => {
   // ----------------------------------------
   // Actions - Basic settings
   // ----------------------------------------
-  function setLanguage(lang, i18n) {
-    language.value = lang
-    if (i18n) {
-      i18n.global.locale.value = lang
-    }
-    saveSettings()
-  }
-
   function setShadowQuality(quality) {
     shadowQuality.value = quality
-    emitter.emit('shadow:quality-changed', quality)
+    emitter.emit('shadow:quality-changed', { quality })
     saveSettings()
   }
 
   function setMouseSensitivity(value) {
     mouseSensitivity.value = value
     emitter.emit('settings:mouse-sensitivity-changed', value)
-    saveSettings()
-  }
-
-  function setMasterVolume(value) {
-    masterVolume.value = value
-    saveSettings()
-  }
-
-  function setMusicVolume(value) {
-    musicVolume.value = value
-    saveSettings()
-  }
-
-  function setSfxVolume(value) {
-    sfxVolume.value = value
     saveSettings()
   }
 
@@ -324,14 +277,31 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // ----------------------------------------
+  // Push every current value to Three.js
+  // ----------------------------------------
+  function emitAllSettings() {
+    emitter.emit('shadow:quality-changed', { quality: shadowQuality.value })
+    emitter.emit('settings:mouse-sensitivity-changed', mouseSensitivity.value)
+    emitter.emit('settings:camera-rig-changed', {
+      fov: { ...cameraFov },
+      bobbing: { ...cameraBobbing },
+    })
+    emitter.emit('settings:postprocess-changed', {
+      speedLines: { ...speedLines },
+    })
+    applyAllEnvironment()
+    emitter.emit('settings:chunks-changed', {
+      viewDistance: chunkViewDistance.value,
+      unloadPadding: chunkUnloadPadding.value,
+    })
+  }
+
+  // ----------------------------------------
   // Reset to defaults
   // ----------------------------------------
   function resetToDefaults() {
     shadowQuality.value = DEFAULT_SETTINGS.shadowQuality
     mouseSensitivity.value = DEFAULT_SETTINGS.mouseSensitivity
-    masterVolume.value = DEFAULT_SETTINGS.masterVolume
-    musicVolume.value = DEFAULT_SETTINGS.musicVolume
-    sfxVolume.value = DEFAULT_SETTINGS.sfxVolume
 
     // Reset camera
     applyCameraPreset('default', false)
@@ -351,57 +321,24 @@ export const useSettingsStore = defineStore('settings', () => {
     chunkViewDistance.value = CHUNK_DEFAULTS.viewDistance
     chunkUnloadPadding.value = CHUNK_DEFAULTS.unloadPadding
 
-    // Emit events for all settings
-    emitter.emit('shadow:quality-changed', shadowQuality.value)
-    emitter.emit('settings:mouse-sensitivity-changed', mouseSensitivity.value)
-    emitter.emit('settings:camera-rig-changed', {
-      fov: { ...cameraFov },
-      bobbing: { ...cameraBobbing },
-    })
-    emitter.emit('settings:postprocess-changed', {
-      speedLines: { ...speedLines },
-    })
-    applyAllEnvironment()
-    emitter.emit('settings:chunks-changed', {
-      viewDistance: chunkViewDistance.value,
-      unloadPadding: chunkUnloadPadding.value,
-    })
-
+    emitAllSettings()
     saveSettings()
   }
 
   // Load on store creation
   loadSettings()
 
-  // Emit initial values to Three.js after a short delay (ensure listeners are ready)
-  setTimeout(() => {
-    emitter.emit('shadow:quality-changed', shadowQuality.value)
-    emitter.emit('settings:mouse-sensitivity-changed', mouseSensitivity.value)
-    emitter.emit('settings:camera-rig-changed', {
-      fov: { ...cameraFov },
-      bobbing: { ...cameraBobbing },
-    })
-    emitter.emit('settings:postprocess-changed', {
-      speedLines: { ...speedLines },
-    })
-    applyAllEnvironment()
-    emitter.emit('settings:chunks-changed', {
-      viewDistance: chunkViewDistance.value,
-      unloadPadding: chunkUnloadPadding.value,
-    })
-  }, 100)
+  // Emit initial values to Three.js after a short delay (ensure listeners are ready).
+  // Each world also calls emitAllSettings() once its scene is ready (UiRoot).
+  setTimeout(emitAllSettings, 100)
 
   // ----------------------------------------
   // Return Public API
   // ----------------------------------------
   return {
     // State - Basic
-    language,
     shadowQuality,
     mouseSensitivity,
-    masterVolume,
-    musicVolume,
-    sfxVolume,
 
     // State - Camera
     cameraPreset,
@@ -425,12 +362,8 @@ export const useSettingsStore = defineStore('settings', () => {
     chunkUnloadPadding,
 
     // Actions - Basic
-    setLanguage,
     setShadowQuality,
     setMouseSensitivity,
-    setMasterVolume,
-    setMusicVolume,
-    setSfxVolume,
 
     // Actions - Camera
     applyCameraPreset,
@@ -452,6 +385,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setChunkUnloadPadding,
 
     // Utils
+    emitAllSettings,
     resetToDefaults,
     loadSettings,
     saveSettings,

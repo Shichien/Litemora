@@ -1,4 +1,3 @@
-import { useHudStore } from '@pinia/hudStore.js'
 import * as THREE from 'three'
 
 import Experience from '../experience.js'
@@ -15,9 +14,6 @@ export default class DayCycle {
     this.resources = this.experience.resources
     this.debug = this.experience.debug.ui
     this.debugActive = this.experience.debug.active
-
-    // HUD Store 用于更新时间显示
-    this.hud = useHudStore()
 
     // 参数配置
     this.params = {
@@ -118,50 +114,24 @@ export default class DayCycle {
       },
     }
 
-    /**
-     * 时段定义（基于 timeOfDay 0-1，共 7 个时段）
-     *
-     * 时间段范围（timeOfDay 0-1）：
-     * 1. midnight（午夜）: 0.00 - 0.22 和 0.85 - 1.00
-     * 2. sunrise（日出）: 0.22 - 0.28
-     * 3. morning（早晨）: 0.28 - 0.40
-     * 4. noon（正午）: 0.40 - 0.55
-     * 5. afternoon（下午）: 0.55 - 0.70
-     * 6. sunset（日落）: 0.70 - 0.78
-     * 7. dusk（黄昏）: 0.78 - 0.85
-     *
-     * 转换为24小时制：
-     * - midnight: 00:00 - 05:15 和 20:20 - 24:00
-     * - sunrise: 05:15 - 06:40
-     * - morning: 06:40 - 09:40
-     * - noon: 09:40 - 13:15
-     * - afternoon: 13:15 - 16:45
-     * - sunset: 16:45 - 18:45
-     * - dusk: 18:45 - 20:20
-     */
-    // 时段时间范围（用于插值，共 7 个时段 + 午夜循环）
-    this.phaseRanges = [
-      { name: 'midnight', start: 0.00, end: 0.22 },
-      { name: 'sunrise', start: 0.22, end: 0.28 },
-      { name: 'morning', start: 0.28, end: 0.40 },
-      { name: 'noon', start: 0.40, end: 0.55 },
-      { name: 'afternoon', start: 0.55, end: 0.70 },
-      { name: 'sunset', start: 0.70, end: 0.78 },
-      { name: 'dusk', start: 0.78, end: 0.85 },
-      { name: 'midnight', start: 0.85, end: 1.00 },
-    ]
-
     // 内部状态
     this._lastTime = performance.now()
-    this._currentPhase = 'noon'
-    this._previousDayCount = 0
     this._sunOffset = new THREE.Vector3(0, this.params.sunOrbitHeight, 0)
     this._moonOffset = new THREE.Vector3(0, -this.params.sunOrbitHeight * 0.65, 0)
 
-    // HUD 时间更新节流：每 5 分钟游戏时间更新一次 (timeOfDay 精度)
-    // 5 分钟 = 5/(24*60) = 1/288 ≈ 0.00347 (timeOfDay 范围 0-1)
-    this._hudUpdateInterval = 5 / (24 * 60) // 5 分钟对应 timeOfDay 增量
-    this._lastHudTimeOfDay = this.params.timeOfDay // 上次更新 HUD 时的 timeOfDay
+    // 颜色缓存：常量颜色按 hex 只解析一次，插值结果写入复用的临时对象，避免每帧分配
+    this._constantColors = new Map()
+    this._scratchColors = {
+      horizonDay: new THREE.Color(),
+      zenithDay: new THREE.Color(),
+      horizonNight: new THREE.Color(),
+      zenithNight: new THREE.Color(),
+      skySun: new THREE.Color(),
+      skySunTint: new THREE.Color(),
+      lightSun: new THREE.Color(),
+      ambient: new THREE.Color(),
+      fog: new THREE.Color(),
+    }
 
     // 创建天空球（替代 scene.background）
     this.skyDome = new SkyDome()
@@ -177,20 +147,6 @@ export default class DayCycle {
   }
 
   /**
-   * 加载并配置天空盒贴图
-   */
-  _loadSkyTextures() {
-    this.skyTextures = {}
-  }
-
-  /**
-   * 初始化天空球贴图
-   */
-  _initSkyDome() {
-    this._updateSkybox()
-  }
-
-  /**
    * 创建月光光源
    */
   _createMoonLight() {
@@ -203,32 +159,22 @@ export default class DayCycle {
   }
 
   /**
-   * 获取当前时段和进度
-   * @returns {{ phase: string, progress: number, nextPhase: string }} 时段信息对象
+   * 获取按 hex 缓存的常量颜色（只读，勿修改返回值）
    */
-  _getPhaseInfo() {
-    const t = this.params.timeOfDay
-
-    for (let i = 0; i < this.phaseRanges.length; i++) {
-      const range = this.phaseRanges[i]
-      if (t >= range.start && t < range.end) {
-        const progress = (t - range.start) / (range.end - range.start)
-        const nextIndex = (i + 1) % this.phaseRanges.length
-        const nextPhase = this.phaseRanges[nextIndex].name
-        return { phase: range.name, progress, nextPhase }
-      }
+  _getConstantColor(hex) {
+    let color = this._constantColors.get(hex)
+    if (!color) {
+      color = new THREE.Color(hex)
+      this._constantColors.set(hex, color)
     }
-
-    return { phase: 'midnight', progress: 0, nextPhase: 'sunrise' }
+    return color
   }
 
   /**
-   * 线性插值两个颜色
+   * 线性插值两个颜色，结果写入 target
    */
-  _lerpColor(colorA, colorB, t) {
-    const a = new THREE.Color(colorA)
-    const b = new THREE.Color(colorB)
-    return a.lerp(b, t)
+  _lerpColor(colorA, colorB, t, target) {
+    return target.copy(this._getConstantColor(colorA)).lerp(this._getConstantColor(colorB), t)
   }
 
   /**
@@ -312,12 +258,13 @@ export default class DayCycle {
 
     const warmTwilight = THREE.MathUtils.clamp((twilight * 0.45) + (sunsetGlow * 0.95), 0, 1)
     const duskCool = THREE.MathUtils.clamp((twilight * 0.2) + (duskGlow * 0.92), 0, 1)
-    const horizonDay = this._lerpColor('#dcecff', '#ff9354', warmTwilight)
-    const zenithDay = this._lerpColor('#78b4ff', '#f2a35b', warmTwilight * 0.34)
-    const horizonNight = this._lerpColor('#182744', '#5d2f33', duskCool * 0.75)
-    const zenithNight = this._lerpColor('#061120', '#15233a', duskCool * 0.42)
-    const sunColor = this._lerpColor('#fff7d6', '#ff9356', warmTwilight)
-      .lerp(this._lerpColor('#ff9356', '#f07bb3', duskCool * 0.38), duskCool * 0.32)
+    const scratch = this._scratchColors
+    const horizonDay = this._lerpColor('#dcecff', '#ff9354', warmTwilight, scratch.horizonDay)
+    const zenithDay = this._lerpColor('#78b4ff', '#f2a35b', warmTwilight * 0.34, scratch.zenithDay)
+    const horizonNight = this._lerpColor('#182744', '#5d2f33', duskCool * 0.75, scratch.horizonNight)
+    const zenithNight = this._lerpColor('#061120', '#15233a', duskCool * 0.42, scratch.zenithNight)
+    const sunColor = this._lerpColor('#fff7d6', '#ff9356', warmTwilight, scratch.skySun)
+      .lerp(this._lerpColor('#ff9356', '#f07bb3', duskCool * 0.38, scratch.skySunTint), duskCool * 0.32)
 
     this.skyDome.setSkyState({
       zenithDayColor: `#${zenithDay.getHexString()}`,
@@ -349,27 +296,27 @@ export default class DayCycle {
     const warmTint = THREE.MathUtils.clamp((twilight * 0.52) + (sunsetGlow * 0.96), 0, 1)
     const coolTwilight = THREE.MathUtils.clamp(duskGlow * 0.82, 0, 1)
     const sunIntensity = this._lerp(0.04, 1.65, daylight) + (twilight * 0.14) + (sunsetGlow * 0.2) - (duskGlow * 0.08)
-    const sunColor = this._lerpColor('#ffffff', '#ff9a58', warmTint)
-      .lerp(new THREE.Color('#e58ab7'), coolTwilight * 0.24)
+    const scratch = this._scratchColors
+    const sunColor = this._lerpColor('#ffffff', '#ff9a58', warmTint, scratch.lightSun)
+      .lerp(this._getConstantColor('#e58ab7'), coolTwilight * 0.24)
 
     environment.params.sunIntensity = sunIntensity
     environment.sunLight.intensity = sunIntensity
     environment.sunLight.color.copy(sunColor)
 
     const ambientIntensity = this._lerp(0.16, 0.72, daylight) + (twilight * 0.06) + (sunsetGlow * 0.05)
-    const ambientColor = this._lerpColor('#455a78', '#ffffff', daylight)
-      .lerp(new THREE.Color('#ffbb84'), sunsetGlow * 0.22)
-      .lerp(new THREE.Color('#6a7fb1'), duskGlow * 0.24)
+    const ambientColor = this._lerpColor('#455a78', '#ffffff', daylight, scratch.ambient)
+      .lerp(this._getConstantColor('#ffbb84'), sunsetGlow * 0.22)
+      .lerp(this._getConstantColor('#6a7fb1'), duskGlow * 0.24)
 
     environment.params.ambientIntensity = ambientIntensity
     environment.ambientLight.intensity = ambientIntensity
     environment.ambientLight.color.copy(ambientColor)
 
     const fogDensity = this._lerp(0.022, 0.008, daylight) + (duskGlow * 0.002)
-    const baseFog = this._lerpColor('#141820', '#9fd0ff', daylight)
-    const fogColor = baseFog
-      .lerp(new THREE.Color('#ff9153'), warmTint * 0.4)
-      .lerp(new THREE.Color('#5b4770'), duskGlow * 0.45)
+    const fogColor = this._lerpColor('#141820', '#9fd0ff', daylight, scratch.fog)
+      .lerp(this._getConstantColor('#ff9153'), warmTint * 0.4)
+      .lerp(this._getConstantColor('#5b4770'), duskGlow * 0.45)
 
     environment.params.fogDensity = fogDensity
     environment.params.fogColor = `#${fogColor.getHexString()}`
@@ -392,20 +339,10 @@ export default class DayCycle {
       const timeIncrement = (delta / this.params.dayDuration) * this.params.timeSpeed
       this.params.timeOfDay += timeIncrement
 
-      // 检测是否跨过新的一天
+      // 跨过新的一天时回绕
       if (this.params.timeOfDay >= 1.0) {
         this.params.timeOfDay = this.params.timeOfDay % 1.0
-        this.hud.incrementGameDay()
       }
-    }
-
-    // 更新 HUD 时间显示（每 5 分钟游戏时间更新一次）
-    const timeOfDayDiff = Math.abs(this.params.timeOfDay - this._lastHudTimeOfDay)
-    // 处理跨天的情况（例如从 0.99 到 0.01）
-    const wrappedDiff = Math.min(timeOfDayDiff, 1 - timeOfDayDiff)
-    if (wrappedDiff >= this._hudUpdateInterval) {
-      this.hud.updateGameTime(this.params.timeOfDay)
-      this._lastHudTimeOfDay = this.params.timeOfDay
     }
 
     // 更新太阳位置
@@ -427,17 +364,13 @@ export default class DayCycle {
     this._updateLightingAndFog(environment)
   }
 
-  setTimeOfDay(value, options = {}) {
+  setTimeOfDay(value) {
     const clamped = THREE.MathUtils.clamp(Number(value), 0, 1)
     if (!Number.isFinite(clamped)) {
       return
     }
 
     this.params.timeOfDay = clamped
-    if (options.syncHud !== false) {
-      this.hud.updateGameTime(this.params.timeOfDay)
-      this._lastHudTimeOfDay = this.params.timeOfDay
-    }
   }
 
   setAutoPlay(value) {

@@ -4,12 +4,12 @@
 // 原始回放 JSON 里有几十万个 change 对象，在主线程上 JSON.parse + 遍历要 1 秒以上
 // （慢 CPU 上 7 秒）。这里把它压成按列存放的类型化数组，worker 里算完后零拷贝转移给主线程。
 
-export const REPLAY_FORMAT = 'litemora-redstone-replay-v1'
+const REPLAY_FORMAT = 'litemora-redstone-replay-v1'
 export const PISTON_MOTION_DURATION_TICKS = 2
 export const AIR_BLOCK_STRING = 'minecraft:air'
 
 export const MOTION_CAUSE_MOVING_BLOCK = 'piston_moving_block'
-export const MOTION_CAUSE_RETRACTING_BASE = 'piston_retracting_base'
+const MOTION_CAUSE_RETRACTING_BASE = 'piston_retracting_base'
 
 const BLOCK_DIRECTIONS = Object.freeze({
   down: Object.freeze({ x: 0, y: -1, z: 0 }),
@@ -42,7 +42,7 @@ function getBlockProperty(blockString, propertyName) {
   return ''
 }
 
-export function isMovingPistonBlock(blockString) {
+function isMovingPistonBlock(blockString) {
   return String(blockString || '').startsWith('minecraft:moving_piston')
 }
 

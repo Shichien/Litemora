@@ -82,42 +82,6 @@ export default class TerrainContainer {
   }
 
   /**
-   * 返回尺寸拷贝，避免外部直接修改
-   */
-  getSize() {
-    return {
-      width: this.size.width,
-      height: this.size.height,
-    }
-  }
-
-  /**
-   * 按指定高度填充一整列
-   * 用于地形生成：0~(height-1) 先填充 bodyId，最顶层替换为 topId
-   * @param {number} x
-   * @param {number} z
-   * @param {number} height 目标高度（包含顶层）
-   * @param {{ topId?: number, bodyId?: number }} opts
-   */
-  fillColumn(x, z, height, opts = {}) {
-    if (!this._inBounds(x, 0, z))
-      return
-
-    const clampedHeight = Math.min(Math.max(Math.floor(height), -1), this.size.height - 1)
-    if (clampedHeight < 0)
-      return
-
-    const bodyId = opts.bodyId ?? blocks.dirt.id
-    const topId = opts.topId ?? bodyId
-
-    for (let y = 0; y <= clampedHeight; y++) {
-      // 顶层填顶面方块，其余填充主体
-      const targetId = y === clampedHeight ? topId : bodyId
-      this.setBlockId(x, y, z, targetId)
-    }
-  }
-
-  /**
    * 清空容器，重置为空气
    */
   clear() {
@@ -182,28 +146,5 @@ export default class TerrainContainer {
         }
       }
     }
-  }
-
-  /**
-   * 导出高度图：取每个 (x,z) 的最高非空方块高度；若全空返回 -1
-   * @returns {number[][]} 二维高度数组 [z][x]
-   */
-  toHeightMap() {
-    const heightMap = []
-    for (let z = 0; z < this.size.width; z++) {
-      const row = []
-      for (let x = 0; x < this.size.width; x++) {
-        let top = -1
-        for (let y = this.size.height - 1; y >= 0; y--) {
-          if (this.getBlock(x, y, z).id !== blocks.empty.id) {
-            top = y
-            break
-          }
-        }
-        row.push(top)
-      }
-      heightMap.push(row)
-    }
-    return heightMap
   }
 }

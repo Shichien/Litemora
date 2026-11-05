@@ -195,7 +195,7 @@ function getFallbackCollisionBoxes(block = null) {
   return [[0, 0, 0, 1, 1, 1]]
 }
 
-export function getMinecraftBlockDefinition(blockName = '') {
+function getMinecraftBlockDefinition(blockName = '') {
   return blocksByName.get(normalizeMinecraftBlockName(blockName)) || null
 }
 

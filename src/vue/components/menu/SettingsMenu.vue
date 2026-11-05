@@ -1,6 +1,7 @@
 <script setup>
 import { useSettingsStore } from '@pinia/settingsStore.js'
 import { useUiStore } from '@pinia/uiStore.js'
+import { PRESET_LABELS, PRESET_NAMES } from '@three/config/settings-presets.js'
 /**
  * SettingsMenu - Full settings panel with Camera, Visual, Environment controls
  * Supports preset switching and step sliders
@@ -19,12 +20,7 @@ const shadowOptions = [
 ]
 
 // Preset options for Camera/Visual
-const presetOptions = [
-  { value: 'off', label: 'Off' },
-  { value: 'default', label: 'Default' },
-  { value: 'cinematic', label: 'Cinematic' },
-  { value: 'arcade', label: 'Arcade' },
-]
+const presetOptions = PRESET_NAMES.map(value => ({ value, label: PRESET_LABELS[value] }))
 
 // Sensitivity display (percentage)
 const sensitivityPercent = computed(() => {

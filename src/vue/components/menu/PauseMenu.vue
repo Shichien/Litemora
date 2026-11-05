@@ -29,7 +29,7 @@ function exitWorld() {
       <button class="mc-button" @click="ui.toPlaying()">
         <span class="title">{{ $t('menu.resume') }}</span>
       </button>
-      <button v-if="ui.pauseMenuConfig.showSettings" class="mc-button" @click="ui.toSettings('pauseMenu')">
+      <button v-if="ui.pauseMenuConfig.showSettings" class="mc-button" @click="ui.toSettings()">
         <span class="title">{{ $t('menu.settings') }}</span>
       </button>
       <button v-if="ui.pauseMenuConfig.showSkins" class="mc-button" @click="ui.toSkinSelector()">

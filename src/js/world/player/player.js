@@ -170,7 +170,8 @@ export default class Player {
    * Handler for when core is ready (resources loaded) - set up player model
    */
   _onCoreReady() {
-    console.debug('[Player] Core ready, setting up player model')
+    if (this.debug.active)
+      console.debug('[Player] Core ready, setting up player model')
     const skinStore = useSkinStore()
     this.resource = this._getModelResource(skinStore.currentSkinId)
 
@@ -186,7 +187,8 @@ export default class Player {
 
     this.setModel()
     this.animation = new PlayerAnimationController(this.model, this.resource.animations)
-    console.debug('[Player] Player model set up successfully')
+    if (this.debug.active)
+      console.debug('[Player] Player model set up successfully')
   }
 
   /**

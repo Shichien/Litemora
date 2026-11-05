@@ -23,11 +23,8 @@ function togglePause() {
   }
 }
 
-// 搜索
+// 搜索（在下方 filteredLogs 中本地过滤）
 const searchQuery = ref('')
-watch(searchQuery, (val) => {
-  debugStateMonitor.setSearchQuery(val)
-})
 
 // 黑名单
 const enableBlacklist = ref(true)

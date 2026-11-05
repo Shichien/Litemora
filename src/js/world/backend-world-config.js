@@ -201,7 +201,7 @@ export function normalizeBackendWorldConfig(raw = {}) {
   return mergeBackendConfig(raw)
 }
 
-export function getAdminWorldConfig(accountId = '', options = {}) {
+function getAdminWorldConfig(accountId = '', options = {}) {
   try {
     const scopedKey = buildAdminWorldConfigStorageKey(accountId, options)
     const raw = localStorage.getItem(scopedKey)
@@ -243,7 +243,7 @@ export function saveAdminWorldConfig(raw = {}, accountId = '', options = {}) {
   return normalized
 }
 
-export function clearAdminWorldConfig(accountId = '', options = {}) {
+function clearAdminWorldConfig(accountId = '', options = {}) {
   const scopedKey = buildAdminWorldConfigStorageKey(accountId, options)
   localStorage.removeItem(scopedKey)
 }
@@ -341,6 +341,3 @@ export async function loadBackendWorldConfig(accountId = '', options = {}) {
 }
 
 export { DEFAULT_BACKEND_WORLD_CONFIG }
-export { ADMIN_WORLD_CONFIG_STORAGE_KEY }
-export { buildAdminWorldConfigStorageKey }
-export { buildWorldConfigRequestUrl }

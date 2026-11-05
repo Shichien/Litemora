@@ -87,38 +87,5 @@ export function createDebugPlugin() {
         debugStateMonitor.logPiniaChange(storeId, key, oldValue, newValue)
       }
     })
-
-    // 监听 store 的 actions (可选)
-    // store.$onAction(({ name, store: _store, args, after, onError }) => {
-    //   // 记录 action 调用
-    //   console.warn(`[Pinia] Action: ${storeId}.${name}`, args)
-
-    //   after((result) => {
-    //     console.warn(`[Pinia] Action completed: ${storeId}.${name}`, result)
-    //   })
-
-    //   onError((error) => {
-    //     console.error(`[Pinia] Action failed: ${storeId}.${name}`, error)
-    //   })
-    // })
   }
 }
-
-/**
- * 手动记录 Pinia 状态变更
- * 用于在需要精确控制记录时使用
- *
- * @param {string} storeName - Store 名称
- * @param {string} key - 变更的 key
- * @param {*} oldValue - 旧值
- * @param {*} newValue - 新值
- */
-export function logPiniaChange(storeName, key, oldValue, newValue) {
-  if (!import.meta.env.DEV)
-    return
-
-  debugStateMonitor.logPiniaChange(storeName, key, oldValue, newValue)
-}
-
-// 默认导出
-export default createDebugPlugin

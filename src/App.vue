@@ -1,6 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
+import { useUiStore } from '@pinia/uiStore.js'
 import { isLocalDevAuthEnabled, loadAdminAuthSession } from '@three/auth/admin-auth.js'
 import { fetchGallery } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
@@ -94,6 +95,8 @@ function destroyExperienceIfNeeded() {
   if (experience) {
     experience.destroy()
     experience = null
+    // The next world starts from its loading screen again.
+    useUiStore().resetForNewWorld()
   }
 }
 
@@ -217,7 +220,16 @@ onBeforeUnmount(() => {
   <!-- Admin 配置弹窗：作为覆盖层显示在所有页面之上 -->
   <AdminConfigPage v-if="(isAdminMode && canManageActiveSpace) || canShowAdminConfig" class="admin-overlay" />
 
-  <div v-if="routeKind !== 'portal' && routeKind !== 'worlds'" class="relative w-screen h-screen overflow-hidden">
+  <!--
+    Keyed per world: Renderer.destroy() force-loses the WebGL context of its canvas, and
+    Experience.destroy() clears every emitter listener, so each world needs a fresh canvas
+    and freshly mounted UI components that subscribe again.
+  -->
+  <div
+    v-if="routeKind !== 'portal' && routeKind !== 'worlds'"
+    :key="currentWorldRouteKey"
+    class="relative w-screen h-screen overflow-hidden"
+  >
     <!-- Three.js Canvas -->
     <canvas ref="threeCanvas" class="three-canvas absolute inset-0 z-0" />
 

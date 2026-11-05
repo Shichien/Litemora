@@ -228,7 +228,3 @@ export async function clearMinecraftResourcePack(options = {}) {
 
   localStorage.removeItem(fallbackStorageKey(scopedKey))
 }
-
-export function getMinecraftResourcePackStorageKey(options = {}) {
-  return buildScopedPackKey(options)
-}

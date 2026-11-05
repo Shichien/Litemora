@@ -274,15 +274,6 @@ export default class ChunkManager {
   }
 
   /**
-   * 世界坐标找到 chunk（注意 worldX/worldZ 为连续值）
-   */
-  getChunkAtWorld(worldX, worldZ) {
-    const chunkX = Math.floor(worldX / this.chunkWidth)
-    const chunkZ = Math.floor(worldZ / this.chunkWidth)
-    return this.getChunk(chunkX, chunkZ)
-  }
-
-  /**
    * 世界坐标查询方块
    * - 这里的 x/y/z 约定为“方块中心的整数坐标”，与碰撞系统一致
    * - 若 chunk 未生成/不存在，返回 empty
@@ -622,22 +613,6 @@ export default class ChunkManager {
     return placed
   }
 
-  addMinecraftBlockWorld(worldX, worldY, worldZ, blockName, properties = {}, options = {}) {
-    const existing = this.getBlockWorld(worldX, worldY, worldZ)
-    if (existing?.minecraftBlock || this._hasLegacyBlock(existing)) {
-      return false
-    }
-
-    const placed = this.setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties, options)
-    if (!placed) {
-      return false
-    }
-
-    this.syncMinecraftSchematicLayerState()
-
-    return placed
-  }
-
   clearImportedMinecraftBlock(worldX, worldY, worldZ, options = {}) {
     const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
     const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(worldX, worldY, worldZ, {
@@ -751,40 +726,6 @@ export default class ChunkManager {
 
   isImportedMinecraftBlockTransientlyRemoved(worldX, worldY, worldZ) {
     return this._transientRemovedMinecraftBlocks.has(this._worldBlockKey(worldX, worldY, worldZ))
-  }
-
-  clearImportedMinecraftBlockTransient(worldX, worldY, worldZ) {
-    const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(worldX, worldY, worldZ, {
-      includeTransientRemoved: true,
-    })
-    if (!importedMinecraftBlock) {
-      return false
-    }
-
-    const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
-    if (this._transientRemovedMinecraftBlocks.has(blockKey)) {
-      return false
-    }
-
-    const removed = this.clearImportedMinecraftBlock(worldX, worldY, worldZ)
-    if (!removed) {
-      return false
-    }
-
-    return {
-      removed: true,
-      source: 'minecraft-schematic',
-      worldBlock: { x: worldX, y: worldY, z: worldZ },
-      blockId: null,
-      minecraftBlock: {
-        name: `minecraft:${importedMinecraftBlock.blockName}`,
-        properties: importedMinecraftBlock.properties,
-      },
-      affectedBlockStates: [
-        buildMinecraftBlockString(importedMinecraftBlock.blockName, importedMinecraftBlock.properties),
-      ].filter(Boolean),
-      transient: true,
-    }
   }
 
   async clearImportedMinecraftBlockTransientAsync(worldX, worldY, worldZ) {

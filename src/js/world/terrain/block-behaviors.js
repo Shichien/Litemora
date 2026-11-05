@@ -17,21 +17,16 @@ export function isStairBlockName(name) {
   return normalizeName(name).endsWith('_stairs')
 }
 
-export function isTrapdoorBlockName(name) {
+function isTrapdoorBlockName(name) {
   return normalizeName(name).endsWith('_trapdoor')
 }
 
-export function isIronBarsBlockName(name) {
+function isIronBarsBlockName(name) {
   return normalizeName(name) === 'iron_bars'
 }
 
-export function isWallBlockName(name) {
+function isWallBlockName(name) {
   return normalizeName(name).endsWith('_wall')
-}
-
-export function isLanternBlockName(name) {
-  const normalized = normalizeName(name)
-  return normalized === 'lantern' || normalized === 'soul_lantern'
 }
 
 export function isSlabBlockType(blockType) {
@@ -44,7 +39,7 @@ export function isStairBlockType(blockType) {
   return geometryType.startsWith('stair_') || isStairBlockName(blockType?.name)
 }
 
-export function isTrapdoorBlockType(blockType) {
+function isTrapdoorBlockType(blockType) {
   const geometryType = geometryTypeOf(blockType)
   return geometryType.startsWith('trapdoor_') || isTrapdoorBlockName(blockType?.name)
 }

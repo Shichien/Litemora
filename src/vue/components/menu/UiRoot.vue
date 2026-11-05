@@ -1,4 +1,5 @@
 <script setup>
+import { useSettingsStore } from '@pinia/settingsStore.js'
 import { useUiStore } from '@pinia/uiStore.js'
 import emitter from '@three/utils/event/event-bus.js'
 /**
@@ -13,6 +14,7 @@ import SettingsMenu from './SettingsMenu.vue'
 import SkinSelector from './SkinSelector.vue'
 
 const ui = useUiStore()
+const settings = useSettingsStore()
 const { locale } = useI18n()
 
 function syncReadyStateFromRuntime() {
@@ -40,6 +42,8 @@ onUnmounted(() => {
 })
 
 function handleSceneReady() {
+  // A new Experience has fresh listeners; give it the user's current settings.
+  settings.emitAllSettings()
   ui.bootstrapBackendWorld()
 }
 

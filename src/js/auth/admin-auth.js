@@ -332,7 +332,7 @@ export function loadAdminAuthSession() {
   }
 }
 
-export function saveAdminAuthSession(account) {
+function saveAdminAuthSession(account) {
   const normalized = normalizeSessionPayload(account)
   localStorage.setItem(ADMIN_AUTH_SESSION_KEY, JSON.stringify(normalized))
   emitAdminAuthChanged(normalized)

@@ -1,12 +1,5 @@
 import * as THREE from 'three'
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
-import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js'
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
-import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js'
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
-import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 
 import Experience from '../../experience.js'
 import emitter from '../event/event-bus.js'
@@ -32,8 +25,6 @@ export default class Resources {
     this.loadingPercentage = document.getElementById('loading-percentage')
 
     this.options = {
-      dracoDecoderPath: 'https://www.gstatic.com/draco/v1/decoders/',
-      ktx2TranscoderPath: 'https://unpkg.com/three/examples/jsm/libs/basis/',
       sourceLoadTimeoutMs: 12000,
       ...options,
     }
@@ -46,25 +37,6 @@ export default class Resources {
     this.loaders = {}
     this.loaders.gltfLoader = new GLTFLoader()
     this.loaders.textureLoader = new THREE.TextureLoader()
-    this.loaders.cubeTextureLoader = new THREE.CubeTextureLoader()
-    this.loaders.fontLoader = new FontLoader()
-    this.loaders.fbxLoader = new FBXLoader()
-    this.loaders.audioLoader = new THREE.AudioLoader()
-    this.loaders.objLoader = new OBJLoader()
-    this.loaders.svgLoader = new SVGLoader()
-    this.loaders.exrLoader = new EXRLoader()
-    this.loaders.ktx2Loader = new KTX2Loader()
-
-    // Set up DRACOLoader
-    const dracoLoader = new DRACOLoader()
-    dracoLoader.setDecoderPath(this.options.dracoDecoderPath)
-    this.loaders.gltfLoader.setDRACOLoader(dracoLoader)
-
-    // Set up KTX2Loader
-    this.loaders.ktx2Loader
-      .setTranscoderPath(this.options.ktx2TranscoderPath)
-      .detectSupport(this.renderer.instance)
-    this.loaders.gltfLoader.setKTX2Loader(this.loaders.ktx2Loader)
   }
 
   startLoading() {
@@ -145,44 +117,6 @@ export default class Resources {
         }
         case 'texture': {
           this.loaders.textureLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'cubeTexture': {
-          this.loaders.cubeTextureLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'font': {
-          this.loaders.fontLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'fbxModel': {
-          this.loaders.fbxLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'audio': {
-          this.loaders.audioLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'objModel': {
-          this.loaders.objLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'svg': {
-          this.loaders.svgLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'exrTexture': {
-          this.loaders.exrLoader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
-          break
-        }
-        case 'video': {
-          this.loadVideoTexture(resourcePath).then((file) => {
-            finishWithSuccess(file)
-          }).catch(finishWithFailure)
-          break
-        }
-        case 'ktx2Texture': {
-          this.loaders.ktx2Loader.load(resourcePath, finishWithSuccess, undefined, finishWithFailure)
           break
         }
         default: {
@@ -288,27 +222,6 @@ export default class Resources {
 
     await Promise.all(tasks)
     return uniqueNames.filter(name => !!this.items[name])
-  }
-
-  loadVideoTexture(path) {
-    return new Promise((resolve) => {
-      const video = document.createElement('video')
-      video.src = path
-      video.loop = true
-      video.muted = true
-      video.playsInline = true
-
-      video.addEventListener('loadeddata', () => {
-        const texture = new THREE.VideoTexture(video)
-        texture.minFilter = THREE.LinearFilter
-        texture.magFilter = THREE.LinearFilter
-        texture.format = THREE.RGBFormat
-
-        resolve(texture)
-      })
-
-      video.load()
-    })
   }
 
   get loadProgress() {
