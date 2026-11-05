@@ -1,0 +1,63 @@
+{
+  "id": "seed-redstone-flying-machine",
+  "space": "redstonearchive",
+  "title": "飞行器阵列",
+  "projectionSlug": "flyingmachine",
+  "description": "观察者驱动的黏液与蜂蜜飞行器阵列，原场景运行 1700 游戏刻，并继续两刻完成末尾活塞运动。",
+  "visibility": "public",
+  "fileName": "flying-machine.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "flying-machine.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 5257
+  },
+  "schematic": {
+    "author": "redstone-rs",
+    "name": "flying-machine",
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 37,
+      "maxY": 30,
+      "maxZ": 44
+    },
+    "size": {
+      "x": 38,
+      "y": 31,
+      "z": 45
+    },
+    "regionCount": 1,
+    "blockCount": 4599
+  },
+  "previewModel": {
+    "name": "flying-machine",
+    "sampled": false,
+    "totalSolidBlocks": 4599,
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 37,
+      "maxY": 30,
+      "maxZ": 44
+    }
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "redstoneReplayUrl": "/redstone-archive/flying-machine.replay.json.gz",
+  "sourceUrl": "https://github.com/azazo1/redstone-rs/blob/sol/assets/scenarios/flying-machine.toml",
+  "owner": {
+    "id": "local-dev",
+    "name": "redstone-rs",
+    "avatar": ""
+  },
+  "createdAt": 1785816618139,
+  "updatedAt": 1785816618139
+}

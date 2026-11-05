@@ -1,0 +1,43 @@
+{
+  "player": {
+    "spawnPoint": {
+      "x": 43.5,
+      "y": 68.5,
+      "z": 42
+    },
+    "flight": {
+      "groundWalkAnimationWhenMoving": true
+    }
+  },
+  "settings": {
+    "cameraPreset": "default",
+    "visualPreset": "default",
+    "portalLinks": {
+      "netherPortalUrl": "",
+      "endPortalUrl": ""
+    },
+    "chunk": {
+      "height": 256,
+      "viewDistance": 2,
+      "unloadPadding": 1
+    },
+    "environment": {
+      "skyMode": "DayCycle",
+      "sunIntensity": 3,
+      "ambientIntensity": 0.75,
+      "fogDensity": 0.01,
+      "timeOfDay": 0.25,
+      "timeAutoPlay": true
+    }
+  },
+  "ui": {
+    "pauseMenu": {
+      "showSettings": false,
+      "showSkins": true
+    },
+    "controls": {
+      "allowFlightToggle": true,
+      "allowPerspectiveToggle": true
+    }
+  }
+}

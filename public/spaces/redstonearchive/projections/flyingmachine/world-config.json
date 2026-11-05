@@ -1,0 +1,50 @@
+{
+  "ui": {
+    "pauseMenu": {
+      "showSettings": false,
+      "showSkins": true
+    },
+    "controls": {
+      "allowFlightToggle": true,
+      "allowPerspectiveToggle": true
+    }
+  },
+  "settings": {
+    "portalLinks": {
+      "endPortalUrl": "",
+      "netherPortalUrl": ""
+    },
+    "environment": {
+      "ambientIntensity": 0.9,
+      "sunIntensity": 3,
+      "timeAutoPlay": false,
+      "timeOfDay": 0.38,
+      "skyMode": "DayCycle",
+      "fogDensity": 0.003
+    },
+    "redstoneArchive": {
+      "replayUrl": "/redstone-archive/flying-machine.replay.json.gz"
+    },
+    "visualPreset": "default",
+    "cameraPreset": "default",
+    "chunk": {
+      "unloadPadding": 1,
+      "height": 256,
+      "viewDistance": 5
+    }
+  },
+  "player": {
+    "spawnPoint": {
+      "x": -14,
+      "y": 30,
+      "z": 58
+    },
+    "view": {
+      "yaw": -43,
+      "pitch": -18
+    },
+    "flight": {
+      "groundWalkAnimationWhenMoving": true
+    }
+  }
+}

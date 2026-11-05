@@ -1,0 +1,79 @@
+{
+  "id": "seed-giant-redstone-dense-smoke",
+  "space": "codexperf",
+  "title": "giantredstonedensesmoke",
+  "projectionSlug": "giantredstonedensesmoke",
+  "description": "Reduced-size high-density redstone machine smoke world.",
+  "visibility": "public",
+  "fileName": "giant-redstone-dense-smoke.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "giant-redstone-dense-smoke.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 33072
+  },
+  "schematic": {
+    "name": "giant-redstone-dense-world",
+    "author": "Litemora generator",
+    "size": {
+      "x": 64,
+      "y": 24,
+      "z": 64
+    },
+    "regionCount": 1,
+    "blockCount": 45102,
+    "yStats": {
+      "minY": 0,
+      "maxY": 23,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 63,
+      "maxY": 23,
+      "maxZ": 63
+    }
+  },
+  "previewModel": {
+    "name": "giant-redstone-dense-world",
+    "author": "Litemora generator",
+    "size": {
+      "x": 64,
+      "y": 24,
+      "z": 64
+    },
+    "regionCount": 1,
+    "blockCount": 45102,
+    "yStats": {
+      "minY": 0,
+      "maxY": 23,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 63,
+      "maxY": 23,
+      "maxZ": 63
+    }
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1777955000000,
+  "updatedAt": 1777955000000
+}

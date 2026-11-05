@@ -1,0 +1,30 @@
+{
+  "id": "mos0bnly-mm3mdn",
+  "space": "codexperf",
+  "title": "autotestproj",
+  "projectionSlug": "autotestproj",
+  "description": "",
+  "visibility": "public",
+  "fileName": "giant-block-mix-world.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "giant-block-mix-world.litematic",
+    "mimeType": "application/octet-stream"
+  },
+  "schematic": null,
+  "previewModel": null,
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1777947982921,
+  "updatedAt": 1777947982921
+}

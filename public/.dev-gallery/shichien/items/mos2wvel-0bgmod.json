@@ -1,0 +1,79 @@
+{
+  "id": "mos2wvel-0bgmod",
+  "space": "shichien",
+  "title": "Unnamed",
+  "projectionSlug": "unnamed",
+  "description": "",
+  "visibility": "public",
+  "fileName": "precision-engineered-network-inverse-solver-by-nano-sloi-ecan.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "precision-engineered-network-inverse-solver-by-nano-sloi-ecan.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 99481
+  },
+  "schematic": {
+    "name": "Unnamed",
+    "author": "Unknown",
+    "size": {
+      "x": 143,
+      "y": 41,
+      "z": 36
+    },
+    "regionCount": 1,
+    "blockCount": 43442,
+    "yStats": {
+      "minY": 7,
+      "maxY": 47,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 7,
+      "minZ": 7,
+      "maxX": 142,
+      "maxY": 47,
+      "maxZ": 42
+    }
+  },
+  "previewModel": {
+    "name": "Unnamed",
+    "author": "Unknown",
+    "size": {
+      "x": 143,
+      "y": 41,
+      "z": 36
+    },
+    "regionCount": 1,
+    "blockCount": 43442,
+    "yStats": {
+      "minY": 7,
+      "maxY": 47,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 7,
+      "minZ": 7,
+      "maxX": 142,
+      "maxY": 47,
+      "maxZ": 42
+    }
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1777952332031,
+  "updatedAt": 1777952332031
+}

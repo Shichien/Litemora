@@ -1,0 +1,81 @@
+{
+  "id": "seed-giant-redstone-dense-tall198",
+  "space": "codexperf",
+  "title": "giantredstonedensetall198",
+  "projectionSlug": "giantredstonedensetall198",
+  "description": "Tall high-density redstone machine stress world for vertical scaling verification.",
+  "visibility": "public",
+  "fileName": "giant-redstone-dense-tall198.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "giant-redstone-dense-tall198.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 903810
+  },
+  "schematic": {
+    "name": "giant-redstone-dense-world",
+    "author": "Litemora generator",
+    "size": {
+      "x": 128,
+      "y": 198,
+      "z": 128
+    },
+    "regionCount": 1,
+    "blockCount": 1700900,
+    "yStats": {
+      "minY": 0,
+      "maxY": 197,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 127,
+      "maxY": 197,
+      "maxZ": 127
+    }
+  },
+  "previewModel": {
+    "name": "giant-redstone-dense-world",
+    "author": "Litemora generator",
+    "size": {
+      "x": 128,
+      "y": 198,
+      "z": 128
+    },
+    "regionCount": 1,
+    "blockCount": 1700900,
+    "yStats": {
+      "minY": 0,
+      "maxY": 197,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 127,
+      "maxY": 197,
+      "maxZ": 127
+    },
+    "totalSolidBlocks": 1700900,
+    "sampled": true
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1777956353590,
+  "updatedAt": 1777956353590
+}

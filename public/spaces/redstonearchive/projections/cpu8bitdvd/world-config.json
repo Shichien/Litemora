@@ -1,0 +1,50 @@
+{
+  "ui": {
+    "pauseMenu": {
+      "showSettings": false,
+      "showSkins": true
+    },
+    "controls": {
+      "allowFlightToggle": true,
+      "allowPerspectiveToggle": true
+    }
+  },
+  "settings": {
+    "portalLinks": {
+      "endPortalUrl": "",
+      "netherPortalUrl": ""
+    },
+    "environment": {
+      "ambientIntensity": 0.9,
+      "sunIntensity": 3,
+      "timeAutoPlay": false,
+      "timeOfDay": 0.38,
+      "skyMode": "DayCycle",
+      "fogDensity": 0.0015
+    },
+    "redstoneArchive": {
+      "replayUrl": "/redstone-archive/cpu-8bit-dvd.replay.json.gz"
+    },
+    "visualPreset": "default",
+    "cameraPreset": "default",
+    "chunk": {
+      "unloadPadding": 1,
+      "height": 256,
+      "viewDistance": 1
+    }
+  },
+  "player": {
+    "spawnPoint": {
+      "x": 111,
+      "y": 84,
+      "z": -12
+    },
+    "view": {
+      "yaw": 180,
+      "pitch": -20
+    },
+    "flight": {
+      "groundWalkAnimationWhenMoving": true
+    }
+  }
+}

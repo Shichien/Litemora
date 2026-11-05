@@ -6,7 +6,6 @@
       "z": 17
     },
     "flight": {
-      "ignoreMiningSlowdown": true,
       "groundWalkAnimationWhenMoving": true
     }
   },

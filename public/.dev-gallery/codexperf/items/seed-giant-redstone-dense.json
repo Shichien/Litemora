@@ -1,0 +1,79 @@
+{
+  "id": "seed-giant-redstone-dense",
+  "space": "codexperf",
+  "title": "giantredstonedenseworld",
+  "projectionSlug": "giantredstonedenseworld",
+  "description": "High-density multi-deck redstone machine stress world for runtime perf testing.",
+  "visibility": "public",
+  "fileName": "giant-redstone-dense-world.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "giant-redstone-dense-world.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 233928
+  },
+  "schematic": {
+    "name": "giant-redstone-dense-world",
+    "author": "Litemora generator",
+    "size": {
+      "x": 128,
+      "y": 48,
+      "z": 128
+    },
+    "regionCount": 1,
+    "blockCount": 412208,
+    "yStats": {
+      "minY": 0,
+      "maxY": 47,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 127,
+      "maxY": 47,
+      "maxZ": 127
+    }
+  },
+  "previewModel": {
+    "name": "giant-redstone-dense-world",
+    "author": "Litemora generator",
+    "size": {
+      "x": 128,
+      "y": 48,
+      "z": 128
+    },
+    "regionCount": 1,
+    "blockCount": 412208,
+    "yStats": {
+      "minY": 0,
+      "maxY": 47,
+      "hasBlocksBelowZero": false,
+      "blocksBelowZero": 0
+    },
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 127,
+      "maxY": 47,
+      "maxZ": 127
+    }
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1777949982921,
+  "updatedAt": 1777955400000
+}

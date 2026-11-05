@@ -1,0 +1,169 @@
+{
+  "space": "shichien",
+  "ownerAccountId": "local-dev",
+  "updatedAt": 1777952550045,
+  "items": [
+    {
+      "id": "mos31jmj-p7fofo",
+      "title": "castlewood1",
+      "projectionSlug": "castlewood1",
+      "description": "",
+      "visibility": "public",
+      "fileName": "castlewood1.litematic",
+      "schematic": {
+        "name": "castlewood1",
+        "author": "STRANGER_OFF",
+        "size": {
+          "x": 88,
+          "y": 74,
+          "z": 85
+        },
+        "regionCount": 1,
+        "blockCount": 33203,
+        "yStats": {
+          "minY": 0,
+          "maxY": 66,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 87,
+          "maxY": 66,
+          "maxZ": 84
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1777952550045,
+      "updatedAt": 1777952550045,
+      "preview": {
+        "totalSolidBlocks": 0,
+        "sampled": false,
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 87,
+          "maxY": 66,
+          "maxZ": 84
+        }
+      }
+    },
+    {
+      "id": "mos2zvir-qzi7d0",
+      "title": "giantblockmixworld",
+      "projectionSlug": "giantblockmixworld",
+      "description": "",
+      "visibility": "public",
+      "fileName": "giant-block-mix-world.litematic",
+      "schematic": {
+        "name": "giant-block-mix-world",
+        "author": "Litemora generator",
+        "size": {
+          "x": 512,
+          "y": 20,
+          "z": 512
+        },
+        "regionCount": 1,
+        "blockCount": 274481,
+        "yStats": {
+          "minY": 0,
+          "maxY": 7,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 511,
+          "maxY": 7,
+          "maxZ": 511
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1777952472148,
+      "updatedAt": 1777952472148,
+      "preview": {
+        "totalSolidBlocks": 0,
+        "sampled": false,
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 511,
+          "maxY": 7,
+          "maxZ": 511
+        }
+      }
+    },
+    {
+      "id": "mos2wvel-0bgmod",
+      "title": "Unnamed",
+      "projectionSlug": "unnamed",
+      "description": "",
+      "visibility": "public",
+      "fileName": "precision-engineered-network-inverse-solver-by-nano-sloi-ecan.litematic",
+      "schematic": {
+        "name": "Unnamed",
+        "author": "Unknown",
+        "size": {
+          "x": 143,
+          "y": 41,
+          "z": 36
+        },
+        "regionCount": 1,
+        "blockCount": 43442,
+        "yStats": {
+          "minY": 7,
+          "maxY": 47,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 7,
+          "minZ": 7,
+          "maxX": 142,
+          "maxY": 47,
+          "maxZ": 42
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1777952332031,
+      "updatedAt": 1777952332031,
+      "preview": {
+        "totalSolidBlocks": 0,
+        "sampled": false,
+        "bounds": {
+          "minX": 0,
+          "minY": 7,
+          "minZ": 7,
+          "maxX": 142,
+          "maxY": 47,
+          "maxZ": 42
+        }
+      }
+    }
+  ]
+}

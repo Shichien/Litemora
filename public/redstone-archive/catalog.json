@@ -1,0 +1,66 @@
+{
+  "format": "litemora-redstone-archive-v1",
+  "items": [
+    {
+      "id": "tripple-piston-extender",
+      "title": "三段活塞扩展器",
+      "description": "按下按钮后完成三段推出，再次按下后按真实时序收回。",
+      "category": "械电",
+      "minecraftVersion": "Java 26.1.2",
+      "structureUrl": "/redstone-archive/tripple-piston-extender.litematic",
+      "replayUrl": "/redstone-archive/tripple-piston-extender.replay.json.gz",
+      "sourceUrl": "https://github.com/azazo1/redstone-rs",
+      "license": "MIT",
+      "stats": {
+        "ticks": 103,
+        "stateChanges": 398,
+        "touchedBlocks": 39
+      }
+    },
+    {
+      "id": "flying-machine",
+      "title": "飞行器阵列",
+      "description": "观察者驱动的黏液与蜂蜜飞行器阵列，原场景运行 1700 游戏刻，并继续两刻完成末尾活塞运动。",
+      "category": "飞行器",
+      "minecraftVersion": "Java 26.1.2",
+      "structureUrl": "/redstone-archive/flying-machine.litematic",
+      "replayUrl": "/redstone-archive/flying-machine.replay.json.gz",
+      "sourceUrl": "https://github.com/azazo1/redstone-rs/blob/sol/assets/scenarios/flying-machine.toml",
+      "stats": {
+        "ticks": 1702,
+        "stateChanges": 551881,
+        "touchedBlocks": 36889
+      }
+    },
+    {
+      "id": "digital-clock",
+      "title": "数字时钟",
+      "description": "覆盖红石线、中继器、比较器、观察者、灯和容器计数的完整时钟流程。",
+      "category": "时序",
+      "minecraftVersion": "Java 26.1.2",
+      "structureUrl": "/redstone-archive/digital-clock.litematic",
+      "replayUrl": "/redstone-archive/digital-clock.replay.json.gz",
+      "sourceUrl": "https://github.com/azazo1/redstone-rs/blob/sol/assets/scenarios/digital-clock.toml",
+      "stats": {
+        "ticks": 220,
+        "stateChanges": 5123,
+        "touchedBlocks": 326
+      }
+    },
+    {
+      "id": "cpu-8bit-dvd",
+      "title": "八位红石计算机",
+      "description": "载入 DVD 程序后的大规模线路传播场景。",
+      "category": "计算机",
+      "minecraftVersion": "Java 26.1.2",
+      "structureUrl": "/redstone-archive/cpu-8bit.litematic",
+      "replayUrl": "/redstone-archive/cpu-8bit-dvd.replay.json.gz",
+      "sourceUrl": "https://github.com/azazo1/redstone-rs/blob/sol/assets/scenarios/cpu-8bit-dvd.toml",
+      "stats": {
+        "ticks": 60,
+        "stateChanges": 15770,
+        "touchedBlocks": 4609
+      }
+    }
+  ]
+}
