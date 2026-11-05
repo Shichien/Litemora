@@ -1225,41 +1225,12 @@ export class PlayerMovementController {
   }
 
   _getWaterSurfaceY() {
-    const provider = this.experience.terrainDataManager || this.terrainProvider
-    if (!provider) {
-      return null
-    }
-
-    if (provider.schematicOnlyMode) {
-      return null
-    }
-
-    const waterOffset = provider.waterParams?.waterOffset
-    if (!Number.isFinite(waterOffset)) {
-      return null
-    }
-
-    const heightScale = provider.renderParams?.heightScale ?? 1
-    return waterOffset * heightScale
+    // 世界里没有程序化生成的水面，原理图里的水方块不参与游泳判定
+    return null
   }
 
-  _isPositionInWater(position) {
-    const surfaceY = this._getWaterSurfaceY()
-    if (surfaceY === null) {
-      return false
-    }
-
-    if (position.y < (this.config.physics?.minWorldY ?? 0)) {
-      return false
-    }
-
-    const provider = this.experience.terrainDataManager || this.terrainProvider
-    const topSolidY = provider?.getTopSolidYWorld?.(position.x, position.z)
-    if (Number.isFinite(topSolidY) && topSolidY >= (provider?.waterParams?.waterOffset ?? Number.POSITIVE_INFINITY)) {
-      return false
-    }
-
-    return position.y <= surfaceY + 0.3
+  _isPositionInWater() {
+    return false
   }
 
   _isTouchingClimbable(basePosition) {

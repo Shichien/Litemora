@@ -29,7 +29,7 @@ import {
 import Environment from './environment.js'
 import Player from './player/player.js'
 import PortalLinkController from './portal-link-controller.js'
-import RedstoneReplayController from './redstone-replay-controller.js'
+import RedstoneReplayController, { fetchRedstoneReplay, resolveRedstoneReplayUrl } from './redstone-replay-controller.js'
 import ChunkManager from './terrain/chunk-manager.js'
 import MinecraftSchematicRenderLayer from './terrain/minecraft-schematic-render-layer.js'
 import schematicService from './terrain/schematic-service.js'
@@ -393,11 +393,7 @@ function sanitizeSnapshot(snapshot = null) {
 
   const worldState = snapshot.worldState && typeof snapshot.worldState === 'object'
     ? { ...snapshot.worldState }
-    : { schematicOnlyMode: false }
-
-  if (worldState.schematicOnlyMode && !hasSnapshotContent(snapshot)) {
-    worldState.schematicOnlyMode = false
-  }
+    : {}
 
   worldState.minecraftTransientRemovedBlocks = {}
 
@@ -429,7 +425,6 @@ function summarizeSnapshotForDebug(snapshot = null) {
     chunkCount: Object.keys(modifications).length,
     modificationCount,
     minecraftSchematicChunkCount: Object.keys(minecraftChunks).length,
-    schematicOnlyMode: !!safe?.worldState?.schematicOnlyMode,
   }
 }
 
@@ -466,14 +461,21 @@ export default class World {
       console.error('[World] Resource failed to load:', error.name, '-', error.path, '-', error.message)
     })
 
+    // 场景数据不依赖贴图/模型，构造时就并行发起，和 Resources 的加载重叠
+    this._bootstrap = this._startBootstrapPrefetch()
+
     emitter.on('core:ready', async () => {
       const initStartedAt = performance.now()
 
       try {
-        this.activeProjectionContext = await this._loadActiveProjectionContext()
-        this.backendConfigRecord = await loadBackendWorldConfigRecord()
+        const [projectionContext, backendConfigRecord, sharedWorldState] = await Promise.all([
+          this._bootstrap.projectionContext,
+          this._bootstrap.backendConfigRecord,
+          this._bootstrap.sharedWorldState,
+        ])
+        this.activeProjectionContext = projectionContext
+        this.backendConfigRecord = backendConfigRecord
         this.backendConfig = this.backendConfigRecord.config
-        const sharedWorldState = await this._loadSharedWorldState()
 
         await this._initTerrain(this.backendConfig, sharedWorldState)
         this.backendConfig = await this._ensureProjectionWorldInitialized(sharedWorldState, this.backendConfig)
@@ -540,6 +542,92 @@ export default class World {
       catch (error) {
         console.warn('[World] Failed to refresh Minecraft resource pack:', error)
       }
+    })
+  }
+
+  /**
+   * 进入场景时一次性并行发起所有网络读取：
+   * 投影元数据 / 世界配置 / 世界状态 互不依赖，同时请求；
+   * 原理图源文件和红石回放只依赖元数据（回放还依赖配置），拿到后立即请求；
+   * schematic-renderer 的 WASM 和资源包也在这时预热，不再等地形/原理图处理完。
+   */
+  _startBootstrapPrefetch() {
+    const silence = (promise) => {
+      promise.catch(() => {})
+      return promise
+    }
+
+    const projectionContext = silence(this._loadActiveProjectionContext())
+    const backendConfigRecord = silence(loadBackendWorldConfigRecord())
+    const sharedWorldState = silence(this._loadSharedWorldState())
+
+    const sourcePayload = silence(projectionContext.then((context) => {
+      if (!context?.projectionId || !context?.item?.sourceFile) {
+        return null
+      }
+      this._prewarmMinecraftSchematicRuntime()
+      return this._fetchProjectionSourcePayload(context)
+    }))
+
+    const replay = silence(Promise.all([projectionContext, backendConfigRecord]).then(([context, record]) => {
+      const item = context?.item || null
+      if (item?.redstoneReplay && typeof item.redstoneReplay === 'object') {
+        return null
+      }
+      const replayUrl = resolveRedstoneReplayUrl(item, record?.config)
+      if (!replayUrl) {
+        return null
+      }
+      return { url: replayUrl, data: silence(fetchRedstoneReplay(replayUrl)) }
+    }))
+
+    return {
+      projectionContext,
+      backendConfigRecord,
+      sharedWorldState,
+      sourcePayload,
+      sourceProjectionContext: projectionContext,
+      replay,
+    }
+  }
+
+  _prewarmMinecraftSchematicRuntime() {
+    void this._ensureMinecraftSchematicRenderLayer()
+      .then(renderLayer => renderLayer.prewarmRuntime?.())
+      .catch((error) => {
+        console.warn('[World] Failed to prewarm schematic renderer:', error)
+      })
+  }
+
+  /** 取用预取的原理图源文件（只用一次，之后释放引用）；上下文不一致时重新请求 */
+  async _takeProjectionSourcePayload(projectionContext = this.activeProjectionContext) {
+    const bootstrap = this._bootstrap
+    if (bootstrap?.sourcePayload) {
+      const prefetchedPromise = bootstrap.sourcePayload
+      const prefetchedContext = await bootstrap.sourceProjectionContext
+      bootstrap.sourcePayload = null
+      if (prefetchedContext === projectionContext) {
+        const prefetched = await prefetchedPromise.catch(() => null)
+        if (prefetched) {
+          return prefetched
+        }
+      }
+    }
+    return this._fetchProjectionSourcePayload(projectionContext)
+  }
+
+  /** 供 RedstoneReplayController 取用预取的回放（URL 一致才复用） */
+  takePrefetchedRedstoneReplay(replayUrl) {
+    const pending = this._bootstrap?.replay
+    if (!pending) {
+      return null
+    }
+    this._bootstrap.replay = null
+    return pending.then((entry) => {
+      if (entry?.url === replayUrl) {
+        return entry.data
+      }
+      return fetchRedstoneReplay(replayUrl)
     })
   }
 
@@ -611,7 +699,7 @@ export default class World {
 
   async _prepareProjectionRuntimeRenderSource(projectionContext = this.activeProjectionContext) {
     try {
-      const sourcePayload = await this._fetchProjectionSourcePayload(projectionContext)
+      const sourcePayload = await this._takeProjectionSourcePayload(projectionContext)
       const sourceName = sourcePayload?.fileName || projectionContext?.item?.fileName || 'projection.schematic'
       const preview = getProjectionPreviewMetadata(projectionContext?.item)
       const runtimeSource = attachRuntimePreviewStats(
@@ -666,9 +754,6 @@ export default class World {
     }
 
     if (!hasProjectionContentSource(projectionContext, sharedWorldState)) {
-      this.chunkManager?.setSchematicOnlyMode?.(false)
-      this.chunkManager?.persistence?.setWorldState?.({ schematicOnlyMode: false })
-      this.chunkManager?.initInitialGrid?.()
       emitter.emit('projection:bootstrap-error', {
         spaceName: projectionContext.spaceName,
         projectionId: projectionContext.projectionId,
@@ -681,11 +766,10 @@ export default class World {
 
     debugWorld('[World Debug] Parsed projection context item:', projectionContext.item)
     try {
-      const sourcePayload = await this._fetchProjectionSourcePayload(projectionContext)
+      const sourcePayload = await this._takeProjectionSourcePayload(projectionContext)
       const buffer = sourcePayload?.buffer || null
 
       if (!(buffer instanceof ArrayBuffer) || buffer.byteLength <= 0) {
-        this.chunkManager?.setSchematicOnlyMode?.(false)
         emitter.emit('projection:bootstrap-error', {
           spaceName: projectionContext.spaceName,
           projectionId: projectionContext.projectionId,
@@ -751,7 +835,6 @@ export default class World {
         options: {
           replaceWorld: true,
           persistModifications: true,
-          keepSchematicOnlyMode: true,
         },
       })
       this._projectionBootstrapApplied = true
@@ -810,7 +893,6 @@ export default class World {
       if (replaceWorld) {
         this.chunkManager?.setMinecraftRenderOverlayActive?.(false)
         this.chunkManager?.minecraftSchematicLayer?.clear?.()
-        this.chunkManager?.setSchematicOnlyMode?.(true)
 
         const loadedChunks = Array.from(this.chunkManager?.chunks?.entries?.() || [])
         for (const [chunkKey, chunk] of loadedChunks) {
@@ -944,10 +1026,6 @@ export default class World {
       settings.setEnvTimeAutoPlay(environment.timeAutoPlay)
   }
 
-  _cloneSimple(value) {
-    return JSON.parse(JSON.stringify(value))
-  }
-
   async _rebuildTerrainWithChunkHeight(nextChunkHeight) {
     if (!this.chunkManager) {
       return
@@ -964,38 +1042,23 @@ export default class World {
     }
 
     const snapshot = previousManager.persistence?.exportSnapshot?.() || null
-    const centerPos = this.player?.getPosition?.() || { x: previousManager.chunkWidth * 0.5, z: previousManager.chunkWidth * 0.5 }
 
     const nextManager = new ChunkManager({
       chunkWidth: previousManager.chunkWidth,
       chunkHeight: nextHeight,
       viewDistance: previousManager.viewDistance,
       unloadPadding: previousManager.unloadPadding,
-      seed: previousManager.seed,
       worldName: previousManager.persistence?.worldName,
       useIndexedDB: previousManager.persistence?.useIndexedDB,
-      terrain: this._cloneSimple(previousManager.terrainParams),
-      trees: this._cloneSimple(previousManager.treeParams),
-      water: this._cloneSimple(previousManager.waterParams),
-      biomeSource: previousManager.biomeParams?.biomeSource,
-      forcedBiome: previousManager.biomeParams?.forcedBiome,
     })
     await nextManager.waitForPersistenceReady?.()
 
     if (snapshot && nextManager.persistence?.applySnapshot) {
       await nextManager.persistence.applySnapshot(snapshot, { persist: true })
       nextManager.restoreRuntimeStateFromPersistence?.()
-      nextManager.schematicOnlyMode = !!nextManager.persistence.getWorldState?.().schematicOnlyMode
     }
 
-    const restoredWorldState = nextManager.persistence?.getWorldState?.() || {}
-    nextManager.persistence?.setWorldState?.({
-      schematicOnlyMode: !!restoredWorldState.schematicOnlyMode,
-    })
-    nextManager.schematicOnlyMode = !!restoredWorldState.schematicOnlyMode
-
     nextManager.initInitialGrid()
-    nextManager.updateStreaming({ x: centerPos.x, z: centerPos.z }, true)
 
     previousManager.destroy()
 
@@ -1330,14 +1393,14 @@ export default class World {
       const response = await fetch(requestUrl, { cache: 'no-store' })
       if (!response.ok) {
         return activeSpace
-          ? { worldState: { schematicOnlyMode: false }, modifications: {} }
+          ? { worldState: {}, modifications: {} }
           : null
       }
 
       const data = await response.json()
       if (!data || typeof data !== 'object') {
         return activeSpace
-          ? { worldState: { schematicOnlyMode: false }, modifications: {} }
+          ? { worldState: {}, modifications: {} }
           : null
       }
 
@@ -1355,7 +1418,7 @@ export default class World {
     }
     catch {
       return activeSpace
-        ? { worldState: { schematicOnlyMode: false }, modifications: {} }
+        ? { worldState: {}, modifications: {} }
         : null
     }
   }
@@ -1436,7 +1499,6 @@ export default class World {
       chunkWidth: CHUNK_BASIC_CONFIG.chunkWidth,
       chunkHeight,
       viewDistance,
-      seed: 1265,
       worldName: scopedWorldName || 'default',
     })
     await this.chunkManager.waitForPersistenceReady?.()
@@ -1444,7 +1506,6 @@ export default class World {
     if (sharedWorldState && this.chunkManager?.persistence?.applySnapshot) {
       await this.chunkManager.persistence.applySnapshot(sharedWorldState, { persist: true })
       this.chunkManager.restoreRuntimeStateFromPersistence?.()
-      this.chunkManager.schematicOnlyMode = !!this.chunkManager.persistence.getWorldState?.().schematicOnlyMode
     }
 
     this.experience.terrainDataManager = this.chunkManager
@@ -1521,24 +1582,13 @@ export default class World {
         this.chunkManager.viewDistance = data.viewDistance
       if (data.unloadPadding !== undefined)
         this.chunkManager.unloadPadding = data.unloadPadding
-      if (this.player) {
-        const pos = this.player.getPosition()
-        this.chunkManager.updateStreaming({ x: pos.x, z: pos.z }, true)
-      }
     })
   }
 
   /**
-   * 每帧更新，顺序与依赖一致：地形流式 → 地形动画 → 挖矿 → 玩家/环境 → 射线/选中框 → 粒子
+   * 每帧更新，顺序与依赖一致：地形动画 → 挖矿 → 玩家/环境 → 射线/选中框 → 粒子
    */
   update() {
-    if (this.chunkManager && this.player) {
-      if (!this.chunkManager.schematicOnlyMode) {
-        const pos = this.player.getPosition()
-        this.chunkManager.updateStreaming({ x: pos.x, z: pos.z })
-      }
-      this.chunkManager.pumpIdleQueue()
-    }
     if (this.chunkManager)
       this.chunkManager.update()
     if (this.minecraftSchematicRenderLayer)
@@ -1559,21 +1609,6 @@ export default class World {
       this.blockSelectionHelper.update()
     if (this.blockBreakParticles)
       this.blockBreakParticles.update()
-  }
-
-  /**
-   * Reset the world with new seed and worldgen params (lightweight rebuild)
-   * @param {object} options
-   * @param {number} options.seed - The new world seed
-   * @param {object} [options.terrain] - Terrain generation params
-   * @param {object} [options.trees] - Tree generation params
-   */
-  reset({ seed, terrain, trees } = {}) {
-    debugWorld('[World] Procedural generation is disabled; ignoring reset_world request.', {
-      seed,
-      terrain,
-      trees,
-    })
   }
 
   destroy() {

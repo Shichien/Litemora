@@ -1,13 +1,9 @@
 import {
   CHUNK_BASIC_CONFIG,
   RENDER_PARAMS,
-  TERRAIN_PARAMS,
-  TREE_PARAMS,
-  WATER_PARAMS,
 } from '../../config/chunk-config.js'
 import Experience from '../../experience.js'
-import IdleQueue from '../../utils/utils/idle-queue.js'
-import { blocks, getBlockTypeById, getCollisionBoxesForBlockType, resources } from './blocks-config.js'
+import { blocks, getBlockTypeById, getCollisionBoxesForBlockType } from './blocks-config.js'
 import MinecraftSchematicLayer from './minecraft-schematic-layer.js'
 import TerrainChunk from './terrain-chunk.js'
 import TerrainPersistence from './terrain-persistence.js'
@@ -45,33 +41,17 @@ export default class ChunkManager {
     this.chunkHeight = options.chunkHeight ?? CHUNK_BASIC_CONFIG.chunkHeight
     this.viewDistance = options.viewDistance ?? CHUNK_BASIC_CONFIG.viewDistance
     this.unloadPadding = options.unloadPadding ?? CHUNK_BASIC_CONFIG.unloadPadding
-    this.seed = options.seed ?? CHUNK_BASIC_CONFIG.seed
 
-    this.terrainParams = options.terrain || { ...TERRAIN_PARAMS }
-    this.treeParams = options.trees || { ...TREE_PARAMS }
     this.renderParams = { ...RENDER_PARAMS }
-    this.waterParams = options.water || { ...WATER_PARAMS }
-    this.biomeParams = {
-      biomeSource: options.biomeSource ?? 'generator',
-      forcedBiome: options.forcedBiome ?? 'plains',
-    }
-
-    this.biomeGenerator = null
 
     this._statsParams = {
       totalInstances: 0,
       chunkCount: 0,
-      queueSize: 0,
     }
 
     /** @type {Map<string, TerrainChunk>} */
     this.chunks = new Map()
 
-    this.idleQueue = new IdleQueue()
-
-    this._lastPlayerChunkX = null
-    this._lastPlayerChunkZ = null
-    this.schematicOnlyMode = false
     this.minecraftRenderOverlayActive = false
     this.minecraftRuntimeBlockProvider = null
     this._transientRemovedMinecraftBlocks = new Map()
@@ -91,7 +71,6 @@ export default class ChunkManager {
     this.persistenceReady = this.persistence.ready || Promise.resolve()
     this.persistenceReady.then(() => {
       this.restoreRuntimeStateFromPersistence()
-      this.schematicOnlyMode = !!this.persistence.getWorldState?.().schematicOnlyMode
     })
 
     this._saveTimeout = null
@@ -242,46 +221,14 @@ export default class ChunkManager {
     return [...merged.values()]
   }
 
-  initInitialGrid() {
-    if (this.schematicOnlyMode) {
-      this._restoreSchematicOnlyChunks()
-      return
-    }
-
-    this.updateStreaming({ x: this.chunkWidth * 0.5, z: this.chunkWidth * 0.5 }, true)
-  }
-
   /**
-   * Set world seed and regenerate all chunks
-   * @param {number} newSeed - The new seed value
+   * 恢复玩家修改过的 chunk（世界本身没有程序化地形，只有这些 chunk 需要建网格）
    */
-  setSeed(newSeed) {
-    this.seed = newSeed
+  initInitialGrid() {
+    this.restoreModifiedChunks()
   }
 
-  applyWorldGenParams({ terrain, trees, water, biome } = {}) {
-    void terrain
-    void trees
-    void water
-    void biome
-  }
-
-  setSchematicOnlyMode(enabled = true) {
-    const nextMode = !!enabled
-    this.schematicOnlyMode = nextMode
-    this.persistence?.setWorldState?.({ schematicOnlyMode: nextMode })
-    this.persistence?.save?.()
-
-    for (const chunk of this.chunks.values()) {
-      chunk?.setSchematicOnlyMode?.(nextMode)
-    }
-
-    if (nextMode) {
-      this._restoreSchematicOnlyChunks()
-    }
-  }
-
-  _restoreSchematicOnlyChunks() {
+  restoreModifiedChunks() {
     const coords = this._mergeChunkCoordLists(
       this.persistence?.getModifiedChunkCoords?.() || [],
       this._getSessionChunkModificationCoords(),
@@ -297,8 +244,6 @@ export default class ChunkManager {
         continue
       }
 
-      chunk.setSchematicOnlyMode?.(true)
-
       if (chunk.state === 'init') {
         chunk.container.clear()
         chunk.state = 'dataReady'
@@ -310,48 +255,15 @@ export default class ChunkManager {
         const built = chunk.buildMesh()
         if (built) {
           chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
-          chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
         }
       }
       else if (chunk.state === 'meshReady') {
         chunk.renderer?._rebuildFromContainer?.()
         chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
-        chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
       }
     }
 
     this._updateStats()
-  }
-
-  _prepareChunkData(chunk) {
-    if (!chunk || chunk.state === 'disposed' || chunk.state !== 'init') {
-      return false
-    }
-
-    chunk.container.clear()
-    chunk.state = 'dataReady'
-    return true
-  }
-
-  regenerateAll({
-    seed,
-    terrain,
-    trees,
-    water,
-    biome,
-    centerPos = { x: this.chunkWidth * 0.5, z: this.chunkWidth * 0.5 },
-    forceSyncCenterChunk = true,
-  } = {}) {
-    void terrain
-    void trees
-    void water
-    void biome
-    void centerPos
-    void forceSyncCenterChunk
-    if (seed !== undefined) {
-      this.seed = seed
-    }
-    return { seed: this.seed, disabled: true }
   }
 
   /**
@@ -376,17 +288,9 @@ export default class ChunkManager {
    * - 若 chunk 未生成/不存在，返回 empty
    */
   getBlockWorld(x, y, z) {
-    const chunkX = Math.floor(x / this.chunkWidth)
-    const chunkZ = Math.floor(z / this.chunkWidth)
-    const chunk = this.getChunk(chunkX, chunkZ)
-
-    const localX = Math.floor(x - chunkX * this.chunkWidth)
-    const localZ = Math.floor(z - chunkZ * this.chunkWidth)
     const sessionBlockId = this._getSessionBlockModification(x, y, z)
 
-    const baseBlock = !this.schematicOnlyMode && chunk
-      ? chunk.container.getBlock(localX, y, localZ)
-      : this._createEmptyBlockRecord()
+    const baseBlock = this._createEmptyBlockRecord()
     const resolvedBaseBlock = Number.isFinite(sessionBlockId)
       ? {
           id: sessionBlockId,
@@ -429,9 +333,7 @@ export default class ChunkManager {
       return []
     }
 
-    const runtimeEntries = this.schematicOnlyMode
-      ? this.minecraftRuntimeBlockProvider?.getBlocksWorld?.(positions)
-      : null
+    const runtimeEntries = this.minecraftRuntimeBlockProvider?.getBlocksWorld?.(positions)
     if (!Array.isArray(runtimeEntries) || runtimeEntries.length !== positions.length) {
       return positions.map(position => this.getBlockWorld(position.x, position.y, position.z))
     }
@@ -514,7 +416,6 @@ export default class ChunkManager {
     }
 
     chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
-    chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
     this._updateStats()
     return true
   }
@@ -922,7 +823,7 @@ export default class ChunkManager {
 
   syncMinecraftSchematicLayerState({ scheduleSave = false } = {}) {
     this.persistence?.setWorldState?.({
-      schematicOnlyMode: !!this.schematicOnlyMode,
+      schematicOnlyMode: true,
       minecraftSchematicLayer: this.minecraftSchematicLayer.exportSnapshot(),
       minecraftTransientRemovedBlocks: null,
     })
@@ -1185,16 +1086,7 @@ export default class ChunkManager {
       chunkZ,
       chunkWidth: this.chunkWidth,
       chunkHeight: this.chunkHeight,
-      seed: this.seed,
-      terrain: this.terrainParams,
-      sharedTerrainParams: this.terrainParams,
       sharedRenderParams: this.renderParams,
-      sharedTreeParams: this.treeParams,
-      sharedWaterParams: this.waterParams,
-      sharedBiomeGenerator: this.biomeGenerator, // STEP 2: 共享群系生成器
-      biomeSource: this.biomeParams.biomeSource,
-      forcedBiome: this.biomeParams.forcedBiome,
-      schematicOnlyMode: this.schematicOnlyMode,
       blockVisibilityFilter: (localX, localY, localZ) => this.shouldRenderTerrainBlock(
         (chunkX * this.chunkWidth) + localX,
         localY,
@@ -1213,101 +1105,6 @@ export default class ChunkManager {
     ])
 
     return chunk
-  }
-
-  /**
-   * Step2：动态 streaming 更新（每帧调用）
-   * @param {{x:number,z:number}} playerPos 玩家脚底世界坐标（只取 x/z）
-   * @param {boolean} force 是否强制刷新（初次/参数变更时）
-   */
-  updateStreaming(playerPos, force = false) {
-    if (!playerPos)
-      return
-
-    if (this.schematicOnlyMode) {
-      if (force && this.chunks.size === 0) {
-        this._restoreSchematicOnlyChunks()
-      }
-      this._updateStats()
-      return
-    }
-
-    const pcx = Math.floor(playerPos.x / this.chunkWidth)
-    const pcz = Math.floor(playerPos.z / this.chunkWidth)
-
-    if (!force && pcx === this._lastPlayerChunkX && pcz === this._lastPlayerChunkZ) {
-      // 位置未跨 chunk：只需继续 pump 队列
-      this._updateStats()
-      return
-    }
-
-    this._lastPlayerChunkX = pcx
-    this._lastPlayerChunkZ = pcz
-
-    const dLoad = this.viewDistance
-    const dUnload = this.viewDistance + this.unloadPadding
-
-    // ===== 计算加载目标集合 =====
-    const targetLoad = new Set()
-    for (let cz = pcz - dLoad; cz <= pcz + dLoad; cz++) {
-      for (let cx = pcx - dLoad; cx <= pcx + dLoad; cx++) {
-        targetLoad.add(this._key(cx, cz))
-      }
-    }
-
-    // ===== Add：创建缺失 chunk，并按距离优先排队生成 =====
-    const toAdd = []
-    targetLoad.forEach((key) => {
-      if (!this.chunks.has(key)) {
-        const [sx, sz] = key.split(',').map(Number)
-        toAdd.push({ chunkX: sx, chunkZ: sz })
-      }
-    })
-
-    // 中心优先：max(|dx|,|dz|) 越小越先
-    toAdd.sort((a, b) => {
-      const da = Math.max(Math.abs(a.chunkX - pcx), Math.abs(a.chunkZ - pcz))
-      const db = Math.max(Math.abs(b.chunkX - pcx), Math.abs(b.chunkZ - pcz))
-      return da - db
-    })
-
-    for (const item of toAdd) {
-      const chunk = this._ensureChunk(item.chunkX, item.chunkZ)
-      this._enqueueChunkBuild(chunk, pcx, pcz)
-    }
-
-    // ===== Remove：卸载滞后（只移除 dUnload 外的 chunk）=====
-    for (const [key, chunk] of this.chunks.entries()) {
-      const cx = chunk.chunkX
-      const cz = chunk.chunkZ
-      if (Math.abs(cx - pcx) > dUnload || Math.abs(cz - pcz) > dUnload) {
-        // 取消队列任务（避免卸载后仍被执行）
-        this.idleQueue.cancelByPrefix(`${key}:`)
-        chunk.dispose()
-        this.chunks.delete(key)
-      }
-    }
-
-    // ===== 碰撞保底：玩家脚下 chunk 强制同步生成（避免出生/边界空洞）=====
-    // 注意：仅对玩家当前 chunk 同步，外围仍异步
-    const currentKey = this._key(pcx, pcz)
-    const currentChunk = this.chunks.get(currentKey)
-    if (currentChunk?.state === 'init') {
-      currentChunk.generator.params.seed = this.seed
-      currentChunk.generateData()
-      currentChunk.buildMesh()
-      currentChunk.renderer.group.scale.setScalar(this.renderParams.scale)
-    }
-
-    this._updateStats()
-  }
-
-  /**
-   * 每帧调用一次：驱动 requestIdleCallback 执行任务
-   */
-  pumpIdleQueue() {
-    this._updateStats()
-    this.idleQueue.pump()
   }
 
   _scheduleSave() {
@@ -1333,38 +1130,6 @@ export default class ChunkManager {
 
     // 清除标记
     chunk._pendingModifications = null
-  }
-
-  _enqueueChunkBuild(chunk, pcx, pcz) {
-    if (!chunk)
-      return
-    const key = this._key(chunk.chunkX, chunk.chunkZ)
-    const dist = Math.max(Math.abs(chunk.chunkX - pcx), Math.abs(chunk.chunkZ - pcz))
-
-    // 先生成数据，再建网格（用 key 前缀确保可取消）
-    this.idleQueue.enqueue(`${key}:data`, () => {
-      // 若已卸载则跳过
-      if (!this.chunks.has(key) || chunk.state === 'disposed')
-        return
-
-      const ok = this._prepareChunkData(chunk)
-      if (!ok)
-        return
-
-      // ===== 应用玩家修改 =====
-      this._applyChunkModifications(chunk)
-
-      // 数据完成后排队建网格（同 dist 优先级）
-      this.idleQueue.enqueue(`${key}:mesh`, () => {
-        if (!this.chunks.has(key) || chunk.state === 'disposed')
-          return
-        const built = chunk.buildMesh()
-        if (built) {
-          chunk.renderer.group.scale.setScalar(this.renderParams.scale)
-        }
-        this._updateStats()
-      }, dist)
-    }, dist)
   }
 
   // #region 调试面板
@@ -1402,8 +1167,6 @@ export default class ChunkManager {
     }).on('change', () => {
       // 需要重建所有 chunk 的 instanceMatrix
       this._rebuildAllChunks()
-      // 同步刷新所有 chunk 的水面高度
-      this._refreshAllWater()
     })
 
     renderFolder.addBinding(this.renderParams, 'showOresOnly', {
@@ -1424,281 +1187,6 @@ export default class ChunkManager {
     statsFolder.addBinding(this._statsParams, 'chunkCount', {
       label: 'Chunk 数量',
       readonly: true,
-    })
-    statsFolder.addBinding(this._statsParams, 'queueSize', {
-      label: '队列长度',
-      readonly: true,
-    })
-
-    // ===== 生成器参数（全局）=====
-    const genFolder = this.debugFolder.addFolder({
-      title: '生成参数（全局）',
-      expanded: false,
-    })
-
-    genFolder.addBinding(this, 'seed', {
-      label: 'Seed',
-      min: 0,
-      max: 1e9,
-      step: 1,
-    }).on('change', () => {
-      this._regenerateAllChunks()
-    })
-
-    genFolder.addBinding(this.terrainParams, 'scale', {
-      label: '地形缩放',
-      min: 5,
-      max: 300,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    genFolder.addBinding(this.terrainParams, 'magnitude', {
-      label: '地形振幅',
-      min: 0,
-      max: 32,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    genFolder.addBinding(this.terrainParams, 'offset', {
-      label: '地形偏移',
-      // offset 为"高度偏移（方块层数）"
-      min: 0,
-      max: this.chunkHeight,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    // ===== fBm 参数（全局）=====
-    const fbmFolder = genFolder.addFolder({
-      title: 'fBm 参数（全局）',
-      expanded: true,
-    })
-
-    fbmFolder.addBinding(this.terrainParams.fbm, 'octaves', {
-      label: '八度数',
-      min: 1,
-      max: 8,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    fbmFolder.addBinding(this.terrainParams.fbm, 'gain', {
-      label: '振幅衰减',
-      min: 0.1,
-      max: 1.0,
-      step: 0.05,
-    }).on('change', () => this._regenerateAllChunks())
-
-    fbmFolder.addBinding(this.terrainParams.fbm, 'lacunarity', {
-      label: '频率倍增',
-      min: 1.5,
-      max: 3.0,
-      step: 0.1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    // ===== 水面参数（全局）=====
-    const waterFolder = genFolder.addFolder({
-      title: '水面参数（全局）',
-      expanded: true,
-    })
-
-    waterFolder.addBinding(this.waterParams, 'waterOffset', {
-      label: '水面层数',
-      min: 0,
-      max: this.chunkHeight - 1,
-      step: 1,
-    }).on('change', () => {
-      // 水面高度变化需要：重新生成沙滩 + 刷新水面位置
-      this._regenerateAllChunks()
-      this._refreshAllWater()
-    })
-
-    waterFolder.addBinding(this.waterParams, 'flowSpeedX', {
-      label: '水流速度 X',
-      min: -0.2,
-      max: 0.2,
-      step: 0.001,
-    })
-
-    waterFolder.addBinding(this.waterParams, 'flowSpeedY', {
-      label: '水流速度 Y',
-      min: -0.2,
-      max: 0.2,
-      step: 0.001,
-    })
-
-    // ===== 树参数（全局）=====
-    const treeFolder = genFolder.addFolder({
-      title: '树参数（全局）',
-      expanded: false,
-    })
-
-    treeFolder.addBinding(this.treeParams, 'minHeight', {
-      label: '树干最小高度',
-      min: 1,
-      max: 32,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    treeFolder.addBinding(this.treeParams, 'maxHeight', {
-      label: '树干最大高度',
-      min: 1,
-      max: 32,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    treeFolder.addBinding(this.treeParams, 'minRadius', {
-      label: '树叶最小半径',
-      min: 1,
-      max: 12,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    treeFolder.addBinding(this.treeParams, 'maxRadius', {
-      label: '树叶最大半径',
-      min: 1,
-      max: 12,
-      step: 1,
-    }).on('change', () => this._regenerateAllChunks())
-
-    treeFolder.addBinding(this.treeParams, 'frequency', {
-      label: '树密度',
-      min: 0,
-      max: 1,
-      step: 0.01,
-    }).on('change', () => this._regenerateAllChunks())
-
-    const oresFolder = genFolder.addFolder({
-      title: '矿物缩放（全局）',
-      expanded: false,
-    })
-
-    resources.forEach((res) => {
-      res.scale = res.scale || { x: 20, y: 20, z: 20 }
-      const oreFolder = oresFolder.addFolder({
-        title: `矿物-${res.name}`,
-        expanded: false,
-      })
-      oreFolder.addBinding(res.scale, 'x', {
-        label: 'X 噪声缩放',
-        min: 5,
-        max: 120,
-        step: 1,
-      }).on('change', () => this._regenerateAllChunks())
-
-      oreFolder.addBinding(res.scale, 'z', {
-        label: 'Z 噪声缩放',
-        min: 5,
-        max: 120,
-        step: 1,
-      }).on('change', () => this._regenerateAllChunks())
-    })
-
-    genFolder.addButton({
-      title: '🔄 重新生成（随机 Seed）',
-    }).on('click', () => {
-      this.seed = Math.floor(Math.random() * 1e9)
-      this._regenerateAllChunks()
-    })
-
-    // ===== 群系参数（全局）=====
-    const biomeFolder = this.debugFolder.addFolder({
-      title: '群系系统（全局）',
-      expanded: true,
-    })
-
-    biomeFolder.addBinding(this.biomeParams, 'biomeSource', {
-      label: '群系来源',
-      options: {
-        调试面板: 'panel',
-        自动生成: 'generator',
-      },
-    }).on('change', () => {
-      // 切换模式时重新生成所有 chunk
-      this._regenerateAllChunks()
-    })
-
-    biomeFolder.addBinding(this.biomeParams, 'forcedBiome', {
-      label: '强制群系',
-      options: {
-        平原: 'plains',
-        森林: 'forest',
-        白桦木林: 'birchForest',
-        樱花树林: 'cherryForest',
-        沙漠: 'desert',
-        恶地: 'badlands',
-        冻洋: 'frozenOcean',
-      },
-    }).on('change', () => {
-      // 仅在 panel 模式下重新生成
-      if (this.biomeParams.biomeSource === 'panel') {
-        this._regenerateAllChunks()
-      }
-    })
-
-    // STEP 2: BiomeGenerator 参数控制（仅在 generator 模式下生效）
-    const biomeGenFolder = biomeFolder.addFolder({
-      title: '生成器参数',
-      expanded: false,
-    })
-
-    biomeGenFolder.addBinding(this.biomeGenerator, 'tempScale', {
-      label: '温度噪声缩放',
-      min: 20,
-      max: 300,
-      step: 5,
-    }).on('change', () => {
-      if (this.biomeParams.biomeSource === 'generator') {
-        this.biomeGenerator.clearAllCache()
-        this._regenerateAllChunks()
-      }
-    })
-
-    biomeGenFolder.addBinding(this.biomeGenerator, 'humidityScale', {
-      label: '湿度噪声缩放',
-      min: 20,
-      max: 300,
-      step: 5,
-    }).on('change', () => {
-      if (this.biomeParams.biomeSource === 'generator') {
-        this.biomeGenerator.clearAllCache()
-        this._regenerateAllChunks()
-      }
-    })
-
-    biomeGenFolder.addBinding(this.biomeGenerator, 'transitionThreshold', {
-      label: '过渡阈值',
-      min: 0.05,
-      max: 0.5,
-      step: 0.01,
-    }).on('change', () => {
-      if (this.biomeParams.biomeSource === 'generator') {
-        this.biomeGenerator.clearAllCache()
-        this._regenerateAllChunks()
-      }
-    })
-
-    // ===== Streaming 参数 =====
-    const streamingFolder = this.debugFolder.addFolder({
-      title: 'Streaming 参数',
-      expanded: false,
-    })
-    streamingFolder.addBinding(this, 'viewDistance', {
-      label: '加载半径(d)',
-      min: 0,
-      max: 6,
-      step: 1,
-    }).on('change', () => {
-      // 强制刷新：让 streaming 重新计算集合
-      this._lastPlayerChunkX = null
-      this._lastPlayerChunkZ = null
-    })
-    streamingFolder.addBinding(this, 'unloadPadding', {
-      label: '卸载滞后(+)',
-      min: 0,
-      max: 3,
-      step: 1,
-    }).on('change', () => {
-      this._lastPlayerChunkX = null
-      this._lastPlayerChunkZ = null
     })
 
     const persistFolder = this.debugFolder.addFolder({
@@ -1731,7 +1219,7 @@ export default class ChunkManager {
 
     persistFolder.addButton({ title: '🔄 重新加载' }).on('click', () => {
       this.persistence.load()
-      this._regenerateAllChunks()
+      this._reloadModifiedChunks()
     })
 
     persistFolder.addButton({ title: '🗑️ 清除所有修改' }).on('click', () => {
@@ -1739,7 +1227,7 @@ export default class ChunkManager {
       if (confirm('确定要清除所有玩家修改吗？此操作不可恢复！')) {
         this.persistence.modifications.clear()
         this.persistence.save()
-        this._regenerateAllChunks()
+        this._reloadModifiedChunks()
       }
     })
   }
@@ -1754,18 +1242,8 @@ export default class ChunkManager {
       chunk.buildMesh()
       // 同步 scale
       chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
-      chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
     })
     this._updateStats()
-  }
-
-  /**
-   * 刷新所有 chunk 的水面高度（用于 waterOffset 或 heightScale 变更）
-   */
-  _refreshAllWater() {
-    this.chunks.forEach((chunk) => {
-      chunk.refreshWater?.()
-    })
   }
 
   /**
@@ -1779,7 +1257,6 @@ export default class ChunkManager {
     })
     this._statsParams.totalInstances = total
     this._statsParams.chunkCount = this.chunks.size
-    this._statsParams.queueSize = this.idleQueue?.size?.() ?? 0
     if (this._statsBinding?.refresh)
       this._statsBinding.refresh()
   }
@@ -1788,40 +1265,16 @@ export default class ChunkManager {
    * 每帧更新：遍历所有 chunk 更新动画材质
    */
   update() {
-    // 更新水面贴图偏移，实现流动效果
-    const waterTexture = this.experience.resources.items.water_Texture
-    if (waterTexture) {
-      const delta = this.experience.time.delta * 0.001 // 转换为秒
-      waterTexture.offset.x += this.waterParams.flowSpeedX * delta
-      waterTexture.offset.y += this.waterParams.flowSpeedY * delta
-    }
-
     this.chunks.forEach(chunk => chunk.update())
   }
 
   /**
-   * 全量重新生成所有 chunk（用于生成参数变更：种子/群系）
+   * 丢弃所有 chunk 后按持久化里的玩家修改重新建网格
    */
-  _regenerateAllChunks() {
-    // STEP 2: 清除群系缓存（确保使用新参数重新计算）
-    this.biomeGenerator.clearAllCache()
-
-    const params = {
-      seed: this.seed,
-      biomeSource: this.biomeParams.biomeSource,
-      forcedBiome: this.biomeParams.forcedBiome,
-    }
-
-    this.chunks.forEach((chunk) => {
-      // 确保每个 chunk 的 generator 使用共享的 biomeGenerator
-      chunk.generator.biomeGenerator = this.biomeGenerator
-      chunk.regenerate(params)
-      // 同步渲染缩放
-      chunk.renderer?.group?.scale?.setScalar(this.renderParams.scale)
-      chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
-    })
-
-    this._updateStats()
+  _reloadModifiedChunks() {
+    this.chunks.forEach(chunk => chunk.dispose())
+    this.chunks.clear()
+    this.restoreModifiedChunks()
   }
 
   destroy() {
@@ -1829,11 +1282,6 @@ export default class ChunkManager {
     if (this._saveTimeout) {
       clearTimeout(this._saveTimeout)
       this._saveTimeout = null
-    }
-
-    // Clear idle queue
-    if (this.idleQueue) {
-      this.idleQueue.clear?.()
     }
 
     // Dispose all chunks

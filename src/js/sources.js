@@ -12,18 +12,12 @@ import { bedrockTextureSources } from './generated/bedrock-texture-sources.js'
  * - fbxModel:    FBXLoader (加载 FBX 模型)
  * - audio:       AudioLoader (加载音频文件)
  * - objModel:    OBJLoader (加载 OBJ 模型)
- * - hdrTexture:  RGBELoader (加载 HDR 环境贴图)
  * - svg:         SVGLoader (加载 SVG 文件作为纹理或数据)
  * - exrTexture:  EXRLoader (加载 EXR 高动态范围图像)
  * - video:       自定义加载逻辑，创建 VideoTexture (加载视频作为纹理)
  * - ktx2Texture: KTX2Loader (加载 KTX2 压缩纹理)
  */
 const sources = [
-  {
-    name: 'environmentMapHDRTexture',
-    type: 'hdrTexture',
-    path: 'textures/environmentMap/HDRI_110.hdr',
-  },
   // ===== 玩家皮肤模型 =====
   {
     name: 'steveModel',

@@ -236,6 +236,22 @@ async function parseReplayResponse(response) {
   return JSON.parse(await new Response(stream).text())
 }
 
+export function resolveRedstoneReplayUrl(item = null, backendConfig = null) {
+  return String(
+    item?.redstoneReplayUrl
+    || backendConfig?.settings?.redstoneArchive?.replayUrl
+    || '',
+  ).trim()
+}
+
+export async function fetchRedstoneReplay(replayUrl) {
+  const response = await fetch(replayUrl, { cache: 'no-store' })
+  if (!response.ok) {
+    throw new Error(`红石回放请求失败: ${response.status}`)
+  }
+  return parseReplayResponse(response)
+}
+
 function validateReplay(replay) {
   if (!replay || typeof replay !== 'object') {
     throw new Error('红石回放文件不是有效对象')
@@ -719,20 +735,17 @@ export default class RedstoneReplayController {
       return embeddedReplay
     }
 
-    const replayUrl = String(
-      item?.redstoneReplayUrl
-      || this.world.backendConfig?.settings?.redstoneArchive?.replayUrl
-      || '',
-    ).trim()
+    const replayUrl = resolveRedstoneReplayUrl(item, this.world.backendConfig)
     if (!replayUrl) {
       return null
     }
 
-    const response = await fetch(replayUrl, { cache: 'no-store' })
-    if (!response.ok) {
-      throw new Error(`红石回放请求失败: ${response.status}`)
+    const prefetched = this.world.takePrefetchedRedstoneReplay?.(replayUrl)
+    if (prefetched) {
+      return prefetched
     }
-    return parseReplayResponse(response)
+
+    return fetchRedstoneReplay(replayUrl)
   }
 
   _resetSimulationStates() {

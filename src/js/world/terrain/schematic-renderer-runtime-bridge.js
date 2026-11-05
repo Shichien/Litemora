@@ -543,6 +543,23 @@ export default class SchematicRendererRuntimeBridge {
   }
 
   async ensurePreferredResourcePack(resourcePackSignature = '') {
+    // 串行化：预热和 loadSource 可能同时调用，后来者等前一次装完后按签名复用，避免重复装包
+    const previousTask = this._resourcePackTask || Promise.resolve()
+    const task = previousTask
+      .catch(() => {})
+      .then(() => this._ensurePreferredResourcePackNow(resourcePackSignature))
+    this._resourcePackTask = task
+    try {
+      return await task
+    }
+    finally {
+      if (this._resourcePackTask === task) {
+        this._resourcePackTask = null
+      }
+    }
+  }
+
+  async _ensurePreferredResourcePackNow(resourcePackSignature = '') {
     const renderer = await this.ensureRenderer()
     if (!renderer?.packs) {
       throw new Error('schematic_renderer_resource_pack_manager_unavailable')

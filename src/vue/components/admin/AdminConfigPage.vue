@@ -716,7 +716,6 @@ async function applySchematic() {
       options: {
         replaceWorld: true,
         persistModifications: true,
-        keepSchematicOnlyMode: true,
       },
     })
 

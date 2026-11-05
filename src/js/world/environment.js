@@ -34,7 +34,6 @@ export default class Environment {
 
     // Setup
     this.setSunLight()
-    this.setEnvironmentMap()
     this.setFog()
 
     // 初始化昼夜循环系统
@@ -137,35 +136,9 @@ export default class Environment {
     this.scene.add(this.ambientLight)
   }
 
-  setEnvironmentMap() {
-    // Check if HDR texture is loaded before setting up environment map
-    const envTexture = this.resources.items?.environmentMapHDRTexture
-    if (!envTexture) {
-      // Graceful degradation: skip environment map if not available
-      console.warn('[Environment] HDR environment map not loaded, skipping environment map setup')
-      return
-    }
-
-    this.environmentMap = {}
-    this.environmentMap.intensity = 1
-    this.environmentMap.texture = envTexture
-    this.environmentMap.texture.mapping = THREE.EquirectangularReflectionMapping
-    // this.environmentMap.texture.colorSpace = THREE.SRGBColorSpace // RGBELoader usually handles this, or it might be Linear. Let's check standard implementation.
-
-    this.scene.environment = this.environmentMap.texture
-    // 注意：不再调用 updateBackground()，天空由 DayCycle 的 SkyDome 管理
-  }
-
   updateBackground() {
-    // 此方法保留用于调试面板切换，但默认由 SkyDome 管理天空
-    // 仅在需要强制使用 HDR 时启用
-    if (this.params.background === 'HDR') {
-      this.scene.background = this.environmentMap.texture
-    }
-    else {
-      // DayCycle 模式：清除 scene.background，让 SkyDome 显示
-      this.scene.background = null
-    }
+    // 天空始终由 DayCycle 的 SkyDome 绘制，清掉 scene.background 让它可见
+    this.scene.background = null
   }
 
   updateSunLightPosition() {
@@ -285,21 +258,6 @@ export default class Environment {
       const environmentFolder = this.debug.addFolder({
         title: 'Environment',
         expanded: false,
-      })
-
-      environmentFolder.addBinding(this.params, 'background', {
-        label: 'Background',
-        options: {
-          DayCycle: 'DayCycle',
-          HDR: 'HDR',
-        },
-      }).on('change', this.updateBackground.bind(this))
-
-      environmentFolder.addBinding(this.scene, 'environmentIntensity', {
-        min: 0,
-        max: 2,
-        step: 0.01,
-        label: 'Intensity',
       })
 
       const sunLightFolder = environmentFolder.addFolder({

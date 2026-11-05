@@ -216,6 +216,14 @@ export default class MinecraftSchematicRenderLayer {
     }
   }
 
+  /**
+   * 提前初始化 schematic-renderer（WASM + 离屏 WebGL）并装载资源包，
+   * 让它和场景数据的下载并行；之后 loadSource 会直接复用。
+   */
+  prewarmRuntime() {
+    return this._runtimeBridge.ensurePreferredResourcePack()
+  }
+
   invalidateResourcePack() {
     this._resourcePackSignature = ''
     this._resourcePackStatus = {

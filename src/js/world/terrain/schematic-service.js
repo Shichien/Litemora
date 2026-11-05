@@ -899,9 +899,7 @@ class SchematicService {
     const schematic = this.currentSchematic
     const replaceWorld = options.replaceWorld !== false
     const persistModifications = options.persistModifications ?? replaceWorld
-    const keepSchematicOnlyMode = options.keepSchematicOnlyMode ?? replaceWorld
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
-    const previousSchematicOnlyMode = !!chunkManager.schematicOnlyMode
 
     const offsetX = Math.floor(worldOffset.x ?? 0)
     const offsetY = Math.floor(worldOffset.y ?? 0)
@@ -951,158 +949,150 @@ class SchematicService {
       replaceWorld,
     })
 
-    try {
-      if (replaceWorld) {
-        chunkManager.setMinecraftRenderOverlayActive?.(false)
-        chunkManager.minecraftSchematicLayer?.clear?.()
-        chunkManager.setSchematicOnlyMode?.(true)
-        chunkManager.persistence?.clearAllModifications?.()
+    if (replaceWorld) {
+      chunkManager.setMinecraftRenderOverlayActive?.(false)
+      chunkManager.minecraftSchematicLayer?.clear?.()
+      chunkManager.persistence?.clearAllModifications?.()
 
-        const loadedChunks = Array.from(chunkManager.chunks?.entries?.() || [])
-        for (let index = 0; index < loadedChunks.length; index++) {
-          const [chunkKey, chunk] = loadedChunks[index]
-          if (!chunk || chunk.state === 'disposed') {
-            continue
-          }
-
-          chunk.dispose?.()
-          chunkManager.chunks?.delete?.(chunkKey)
-          stats.worldClearedChunks++
-
-          reportProgress('clearing-world', {
-            clearedChunks: stats.worldClearedChunks,
-            totalLoadedChunks: loadedChunks.length,
-          })
-
-          if ((index + 1) % chunksPerFrame === 0) {
-            await this._yieldToMainThread()
-          }
-        }
-      }
-
-      for (const region of Object.values(schematic.regions)) {
-        const sizeX = Math.abs(region.size.x)
-        const sizeY = Math.abs(region.size.y)
-        const sizeZ = Math.abs(region.size.z)
-        const totalBlocks = sizeX * sizeY * sizeZ
-        if (totalBlocks <= 0) {
+      const loadedChunks = Array.from(chunkManager.chunks?.entries?.() || [])
+      for (let index = 0; index < loadedChunks.length; index++) {
+        const [chunkKey, chunk] = loadedChunks[index]
+        if (!chunk || chunk.state === 'disposed') {
           continue
         }
 
-        const blockIndices = this._getDecodedIndices(region)
-        const worldBase = this._getRegionWorldBase(region)
+        chunk.dispose?.()
+        chunkManager.chunks?.delete?.(chunkKey)
+        stats.worldClearedChunks++
 
-        let linearIndex = 0
-        for (let y = 0; y < sizeY; y++) {
-          for (let z = 0; z < sizeZ; z++) {
-            for (let x = 0; x < sizeX; x++) {
-              const paletteIndex = blockIndices[linearIndex++] ?? 0
-              const paletteEntry = region.palette[paletteIndex]
-              const blockName = paletteEntry?.name || 'minecraft:air'
-              if (
-                blockName === 'minecraft:air'
-                || blockName === 'minecraft:cave_air'
-                || blockName === 'minecraft:void_air'
-              ) {
-                continue
-              }
+        reportProgress('clearing-world', {
+          clearedChunks: stats.worldClearedChunks,
+          totalLoadedChunks: loadedChunks.length,
+        })
 
-              const worldX = x + worldBase.x + offsetX
-              const worldY = y + worldBase.y + offsetY
-              const worldZ = z + worldBase.z + offsetZ
+        if ((index + 1) % chunksPerFrame === 0) {
+          await this._yieldToMainThread()
+        }
+      }
+    }
 
-              if (worldY < 0 || worldY >= chunkManager.chunkHeight) {
-                stats.skipped++
-                stats.skippedOutOfHeight++
-                continue
-              }
+    for (const region of Object.values(schematic.regions)) {
+      const sizeX = Math.abs(region.size.x)
+      const sizeY = Math.abs(region.size.y)
+      const sizeZ = Math.abs(region.size.z)
+      const totalBlocks = sizeX * sizeY * sizeZ
+      if (totalBlocks <= 0) {
+        continue
+      }
 
-              const chunkX = Math.floor(worldX / chunkManager.chunkWidth)
-              const chunkZ = Math.floor(worldZ / chunkManager.chunkWidth)
-              const chunkKey = `${chunkX},${chunkZ}`
+      const blockIndices = this._getDecodedIndices(region)
+      const worldBase = this._getRegionWorldBase(region)
 
-              const existing = chunkManager.minecraftSchematicLayer?.getBlock?.(worldX, worldY, worldZ)
-              chunkManager.setBaseImportedMinecraftBlock?.(
-                worldX,
-                worldY,
-                worldZ,
-                blockName,
-                paletteEntry?.properties || {},
-                { refreshTerrain: false },
-              )
+      let linearIndex = 0
+      for (let y = 0; y < sizeY; y++) {
+        for (let z = 0; z < sizeZ; z++) {
+          for (let x = 0; x < sizeX; x++) {
+            const paletteIndex = blockIndices[linearIndex++] ?? 0
+            const paletteEntry = region.palette[paletteIndex]
+            const blockName = paletteEntry?.name || 'minecraft:air'
+            if (
+              blockName === 'minecraft:air'
+              || blockName === 'minecraft:cave_air'
+              || blockName === 'minecraft:void_air'
+            ) {
+              continue
+            }
 
-              if (existing) {
-                stats.replaced++
-              }
-              else {
-                stats.placed++
-              }
+            const worldX = x + worldBase.x + offsetX
+            const worldY = y + worldBase.y + offsetY
+            const worldZ = z + worldBase.z + offsetZ
 
-              placedBounds.minX = Math.min(placedBounds.minX, worldX)
-              placedBounds.minY = Math.min(placedBounds.minY, worldY)
-              placedBounds.minZ = Math.min(placedBounds.minZ, worldZ)
-              placedBounds.maxX = Math.max(placedBounds.maxX, worldX)
-              placedBounds.maxY = Math.max(placedBounds.maxY, worldY)
-              placedBounds.maxZ = Math.max(placedBounds.maxZ, worldZ)
+            if (worldY < 0 || worldY >= chunkManager.chunkHeight) {
+              stats.skipped++
+              stats.skippedOutOfHeight++
+              continue
+            }
 
-              touchedChunkKeys.add(chunkKey)
-              processedSolidBlocks++
+            const chunkX = Math.floor(worldX / chunkManager.chunkWidth)
+            const chunkZ = Math.floor(worldZ / chunkManager.chunkWidth)
+            const chunkKey = `${chunkX},${chunkZ}`
 
-              processedSinceYield++
-              if (processedSinceYield >= blocksPerFrame) {
-                processedSinceYield = 0
-                reportProgress('placing-blocks', {
-                  touchedChunks: touchedChunkKeys.size,
-                })
-                await this._yieldToMainThread()
-              }
+            const existing = chunkManager.minecraftSchematicLayer?.getBlock?.(worldX, worldY, worldZ)
+            chunkManager.setBaseImportedMinecraftBlock?.(
+              worldX,
+              worldY,
+              worldZ,
+              blockName,
+              paletteEntry?.properties || {},
+              { refreshTerrain: false },
+            )
+
+            if (existing) {
+              stats.replaced++
+            }
+            else {
+              stats.placed++
+            }
+
+            placedBounds.minX = Math.min(placedBounds.minX, worldX)
+            placedBounds.minY = Math.min(placedBounds.minY, worldY)
+            placedBounds.minZ = Math.min(placedBounds.minZ, worldZ)
+            placedBounds.maxX = Math.max(placedBounds.maxX, worldX)
+            placedBounds.maxY = Math.max(placedBounds.maxY, worldY)
+            placedBounds.maxZ = Math.max(placedBounds.maxZ, worldZ)
+
+            touchedChunkKeys.add(chunkKey)
+            processedSolidBlocks++
+
+            processedSinceYield++
+            if (processedSinceYield >= blocksPerFrame) {
+              processedSinceYield = 0
+              reportProgress('placing-blocks', {
+                touchedChunks: touchedChunkKeys.size,
+              })
+              await this._yieldToMainThread()
             }
           }
         }
       }
-
-      chunkManager.syncMinecraftSchematicLayerState?.({
-        scheduleSave: false,
-      })
-
-      if (persistModifications) {
-        stats.persisted = stats.placed + stats.replaced
-        await chunkManager.persistence.save()
-      }
-
-      stats.touchedChunks = touchedChunkKeys.size
-      chunkManager._updateStats?.()
-
-      reportProgress('done', {
-        touchedChunks: stats.touchedChunks,
-        skipped: stats.skipped,
-      })
-
-      return {
-        status: 'applied',
-        totalBlocks: totalSolidBlocks,
-        offset: { x: offsetX, y: offsetY, z: offsetZ },
-        placedBounds: Number.isFinite(placedBounds.minX)
-          ? { ...placedBounds }
-          : {
-              minX: null,
-              minY: null,
-              minZ: null,
-              maxX: null,
-              maxY: null,
-              maxZ: null,
-            },
-        importDiagnostics: {
-          renderMode: 'minecraft-native',
-          importedChunkCount: touchedChunkKeys.size,
-        },
-        ...stats,
-      }
     }
-    finally {
-      if (!keepSchematicOnlyMode) {
-        chunkManager.setSchematicOnlyMode?.(previousSchematicOnlyMode)
-      }
+
+    chunkManager.syncMinecraftSchematicLayerState?.({
+      scheduleSave: false,
+    })
+
+    if (persistModifications) {
+      stats.persisted = stats.placed + stats.replaced
+      await chunkManager.persistence.save()
+    }
+
+    stats.touchedChunks = touchedChunkKeys.size
+    chunkManager._updateStats?.()
+
+    reportProgress('done', {
+      touchedChunks: stats.touchedChunks,
+      skipped: stats.skipped,
+    })
+
+    return {
+      status: 'applied',
+      totalBlocks: totalSolidBlocks,
+      offset: { x: offsetX, y: offsetY, z: offsetZ },
+      placedBounds: Number.isFinite(placedBounds.minX)
+        ? { ...placedBounds }
+        : {
+            minX: null,
+            minY: null,
+            minZ: null,
+            maxX: null,
+            maxY: null,
+            maxZ: null,
+          },
+      importDiagnostics: {
+        renderMode: 'minecraft-native',
+        importedChunkCount: touchedChunkKeys.size,
+      },
+      ...stats,
     }
   }
 }
