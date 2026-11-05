@@ -1,20 +1,22 @@
 /**
  * 解析原始输入，处理冲突并返回有效方向 + 归一化权重
- * @param {object} rawInput - { forward, backward, left, right }
- * @returns {{ resolvedInput: object, weights: object }}
+ * @param {object} rawInput - { forward, backward, left, right, control, sprint, shift, v }
+ * @returns {{ resolvedInput: object, weights: object }} 解析后的输入状态与方向权重
  */
 export function resolveDirectionInput(rawInput) {
+  const sneak = !!(rawInput.shift || rawInput.v)
+  const sprintIntent = !!(rawInput.sprint || rawInput.control)
   const resolvedInput = {
     forward: false,
     backward: false,
     left: false,
     right: false,
-    control: rawInput.control,
-    sprint: rawInput.sprint,
+    control: !!rawInput.control,
+    sprint: false,
     shift: rawInput.shift,
     v: rawInput.v,
     space: rawInput.space,
-    sneak: rawInput.shift || rawInput.v,
+    sneak,
   }
 
   // 1. 相反方向互相抵消 (Cancel Opposites)
@@ -60,6 +62,8 @@ export function resolveDirectionInput(rawInput) {
     activeCount++
   if (resolvedInput.right)
     activeCount++
+
+  resolvedInput.sprint = sprintIntent && resolvedInput.forward && !resolvedInput.backward && !sneak
 
   if (activeCount > 0) {
     const weightPerDir = 1.0 / activeCount

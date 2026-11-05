@@ -131,3 +131,35 @@
   gap: calc(4vh * var(--hud-scale));
   pointer-events: none;
 }
+
+@media (max-width: 620px) {
+  :root {
+    --hud-scale: 1.75;
+  }
+
+  .top-info-bar {
+    top: 72px;
+    width: calc(100% - 24px);
+    gap: 4px;
+  }
+
+  .coordinate-display {
+    width: min(315px, 100%);
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    text-shadow: 1px 1px 0 var(--coord-text-shadow);
+  }
+
+  .coordinate-display > span + span {
+    margin-left: 0;
+  }
+
+  .compass-container {
+    width: min(315px, 100%);
+  }
+
+  .hud-top-right-stack {
+    display: none;
+  }
+}

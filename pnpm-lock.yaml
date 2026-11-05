@@ -16,7 +16,7 @@ importers:
         version: 6.0.3
       cubane:
         specifier: 1.0.19
-        version: 1.0.19(three@0.172.0)
+        version: 1.0.19(three@0.176.0)
       gsap:
         specifier: ^3.12.5
         version: 3.12.5
@@ -39,11 +39,11 @@ importers:
         specifier: ^1.1.23
         version: 1.1.23(rollup@4.29.1)(vite@5.4.11(@types/node@22.10.2)(sass@1.83.0)(terser@5.37.0))
       three:
-        specifier: ^0.172.0
-        version: 0.172.0
+        specifier: ^0.176.0
+        version: 0.176.0
       three-custom-shader-material:
         specifier: ^6.4.0
-        version: 6.4.0(three@0.172.0)
+        version: 6.4.0(three@0.176.0)
       vue:
         specifier: ^3.5.13
         version: 3.5.25(typescript@5.9.3)
@@ -96,6 +96,9 @@ importers:
       events:
         specifier: ^3.3.0
         version: 3.3.0
+      playwright:
+        specifier: ^1.59.1
+        version: 1.59.1
       postcss:
         specifier: ^8.4.41
         version: 8.4.49
@@ -111,6 +114,9 @@ importers:
       sass:
         specifier: ^1.77.8
         version: 1.83.0
+      smol-toml:
+        specifier: ^1.7.1
+        version: 1.7.1
       stream-browserify:
         specifier: ^3.0.0
         version: 3.0.0
@@ -1821,6 +1827,11 @@ packages:
     resolution: {integrity: sha512-CTXd6rk/M3/ULNQj8FBqBWHYBVYybQ3VPBw0xGKFe3tuH7ytT6ACnvzpIQ3UZtB8yvUKC2cXn1a+x+5EVQLovA==}
     engines: {node: '>=14.14'}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -2602,6 +2613,16 @@ packages:
   pkg-types@2.1.0:
     resolution: {integrity: sha512-wmJwA+8ihJixSoHKxZJRBQG1oY8Yr9pGLzRmSsNms0iNWyHHAlZCa7mmKiFR10YPZuz/2k169JiS/inOjBCZ2A==}
 
+  playwright-core@1.59.1:
+    resolution: {integrity: sha512-HBV/RJg81z5BiiZ9yPzIiClYV/QMsDCKUyogwH9p3MCP6IYjUFu/MActgYAvK0oWyV9NlwM3GLBjADyWgydVyg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.59.1:
+    resolution: {integrity: sha512-C8oWjPR3F81yljW9o5OxcWzfh6avkVwDD2VYdwIGqTkl+OGFISgypqzfu7dOe4QNLL2aqcWBmI3PMtLIK233lw==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   pluralize@8.0.0:
     resolution: {integrity: sha512-Nc3IT5yHzflTfbjgqWcCPpo7DaKy4FnpB0l/zCAW0Tc7jxAiuqSxHasntB3D7887LSrA93kDJ9IXovxJYxyLCA==}
     engines: {node: '>=4'}
@@ -2969,6 +2990,10 @@ packages:
   slashes@3.0.12:
     resolution: {integrity: sha512-Q9VME8WyGkc7pJf6QEkj3wE+2CnvZMI+XJhwdTPR8Z/kWQRXi7boAWLDibRPyHRTUTPx5FaU7MsyrjI3yLB4HA==}
 
+  smol-toml@1.7.1:
+    resolution: {integrity: sha512-PPlsspAZ4jbMBu5DMFhfUGDQLu/vrL4SyBROVS37x8ynnVmFIs1VPBz1Co8Xks3TvpIaZXmU85y4DrQ+UyVFoQ==}
+    engines: {node: '>= 18'}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -3129,8 +3154,8 @@ packages:
   three@0.129.0:
     resolution: {integrity: sha512-wiWio1yVRg2Oj6WEWsTHQo5eSzYpEwSBtPSi3OofNpvFbf26HFfb9kw4FZJNjII4qxzp0b1xLB11+tKkBGB1ZA==}
 
-  three@0.172.0:
-    resolution: {integrity: sha512-6HMgMlzU97MsV7D/tY8Va38b83kz8YJX+BefKjspMNAv0Vx6dxMogHOrnRl/sbMIs3BPUKijPqDqJ/+UwJbIow==}
+  three@0.176.0:
+    resolution: {integrity: sha512-PWRKYWQo23ojf9oZSlRGH8K09q7nRSWx6LY/HF/UUrMdYgN9i1e2OwJYHoQjwc6HF/4lvvYLC5YC1X8UJL2ZpA==}
 
   three@0.181.2:
     resolution: {integrity: sha512-k/CjiZ80bYss6Qs7/ex1TBlPD11whT9oKfT8oTGiHa34W4JRd1NiH/Tr1DbHWQ2/vMUypxksLnF2CfmlmM5XFQ==}
@@ -4468,10 +4493,10 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  cubane@1.0.19(three@0.172.0):
+  cubane@1.0.19(three@0.176.0):
     dependencies:
       jszip: 3.10.1
-      three: 0.172.0
+      three: 0.176.0
 
   cubane@1.0.19(three@0.181.2):
     dependencies:
@@ -5135,6 +5160,9 @@ snapshots:
       graceful-fs: 4.2.11
       jsonfile: 6.2.0
       universalify: 2.0.1
+
+  fsevents@2.3.2:
+    optional: true
 
   fsevents@2.3.3:
     optional: true
@@ -5873,7 +5901,7 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  n8ao@1.10.1(postprocessing@6.38.3(three@0.181.2))(three@0.181.2):
+  n8ao@1.10.1(postprocessing@6.38.3(three@0.176.0))(three@0.181.2):
     dependencies:
       postprocessing: 6.38.3(three@0.181.2)
       three: 0.181.2
@@ -6072,6 +6100,14 @@ snapshots:
       confbox: 0.2.1
       exsolve: 1.0.4
       pathe: 2.0.3
+
+  playwright-core@1.59.1: {}
+
+  playwright@1.59.1:
+    dependencies:
+      playwright-core: 1.59.1
+    optionalDependencies:
+      fsevents: 2.3.2
 
   pluralize@8.0.0: {}
 
@@ -6359,7 +6395,7 @@ snapshots:
       http-proxy-middleware: 0.2.0
       jszip: 3.10.1
       lil-gui: 0.19.2
-      n8ao: 1.10.1(postprocessing@6.38.3(three@0.181.2))(three@0.181.2)
+      n8ao: 1.10.1(postprocessing@6.38.3(three@0.176.0))(three@0.181.2)
       nucleation: 0.1.172
       pako: 2.1.0
       postprocessing: 6.38.3(three@0.181.2)
@@ -6451,6 +6487,8 @@ snapshots:
   sisteransi@1.0.5: {}
 
   slashes@3.0.12: {}
+
+  smol-toml@1.7.1: {}
 
   source-map-js@1.2.1: {}
 
@@ -6640,13 +6678,13 @@ snapshots:
     dependencies:
       three: 0.129.0
 
-  three-custom-shader-material@6.4.0(three@0.172.0):
+  three-custom-shader-material@6.4.0(three@0.176.0):
     dependencies:
-      three: 0.172.0
+      three: 0.176.0
 
   three@0.129.0: {}
 
-  three@0.172.0: {}
+  three@0.176.0: {}
 
   three@0.181.2: {}
 

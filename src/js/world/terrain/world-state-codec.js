@@ -66,6 +66,30 @@ function base64ToBytes(base64) {
 }
 
 function normalizeWorldState(worldState = {}) {
+  const transientRemovedBlocks = worldState?.minecraftTransientRemovedBlocks
+    && typeof worldState.minecraftTransientRemovedBlocks === 'object'
+      ? Object.fromEntries(
+          Object.entries(worldState.minecraftTransientRemovedBlocks)
+          .filter(([blockKey, block]) => {
+            if (!String(blockKey || '').trim() || !block || typeof block !== 'object') {
+              return false
+            }
+
+            const blockName = String(block.blockName || '').trim()
+            return !!blockName
+          })
+          .map(([blockKey, block]) => [
+            String(blockKey),
+            {
+              blockName: String(block.blockName || '').replace(/^minecraft:/u, ''),
+              properties: block.properties && typeof block.properties === 'object'
+                ? { ...block.properties }
+                : {},
+            },
+          ]),
+        )
+      : {}
+
   return {
     ...(worldState && typeof worldState === 'object' ? worldState : {}),
     schematicOnlyMode: !!worldState?.schematicOnlyMode,
@@ -73,6 +97,7 @@ function normalizeWorldState(worldState = {}) {
       worldState?.minecraftSchematicLayer && typeof worldState.minecraftSchematicLayer === 'object'
         ? worldState.minecraftSchematicLayer
         : null,
+    minecraftTransientRemovedBlocks: transientRemovedBlocks,
   }
 }
 

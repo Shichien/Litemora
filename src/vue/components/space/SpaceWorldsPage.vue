@@ -209,7 +209,6 @@ function generateProjectionThumbnailSvg(item) {
 
   const displayWidth = width * scale
   const displayHeight = height * scale
-  const displayDepth = depth * scale
   const safeGradientId = String(item?.id || 'projection')
     .replace(/[^a-z0-9_-]/giu, '')
     .slice(0, 48) || 'projection'

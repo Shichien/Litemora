@@ -12,6 +12,7 @@ import aoVertexShader from '../../../shaders/blocks/ao.vert.glsl'
 // 导入动画着色器
 import windVertexShader from '../../../shaders/blocks/wind.vert.glsl'
 import { requestAtlasTexture, resolveAtlasVirtualTextureKey } from './java-atlas-texture-provider.js'
+import { getMinecraftBlockCollisionProfile } from './minecraft-block-data.js'
 
 // 方块 ID 常量，便于在代码中保持一致引用
 export const BLOCK_IDS = {
@@ -798,6 +799,112 @@ function mergeToSingleGeometry(geometries = []) {
   return merged
 }
 
+function createCenteredBox(width, height, depth, centerX = 0, centerY = 0, centerZ = 0) {
+  const halfWidth = width * 0.5
+  const halfHeight = height * 0.5
+  const halfDepth = depth * 0.5
+  return {
+    minX: centerX - halfWidth,
+    maxX: centerX + halfWidth,
+    minY: centerY - halfHeight,
+    maxY: centerY + halfHeight,
+    minZ: centerZ - halfDepth,
+    maxZ: centerZ + halfDepth,
+  }
+}
+
+function rotateXZByFacing(x, z, facing = 'north') {
+  if (facing === 'east') {
+    return { x: -z, z: x }
+  }
+  if (facing === 'south') {
+    return { x: -x, z: -z }
+  }
+  if (facing === 'west') {
+    return { x: z, z: -x }
+  }
+  return { x, z }
+}
+
+function rotateCenteredBox(box, facing = 'north') {
+  if (facing === 'north') {
+    return { ...box }
+  }
+
+  const corners = [
+    rotateXZByFacing(box.minX, box.minZ, facing),
+    rotateXZByFacing(box.minX, box.maxZ, facing),
+    rotateXZByFacing(box.maxX, box.minZ, facing),
+    rotateXZByFacing(box.maxX, box.maxZ, facing),
+  ]
+
+  return {
+    minX: Math.min(...corners.map(corner => corner.x)),
+    maxX: Math.max(...corners.map(corner => corner.x)),
+    minY: box.minY,
+    maxY: box.maxY,
+    minZ: Math.min(...corners.map(corner => corner.z)),
+    maxZ: Math.max(...corners.map(corner => corner.z)),
+  }
+}
+
+function centeredBoxToCollisionBox(box) {
+  return [
+    box.minX + 0.5,
+    box.minY + 0.5,
+    box.minZ + 0.5,
+    box.maxX + 0.5,
+    box.maxY + 0.5,
+    box.maxZ + 0.5,
+  ]
+}
+
+function collisionBoxToCenteredBox(box = []) {
+  return {
+    minX: Number(box[0]) - 0.5,
+    minY: Number(box[1]) - 0.5,
+    minZ: Number(box[2]) - 0.5,
+    maxX: Number(box[3]) - 0.5,
+    maxY: Number(box[4]) - 0.5,
+    maxZ: Number(box[5]) - 0.5,
+  }
+}
+
+function createGeometryFromCenteredBoxes(centeredBoxes = []) {
+  const geometries = centeredBoxes.map((box) => {
+    const width = Math.max(0.001, box.maxX - box.minX)
+    const height = Math.max(0.001, box.maxY - box.minY)
+    const depth = Math.max(0.001, box.maxZ - box.minZ)
+    const centerX = (box.minX + box.maxX) * 0.5
+    const centerY = (box.minY + box.maxY) * 0.5
+    const centerZ = (box.minZ + box.maxZ) * 0.5
+    const geometry = new THREE.BoxGeometry(width, height, depth)
+    geometry.translate(centerX, centerY, centerZ)
+    return geometry
+  })
+
+  const merged = mergeToSingleGeometry(geometries)
+  geometries.forEach(geometry => geometry.dispose())
+  return merged
+}
+
+function buildStairBoxesCentered({ half = 'bottom', facing = 'north', shape = 'straight' } = {}) {
+  const normalizedHalf = half === 'top' ? 'top' : 'bottom'
+  const normalizedFacing = ['north', 'south', 'east', 'west'].includes(facing) ? facing : 'north'
+  const normalizedShape = ['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].includes(shape)
+    ? shape
+    : 'straight'
+
+  const profile = getMinecraftBlockCollisionProfile('stone_stairs', {
+    facing: normalizedFacing,
+    half: normalizedHalf,
+    shape: normalizedShape,
+  })
+
+  return (Array.isArray(profile?.collisionBoxes) ? profile.collisionBoxes : [])
+    .map(collisionBoxToCenteredBox)
+}
+
 const slabBottomGeometry = (() => {
   const geometry = new THREE.BoxGeometry(1, 0.5, 1)
   geometry.translate(0, -0.25, 0)
@@ -811,82 +918,15 @@ const slabTopGeometry = (() => {
 })()
 
 function createStairGeometry({ half = 'bottom', facing = 'north', shape = 'straight' } = {}) {
-  const isTop = half === 'top'
-  const lower = new THREE.BoxGeometry(1, 0.5, 1)
-  lower.translate(0, isTop ? 0.25 : -0.25, 0)
-
-  const topY = isTop ? -0.25 : 0.25
-  const topPieces = []
-  const normalizedShape = ['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].includes(shape)
-    ? shape
-    : 'straight'
-
-  const addNorthHalf = () => {
-    const g = new THREE.BoxGeometry(1, 0.5, 0.5)
-    g.translate(0, topY, -0.25)
-    topPieces.push(g)
-  }
-  const addWestHalf = () => {
-    const g = new THREE.BoxGeometry(0.5, 0.5, 1)
-    g.translate(-0.25, topY, 0)
-    topPieces.push(g)
-  }
-  const addEastHalf = () => {
-    const g = new THREE.BoxGeometry(0.5, 0.5, 1)
-    g.translate(0.25, topY, 0)
-    topPieces.push(g)
-  }
-  const addNorthWestQuarter = () => {
-    const g = new THREE.BoxGeometry(0.5, 0.5, 0.5)
-    g.translate(-0.25, topY, -0.25)
-    topPieces.push(g)
-  }
-  const addNorthEastQuarter = () => {
-    const g = new THREE.BoxGeometry(0.5, 0.5, 0.5)
-    g.translate(0.25, topY, -0.25)
-    topPieces.push(g)
-  }
-
-  if (normalizedShape === 'inner_left') {
-    addNorthHalf()
-    addEastHalf()
-  }
-  else if (normalizedShape === 'inner_right') {
-    addNorthHalf()
-    addWestHalf()
-  }
-  else if (normalizedShape === 'outer_left') {
-    addNorthEastQuarter()
-  }
-  else if (normalizedShape === 'outer_right') {
-    addNorthWestQuarter()
-  }
-  else {
-    addNorthHalf()
-  }
-
-  const merged = mergeToSingleGeometry([lower, ...topPieces])
-
-  const rotationY = {
-    north: 0,
-    east: Math.PI / 2,
-    south: Math.PI,
-    west: -Math.PI / 2,
-  }[facing] ?? 0
-
-  if (rotationY !== 0) {
-    merged.rotateY(rotationY)
-    merged.computeBoundingBox()
-    merged.computeBoundingSphere()
-  }
-
-  lower.dispose()
-  topPieces.forEach(piece => piece.dispose())
-  return merged
+  return createGeometryFromCenteredBoxes(buildStairBoxesCentered({ half, facing, shape }))
 }
 
 const stairGeometries = {
 }
+
+const slabBottomCollisionBoxes = [[0, 0, 0, 1, 0.5, 1]]
+const slabTopCollisionBoxes = [[0, 0.5, 0, 1, 1, 1]]
+const stairCollisionBoxesCache = new Map()
 
 const fenceGeometryCache = new Map()
 ;['bottom', 'top'].forEach((half) => {
@@ -894,8 +934,13 @@ const fenceGeometryCache = new Map()
     ;['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].forEach((shape) => {
       const key = `stair_${half}_${facing}_${shape}`
       stairGeometries[key] = createStairGeometry({ half, facing, shape })
+      stairCollisionBoxesCache.set(
+        key,
+        buildStairBoxesCentered({ half, facing, shape }).map(centeredBoxToCollisionBox),
+      )
       if (shape === 'straight') {
         stairGeometries[`stair_${half}_${facing}`] = stairGeometries[key]
+        stairCollisionBoxesCache.set(`stair_${half}_${facing}`, stairCollisionBoxesCache.get(key))
       }
     })
   })
@@ -1461,6 +1506,22 @@ export function getGeometryForBlockType(blockType) {
   }
 
   return sharedGeometry
+}
+
+export function getCollisionBoxesForBlockType(blockType) {
+  const geometryType = String(blockType?.geometryType || 'cube')
+
+  if (geometryType === 'slab_bottom') {
+    return slabBottomCollisionBoxes.map(box => [...box])
+  }
+  if (geometryType === 'slab_top') {
+    return slabTopCollisionBoxes.map(box => [...box])
+  }
+  if (stairCollisionBoxesCache.has(geometryType)) {
+    return stairCollisionBoxesCache.get(geometryType).map(box => [...box])
+  }
+
+  return null
 }
 
 /**

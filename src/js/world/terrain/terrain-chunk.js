@@ -243,6 +243,28 @@ export default class TerrainChunk {
   }
 
   /**
+   * Refresh the current mesh in place after visibility-only changes.
+   * - dataReady: build the chunk for the first time
+   * - meshReady: rebuild the existing renderer from the container
+   */
+  refreshMesh() {
+    if (this.state === 'disposed') {
+      return false
+    }
+
+    if (this.state === 'dataReady') {
+      return this.buildMesh()
+    }
+
+    if (this.state === 'meshReady') {
+      this.renderer?._rebuildFromContainer?.()
+      return true
+    }
+
+    return false
+  }
+
+  /**
    * 每帧更新：转发到 renderer 更新动画材质
    */
   update() {

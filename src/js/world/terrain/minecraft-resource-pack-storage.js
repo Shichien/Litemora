@@ -138,7 +138,7 @@ async function readIndexedDbRecord(scopedKey = '') {
 
 export async function saveMinecraftResourcePackFile(file, options = {}) {
   if (!(file instanceof Blob)) {
-    throw new Error('minecraft_resource_pack_file_required')
+    throw new TypeError('minecraft_resource_pack_file_required')
   }
 
   const scopedKey = buildScopedPackKey(options)

@@ -22,6 +22,7 @@ export default class BlockMiningController {
 
     // Mining state
     this.isMining = false // Is currently mining
+    this.isCompletingMining = false // Waiting for async mining side effects to finish
     this.miningStartTime = 0 // Mining start time
     this.miningProgress = 0 // Current mining progress [0, 1]
     this.currentTarget = null // Current mining target { chunkX, chunkZ, worldBlock, instanceId, mesh }
@@ -43,7 +44,7 @@ export default class BlockMiningController {
    * Mouse down event: start mining
    */
   _onMouseDown(event) {
-    if (!this.params.enabled || event.button !== 0)
+    if (!this.params.enabled || event.button !== 0 || this.isCompletingMining)
       return
 
     const raycaster = this.experience.world?.blockRaycaster
@@ -69,6 +70,10 @@ export default class BlockMiningController {
   _onMouseUp(event) {
     if (event.button !== 0)
       return
+
+    if (this.isCompletingMining) {
+      return
+    }
 
     if (this.isMining) {
       this._resetMining()
@@ -132,6 +137,7 @@ export default class BlockMiningController {
    */
   _resetMining() {
     this.isMining = false
+    this.isCompletingMining = false
     this.miningProgress = 0
     this.currentTarget = null
   }
@@ -139,9 +145,11 @@ export default class BlockMiningController {
   /**
    * Complete mining: destroy block
    */
-  _completeMining() {
-    if (!this.currentTarget)
+  async _completeMining() {
+    if (!this.currentTarget) {
+      this._resetMining()
       return
+    }
 
     const { worldBlock, blockId } = this.currentTarget
     const chunkManager = this.experience.terrainDataManager
@@ -149,7 +157,7 @@ export default class BlockMiningController {
 
     if (chunkManager) {
       removalResult = this.currentTarget.isImportedMinecraft
-        ? chunkManager.clearImportedMinecraftBlockTransient(worldBlock.x, worldBlock.y, worldBlock.z)
+        ? await chunkManager.clearImportedMinecraftBlockTransientAsync(worldBlock.x, worldBlock.y, worldBlock.z)
         : chunkManager.removeBlockWorld(worldBlock.x, worldBlock.y, worldBlock.z)
     }
 
@@ -181,7 +189,7 @@ export default class BlockMiningController {
    * Per-frame update
    */
   update() {
-    if (!this.params.enabled || !this.isMining) {
+    if (!this.params.enabled || !this.isMining || this.isCompletingMining) {
       return
     }
 
@@ -213,7 +221,8 @@ export default class BlockMiningController {
 
     // Mining complete
     if (this.miningProgress >= 1) {
-      this._completeMining()
+      this.isCompletingMining = true
+      void this._completeMining()
     }
   }
 

@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { MOVEMENT_CONSTANTS, MOVEMENT_DIRECTION_WEIGHTS } from '../../config/player-config.js'
 import Experience from '../../experience.js'
-import { isMinecraftBlockClimbable } from '../terrain/minecraft-block-data.js'
+import { getBlockTypeById } from '../terrain/blocks-config.js'
+import { getMinecraftBlockMovementProfile, isMinecraftBlockClimbable } from '../terrain/minecraft-block-data.js'
 import { LocomotionProfiles } from './animation-config.js'
 import PlayerCollisionSystem from './player-collision.js'
 
@@ -28,12 +29,12 @@ export class PlayerMovementController {
     this.isSprinting = false
     this.groundedGraceTimer = 0
     this.flightConfig = {
-      speedMultiplier: 2.4,
-      ignoreMiningSlowdown: true,
+      speedMultiplier: 10.79 / (this.config.speed?.run || 5.612),
       groundWalkAnimationWhenMoving: true,
     }
 
-    this.physicsTick = 1 / (this.config.physics?.tickRate || 20)
+    this.physicsTickRate = this.config.physics?.tickRate || 20
+    this.physicsTick = 1 / this.physicsTickRate
     this.maxPhysicsDelta = this.config.physics?.maxTickDelta || 0.25
     this.tickAccumulator = 0
 
@@ -54,6 +55,8 @@ export class PlayerMovementController {
     this.collision = new PlayerCollisionSystem()
     this.terrainProvider = this.experience.terrainDataManager
     this._hasInitializedRespawn = false
+    this._hasExplicitRespawnPoint = false
+    this._respawnSetupTimer = null
     this.groundSampler = null
 
     this.facingAngle = config.facingAngle ?? Math.PI
@@ -69,8 +72,13 @@ export class PlayerMovementController {
     this._tmpStepProbeBase = new THREE.Vector3()
     this._tmpCenter = new THREE.Vector3()
     this._tmpBoxPoint = new THREE.Vector3()
+    this._tmpMovementProfile = {
+      slipperiness: 0.6,
+      speedMultiplier: 1,
+    }
 
-    setTimeout(() => {
+    this._respawnSetupTimer = setTimeout(() => {
+      this._respawnSetupTimer = null
       this._setupRespawnPoint()
     }, 1000)
   }
@@ -115,14 +123,12 @@ export class PlayerMovementController {
     this.groundedGraceTimer = Math.max(0, this.groundedGraceTimer - clampedDt)
     this.tickAccumulator = Math.min(this.tickAccumulator + clampedDt, this.maxPhysicsDelta * 2)
 
-    let stepped = false
     let iterations = 0
     while (this.tickAccumulator >= this.physicsTick && iterations < 8) {
       this.previousPosition.copy(this.position)
       this._stepCustomPhysics(inputState, isCombatActive)
       this.tickAccumulator -= this.physicsTick
       iterations++
-      stepped = true
     }
 
     const alpha = clamp01(this.tickAccumulator / this.physicsTick)
@@ -139,10 +145,6 @@ export class PlayerMovementController {
     this.tickAccumulator = 0
   }
 
-  shouldIgnoreMiningSlowdown() {
-    return this.isFlying && this.flightConfig.ignoreMiningSlowdown
-  }
-
   shouldSimulateGroundWalk(inputState) {
     return this.isFlying
       && this.flightConfig.groundWalkAnimationWhenMoving
@@ -150,9 +152,6 @@ export class PlayerMovementController {
   }
 
   setFlightConfig(config = {}) {
-    if (config.ignoreMiningSlowdown !== undefined) {
-      this.flightConfig.ignoreMiningSlowdown = !!config.ignoreMiningSlowdown
-    }
     if (config.groundWalkAnimationWhenMoving !== undefined) {
       this.flightConfig.groundWalkAnimationWhenMoving = !!config.groundWalkAnimationWhenMoving
     }
@@ -195,7 +194,7 @@ export class PlayerMovementController {
 
     let speed = this.config.speed.run * this.flightConfig.speedMultiplier
     if (inputState.sprint) {
-      speed *= 1.35
+      speed *= 2
     }
     if (isCombatActive) {
       speed *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
@@ -230,8 +229,6 @@ export class PlayerMovementController {
     this.isInWater = this._isPositionInWater(this.position)
     this.isClimbing = !this.isInWater && this._isTouchingClimbable(this.position)
 
-    this._updateHorizontalVelocity(inputState, movementProfile, isCombatActive)
-
     const predictedDisplacement = this._tmpDirection.copy(this.worldVelocity).multiplyScalar(this.physicsTick)
     const maxAxisDisplacement = Math.max(
       Math.abs(predictedDisplacement.x),
@@ -245,7 +242,7 @@ export class PlayerMovementController {
     )
     const subTick = this.physicsTick / subStepCount
     const gravityPerSubStep = (this.config.physics?.gravityPerTick ?? 1.6) / subStepCount
-    const verticalDragPerSubStep = Math.pow(this.config.physics?.verticalDrag ?? 0.98, 1 / subStepCount)
+    const verticalDragPerSubStep = (this.config.physics?.verticalDrag ?? 0.98) ** (1 / subStepCount)
 
     let workingGrounded = this.isGrounded
 
@@ -254,6 +251,9 @@ export class PlayerMovementController {
 
       const canClimb = !this.isInWater && this._isTouchingClimbable(this.position)
       this.isClimbing = canClimb
+      this._updateGroundMovementProfile(this.position)
+      const groundFriction = this._getGroundFriction()
+      this._updateHorizontalVelocity(inputState, movementProfile, isCombatActive, groundFriction)
 
       if (this.isInWater) {
         this._updateWaterVerticalVelocity(inputState)
@@ -276,7 +276,13 @@ export class PlayerMovementController {
       const collisions = this.collision.narrowPhase(candidates, playerState)
       this.collision.resolveCollisions(collisions, playerState)
 
-      const didStepUp = this._tryStepUp(previousBasePosition, this._tmpAttemptedBase, playerState, workingGrounded)
+      const didStepUp = this._tryStepUp(
+        previousBasePosition,
+        this._tmpAttemptedBase,
+        playerState,
+        workingGrounded,
+        collisions,
+      )
 
       this._applyGroundSampler(playerState)
 
@@ -317,7 +323,7 @@ export class PlayerMovementController {
     }
   }
 
-  _updateHorizontalVelocity(inputState, movementProfile, isCombatActive) {
+  _updateHorizontalVelocity(inputState, movementProfile, isCombatActive, groundFriction = null) {
     const { worldX, worldZ } = this._computeWorldDirection(inputState)
     const isMoving = this.isMoving(inputState)
     const dirScale = this._computeDirectionScale(movementProfile, inputState)
@@ -327,42 +333,52 @@ export class PlayerMovementController {
       targetSpeed *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
     }
 
-    const targetVelocityX = isMoving ? worldX * targetSpeed : 0
-    const targetVelocityZ = isMoving ? worldZ * targetSpeed : 0
+    const normalWalkSpeed = this.config.speed.walk || 4.317
+    const speedRatio = normalWalkSpeed > 0 ? (targetSpeed / normalWalkSpeed) : 1
 
     if (this.isInWater) {
-      const response = this.config.physics?.response?.walk ?? 0.34
-      this.worldVelocity.x = THREE.MathUtils.lerp(this.worldVelocity.x, targetVelocityX * 0.9, response)
-      this.worldVelocity.z = THREE.MathUtils.lerp(this.worldVelocity.z, targetVelocityZ * 0.9, response)
+      const waterDrag = this.config.physics?.waterDrag ?? 0.85
+      const waterAcceleration = this._getWaterAcceleration(speedRatio)
+      this.worldVelocity.x *= waterDrag
+      this.worldVelocity.z *= waterDrag
+      if (isMoving) {
+        this.worldVelocity.x += worldX * waterAcceleration
+        this.worldVelocity.z += worldZ * waterAcceleration
+      }
       return
     }
 
     if (this.isClimbing) {
-      const climbStrafeSpeed = Math.min(this.config.speed.walk * 0.4, 1.55)
-      const response = this.config.physics?.response?.walk ?? 0.34
-      this.worldVelocity.x = THREE.MathUtils.lerp(this.worldVelocity.x, worldX * climbStrafeSpeed, response)
-      this.worldVelocity.z = THREE.MathUtils.lerp(this.worldVelocity.z, worldZ * climbStrafeSpeed, response)
+      const climbDrag = this.config.physics?.climbDrag ?? 0.75
+      const climbAcceleration = this._getClimbAcceleration(speedRatio)
+      this.worldVelocity.x *= climbDrag
+      this.worldVelocity.z *= climbDrag
+      if (isMoving) {
+        this.worldVelocity.x += worldX * climbAcceleration
+        this.worldVelocity.z += worldZ * climbAcceleration
+      }
       return
     }
 
     if (this.isGrounded) {
-      const response = this._getGroundResponse(movementProfile)
-      this.worldVelocity.x = THREE.MathUtils.lerp(this.worldVelocity.x, targetVelocityX, response)
-      this.worldVelocity.z = THREE.MathUtils.lerp(this.worldVelocity.z, targetVelocityZ, response)
-
-      if (!isMoving) {
-        const friction = this.config.physics?.groundFriction ?? 0.546
-        this.worldVelocity.x *= friction
-        this.worldVelocity.z *= friction
+      const friction = Number.isFinite(groundFriction) ? groundFriction : this._getGroundFriction()
+      const acceleration = isMoving ? this._getGroundAcceleration(speedRatio) : 0
+      this.worldVelocity.x *= friction
+      this.worldVelocity.z *= friction
+      if (isMoving) {
+        this.worldVelocity.x += worldX * acceleration
+        this.worldVelocity.z += worldZ * acceleration
       }
     }
     else {
-      const response = this.config.physics?.response?.air ?? 0.08
       const drag = this.config.physics?.airDrag ?? 0.91
-      this.worldVelocity.x = THREE.MathUtils.lerp(this.worldVelocity.x, targetVelocityX, response)
-      this.worldVelocity.z = THREE.MathUtils.lerp(this.worldVelocity.z, targetVelocityZ, response)
+      const acceleration = isMoving ? this._getAirAcceleration(speedRatio) : 0
       this.worldVelocity.x *= drag
       this.worldVelocity.z *= drag
+      if (isMoving) {
+        this.worldVelocity.x += worldX * acceleration
+        this.worldVelocity.z += worldZ * acceleration
+      }
     }
 
     if (Math.abs(this.worldVelocity.x) < 0.001) {
@@ -469,7 +485,18 @@ export class PlayerMovementController {
 
     const candidates = this.collision.broadPhase(state, provider)
     const collisions = this.collision.narrowPhase(candidates, state)
-    return collisions.length === 0
+    return !collisions.some((collision) => {
+      if (collision?.ground) {
+        return false
+      }
+
+      const normalY = Number(collision?.normal?.y || 0)
+      if (normalY > 0.5) {
+        return false
+      }
+
+      return Number(collision?.overlap || 0) > 1e-4
+    })
   }
 
   _resolveMovementProfile(inputState) {
@@ -492,15 +519,33 @@ export class PlayerMovementController {
     return this.config.speed.walk
   }
 
-  _getGroundResponse(profile) {
-    const response = this.config.physics?.response || {}
-    if (profile === 'run') {
-      return response.run ?? 0.4
-    }
-    if (profile === 'crouch') {
-      return response.crouch ?? 0.28
-    }
-    return response.walk ?? 0.34
+  _getGroundFriction() {
+    const slipperiness = THREE.MathUtils.clamp(this._tmpMovementProfile.slipperiness ?? 0.6, 0.01, 0.999)
+    return (slipperiness / 0.6) * (this.config.physics?.groundFriction ?? 0.546)
+  }
+
+  _getGroundAcceleration(speedRatio) {
+    return 0.098 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
+  }
+
+  _getAirAcceleration(speedRatio) {
+    return 0.02 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
+  }
+
+  _getWaterAcceleration(speedRatio) {
+    return 0.015 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
+  }
+
+  _getClimbAcceleration(speedRatio) {
+    return 0.04 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
+  }
+
+  _updateGroundMovementProfile(basePosition) {
+    const maxSupportDrop = this.config.physics?.sneakSupportDrop ?? 0.55
+    const supportSurface = this._getDominantSupportSurface(basePosition, maxSupportDrop)
+    const profile = supportSurface?.movementProfile || getMinecraftBlockMovementProfile()
+    this._tmpMovementProfile.slipperiness = profile.slipperiness ?? 0.6
+    this._tmpMovementProfile.speedMultiplier = profile.speedMultiplier ?? 1
   }
 
   _computeWorldDirection(inputState) {
@@ -655,7 +700,7 @@ export class PlayerMovementController {
     playerState.worldVelocity.z = 0
   }
 
-  _tryStepUp(previousBasePosition, attemptedBasePosition, playerState, wasGrounded = false) {
+  _tryStepUp(previousBasePosition, attemptedBasePosition, playerState, wasGrounded = false, collisions = []) {
     const desiredDeltaX = attemptedBasePosition.x - previousBasePosition.x
     const desiredDeltaZ = attemptedBasePosition.z - previousBasePosition.z
     const desiredHorizontalDistanceSq = (desiredDeltaX * desiredDeltaX) + (desiredDeltaZ * desiredDeltaZ)
@@ -682,6 +727,20 @@ export class PlayerMovementController {
       return false
     }
 
+    const touchesStepSurface = collisions.some((collision) => {
+      const topY = Number(collision?.collisionBox?.maxY)
+      if (!Number.isFinite(topY)) {
+        return false
+      }
+
+      const rise = topY - previousBasePosition.y
+      return rise >= 0.01 && rise <= maxStepHeight + 0.05
+    })
+
+    if (!horizontalBlocked && !touchesStepSurface) {
+      return false
+    }
+
     const probeBase = this._tmpStepProbeBase.copy(attemptedBasePosition)
     probeBase.y = previousBasePosition.y + maxStepHeight
 
@@ -689,7 +748,11 @@ export class PlayerMovementController {
       return false
     }
 
-    const supportDrop = this._getSupportDrop(probeBase, 0, 0, maxStepHeight + 0.05, {
+    const desiredHorizontalDistance = Math.sqrt(desiredHorizontalDistanceSq)
+    const leadingFootOffset = Math.max(0.05, this.capsule.radius - 0.02)
+    const supportOffsetX = (desiredDeltaX / desiredHorizontalDistance) * leadingFootOffset
+    const supportOffsetZ = (desiredDeltaZ / desiredHorizontalDistance) * leadingFootOffset
+    const supportDrop = this._getSupportDrop(probeBase, supportOffsetX, supportOffsetZ, maxStepHeight + 0.05, {
       directionX: desiredDeltaX,
       directionZ: desiredDeltaZ,
     })
@@ -701,10 +764,6 @@ export class PlayerMovementController {
 
     const rise = probeBase.y - previousBasePosition.y
     if (rise < 0.01 || rise > maxStepHeight + 0.05) {
-      return false
-    }
-
-    if (!horizontalBlocked && rise < 0.08) {
       return false
     }
 
@@ -790,76 +849,35 @@ export class PlayerMovementController {
   }
 
   _getSupportDrop(position, offsetX = 0, offsetZ = 0, maxDropOverride = null, options = {}) {
-    const provider = this.experience.terrainDataManager || this.terrainProvider
-    if (!provider?.getCollisionBoxesWorld) {
-      return null
-    }
-
-    const sampleY = position.y
+    void options
     const maxDrop = Number.isFinite(maxDropOverride)
       ? maxDropOverride
       : (this.config.physics?.sneakSupportDrop ?? 0.55)
-    let bestDrop = null
-    const sampleOffsets = this._getSupportSampleOffsets(
-      options.directionX ?? 0,
-      options.directionZ ?? 0,
-    )
+    const supportSurface = this._getDominantSupportSurface(position, maxDropOverride, {
+      offsetX,
+      offsetZ,
+    })
 
-    for (const sampleOffset of sampleOffsets) {
-      const sampleX = position.x + offsetX + sampleOffset.x
-      const sampleZ = position.z + offsetZ + sampleOffset.z
-      const centerX = Math.floor(sampleX + 0.5)
-      const centerZ = Math.floor(sampleZ + 0.5)
-      const minBlockY = Math.floor(sampleY - maxDrop + 0.5) - 1
-      const maxBlockY = Math.floor(sampleY + 0.5)
-
-      for (let worldX = centerX - 1; worldX <= centerX + 1; worldX++) {
-        for (let worldZ = centerZ - 1; worldZ <= centerZ + 1; worldZ++) {
-          for (let worldY = minBlockY; worldY <= maxBlockY; worldY++) {
-            const boxes = provider.getCollisionBoxesWorld(worldX, worldY, worldZ)
-            if (!Array.isArray(boxes) || !boxes.length) {
-              continue
-            }
-
-            for (const box of boxes) {
-              if (
-                sampleX < box.minX - 1e-4
-                || sampleX > box.maxX + 1e-4
-                || sampleZ < box.minZ - 1e-4
-                || sampleZ > box.maxZ + 1e-4
-              ) {
-                continue
-              }
-
-              const drop = sampleY - box.maxY
-              if (drop < -0.001 || drop > maxDrop) {
-                continue
-              }
-
-              if (bestDrop === null || drop < bestDrop) {
-                bestDrop = drop
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (bestDrop === null) {
+    if (!supportSurface) {
       const minWorldY = this._getMinWorldY()
       if (minWorldY !== null) {
-        const floorDrop = sampleY - minWorldY
+        const floorDrop = position.y - minWorldY
         if (floorDrop >= -0.001 && floorDrop <= maxDrop) {
-          bestDrop = Math.max(0, floorDrop)
+          return Math.max(0, floorDrop)
         }
       }
+
+      return null
     }
 
-    return bestDrop
+    return supportSurface.drop
   }
 
   _getSupportSampleOffsets(directionX = 0, directionZ = 0) {
+    void directionX
+    void directionZ
     const footRadius = Math.max(0.05, this.capsule.radius - 0.02)
+    const innerRadius = footRadius * 0.5
     const diagonalRadius = footRadius * 0.7071
     const sampleOffsets = [
       { x: 0, z: 0 },
@@ -867,33 +885,15 @@ export class PlayerMovementController {
       { x: -footRadius, z: 0 },
       { x: 0, z: footRadius },
       { x: 0, z: -footRadius },
+      { x: innerRadius, z: 0 },
+      { x: -innerRadius, z: 0 },
+      { x: 0, z: innerRadius },
+      { x: 0, z: -innerRadius },
       { x: diagonalRadius, z: diagonalRadius },
       { x: diagonalRadius, z: -diagonalRadius },
       { x: -diagonalRadius, z: diagonalRadius },
       { x: -diagonalRadius, z: -diagonalRadius },
     ]
-
-    const directionLength = Math.hypot(directionX, directionZ)
-    if (directionLength > 1e-5) {
-      const normalX = directionX / directionLength
-      const normalZ = directionZ / directionLength
-      const tangentX = -normalZ
-      const tangentZ = normalX
-      const forwardRadius = footRadius * 0.96
-      const shoulderRadius = footRadius * 0.58
-
-      sampleOffsets.push(
-        { x: normalX * forwardRadius, z: normalZ * forwardRadius },
-        {
-          x: (normalX * forwardRadius) + (tangentX * shoulderRadius),
-          z: (normalZ * forwardRadius) + (tangentZ * shoulderRadius),
-        },
-        {
-          x: (normalX * forwardRadius) - (tangentX * shoulderRadius),
-          z: (normalZ * forwardRadius) - (tangentZ * shoulderRadius),
-        },
-      )
-    }
 
     const deduped = []
     const seen = new Set()
@@ -909,6 +909,198 @@ export class PlayerMovementController {
     return deduped
   }
 
+  _getDominantSupportSurface(position, maxDropOverride = null, options = {}) {
+    const provider = this.experience.terrainDataManager || this.terrainProvider
+    if (!provider?.getBlockWorld && !provider?.getCollisionBoxesWorld) {
+      return null
+    }
+
+    const sampleY = position.y
+    const maxDrop = Number.isFinite(maxDropOverride)
+      ? maxDropOverride
+      : (this.config.physics?.sneakSupportDrop ?? 0.55)
+    const offsetX = Number(options.offsetX || 0)
+    const offsetZ = Number(options.offsetZ || 0)
+    const surfaceBuckets = new Map()
+
+    for (const sampleOffset of this._getSupportSampleOffsets()) {
+      const sampleX = position.x + offsetX + sampleOffset.x
+      const sampleZ = position.z + offsetZ + sampleOffset.z
+      const sampleSupport = this._getSupportSurfaceAtSample(provider, sampleX, sampleY, sampleZ, maxDrop)
+      if (!sampleSupport) {
+        continue
+      }
+
+      const bucketKey = Math.round(sampleSupport.topY * 1000)
+      if (!surfaceBuckets.has(bucketKey)) {
+        surfaceBuckets.set(bucketKey, {
+          topY: sampleSupport.topY,
+          drop: sampleSupport.drop,
+          sampleCount: 0,
+          profileCounts: new Map(),
+        })
+      }
+
+      const bucket = surfaceBuckets.get(bucketKey)
+      bucket.sampleCount += 1
+      bucket.drop = Math.min(bucket.drop, sampleSupport.drop)
+      if (sampleSupport.movementProfile) {
+        bucket.profileCounts.set(
+          sampleSupport.movementProfile,
+          (bucket.profileCounts.get(sampleSupport.movementProfile) || 0) + 1,
+        )
+      }
+    }
+
+    const sampleCountThreshold = Math.max(2, Math.ceil(this._getSupportSampleOffsets().length * 0.25))
+    const substantialSurfaces = [...surfaceBuckets.values()]
+      .filter(surface => surface.sampleCount >= sampleCountThreshold)
+
+    const bestSurface = this._selectBestSupportSurface(
+      substantialSurfaces.length ? substantialSurfaces : [...surfaceBuckets.values()],
+    )
+
+    if (!bestSurface) {
+      return null
+    }
+
+    return {
+      topY: bestSurface.topY,
+      drop: bestSurface.drop,
+      sampleCount: bestSurface.sampleCount,
+      movementProfile: this._pickDominantMovementProfile(bestSurface.profileCounts),
+    }
+  }
+
+  _getSupportSurfaceAtSample(provider, sampleX, sampleY, sampleZ, maxDrop) {
+    const centerX = Math.floor(sampleX + 0.5)
+    const centerZ = Math.floor(sampleZ + 0.5)
+    const minBlockY = Math.floor(sampleY - maxDrop + 0.5) - 1
+    const maxBlockY = Math.floor(sampleY + 0.5)
+    let bestSupport = null
+
+    for (let worldX = centerX - 1; worldX <= centerX + 1; worldX += 1) {
+      for (let worldZ = centerZ - 1; worldZ <= centerZ + 1; worldZ += 1) {
+        for (let worldY = minBlockY; worldY <= maxBlockY; worldY += 1) {
+          const block = provider?.getBlockWorld?.(worldX, worldY, worldZ) || null
+          const movementProfile = this._resolveMovementProfileForSupportBlock(block)
+          const boxes = this._getSupportWorldCollisionBoxes(provider, block, worldX, worldY, worldZ)
+          if (!boxes.length) {
+            continue
+          }
+
+          for (const box of boxes) {
+            if (
+              sampleX < box.minX - 1e-4
+              || sampleX > box.maxX + 1e-4
+              || sampleZ < box.minZ - 1e-4
+              || sampleZ > box.maxZ + 1e-4
+            ) {
+              continue
+            }
+
+            const drop = sampleY - box.maxY
+            if (drop < -0.001 || drop > maxDrop) {
+              continue
+            }
+
+            if (
+              !bestSupport
+              || drop < bestSupport.drop - 1e-4
+              || (
+                Math.abs(drop - bestSupport.drop) <= 1e-4
+                && box.maxY > bestSupport.topY + 1e-4
+              )
+            ) {
+              bestSupport = {
+                topY: box.maxY,
+                drop: Math.max(0, drop),
+                movementProfile,
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return bestSupport
+  }
+
+  _getSupportWorldCollisionBoxes(provider, block, worldX, worldY, worldZ) {
+    if (block?.hasCollision) {
+      const localBoxes = Array.isArray(block.collisionBoxes) && block.collisionBoxes.length
+        ? block.collisionBoxes
+        : [[0, 0, 0, 1, 1, 1]]
+      return localBoxes.map(([minX, minY, minZ, maxX, maxY, maxZ]) => ({
+        minX: (worldX - 0.5) + Number(minX),
+        minY: (worldY - 0.5) + Number(minY),
+        minZ: (worldZ - 0.5) + Number(minZ),
+        maxX: (worldX - 0.5) + Number(maxX),
+        maxY: (worldY - 0.5) + Number(maxY),
+        maxZ: (worldZ - 0.5) + Number(maxZ),
+      }))
+    }
+
+    const worldBoxes = provider?.getCollisionBoxesWorld?.(worldX, worldY, worldZ)
+    return Array.isArray(worldBoxes) ? worldBoxes : []
+  }
+
+  _resolveMovementProfileForSupportBlock(block = null) {
+    if (!block) {
+      return null
+    }
+
+    const legacyBlockType = getBlockTypeById(block?.id)
+    const minecraftBlock = block?.minecraftBlock
+    return getMinecraftBlockMovementProfile(
+      minecraftBlock?.name || legacyBlockType?.name || block?.name || '',
+      minecraftBlock?.properties || {},
+    )
+  }
+
+  _pickDominantMovementProfile(profileCounts = new Map()) {
+    let bestProfile = null
+    let bestCount = -1
+
+    for (const [profile, count] of profileCounts.entries()) {
+      if (count > bestCount) {
+        bestProfile = profile
+        bestCount = count
+      }
+    }
+
+    return bestProfile || null
+  }
+
+  _selectBestSupportSurface(surfaces = []) {
+    let bestSurface = null
+
+    for (const surface of surfaces) {
+      if (!bestSurface) {
+        bestSurface = surface
+        continue
+      }
+
+      if (surface.topY > bestSurface.topY + 1e-4) {
+        bestSurface = surface
+        continue
+      }
+
+      if (Math.abs(surface.topY - bestSurface.topY) <= 1e-4) {
+        if (surface.sampleCount > bestSurface.sampleCount) {
+          bestSurface = surface
+          continue
+        }
+
+        if (surface.sampleCount === bestSurface.sampleCount && surface.drop < bestSurface.drop - 1e-4) {
+          bestSurface = surface
+        }
+      }
+    }
+
+    return bestSurface
+  }
+
   _syncMeshCustom() {
     this.group.position.copy(this.renderPosition)
   }
@@ -918,6 +1110,22 @@ export class PlayerMovementController {
   }
 
   _updateRespawnPoint() {
+    if (this._hasExplicitRespawnPoint) {
+      if (!this._hasInitializedRespawn) {
+        const target = this.config.respawn?.position
+        if (target) {
+          this.position.set(target.x, target.y, target.z)
+          this.previousPosition.copy(this.position)
+          this.renderPosition.copy(this.position)
+          this.worldVelocity.set(0, 0, 0)
+          this.groundedGraceTimer = 0
+          this._syncMeshCustom()
+          this._hasInitializedRespawn = true
+        }
+      }
+      return
+    }
+
     const provider = this.experience.terrainDataManager || this.terrainProvider
     if (!provider?.getTopSolidYWorld) {
       return
@@ -954,6 +1162,25 @@ export class PlayerMovementController {
     this.groundedGraceTimer = 0
     this.tickAccumulator = 0
     this._syncMeshCustom()
+  }
+
+  setRespawnPoint(x, y, z, movePlayer = true) {
+    const nextPoint = {
+      x: Number(x),
+      y: Number(y),
+      z: Number(z),
+    }
+    if (!Number.isFinite(nextPoint.x) || !Number.isFinite(nextPoint.y) || !Number.isFinite(nextPoint.z)) {
+      return
+    }
+
+    this.config.respawn.position = nextPoint
+    this._hasExplicitRespawnPoint = true
+
+    if (movePlayer || !this._hasInitializedRespawn) {
+      this.setPosition(nextPoint.x, nextPoint.y, nextPoint.z)
+      this._hasInitializedRespawn = true
+    }
   }
 
   respawn() {
@@ -1103,5 +1330,12 @@ export class PlayerMovementController {
     }
 
     return false
+  }
+
+  destroy() {
+    if (this._respawnSetupTimer) {
+      clearTimeout(this._respawnSetupTimer)
+      this._respawnSetupTimer = null
+    }
   }
 }

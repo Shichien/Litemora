@@ -46,6 +46,36 @@ function emitGalleryChanged(detail = {}) {
   }))
 }
 
+function isLocalHostRuntime() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  const host = String(window.location.hostname || '').toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1'
+}
+
+function shouldUseMockGalleryApi() {
+  return isLocalHostRuntime()
+}
+
+function arrayBufferToBase64(buffer) {
+  if (!(buffer instanceof ArrayBuffer)) {
+    return ''
+  }
+
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 0x8000
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+
+  return btoa(binary)
+}
+
 function normalizeProjectionIdentifier(value = '') {
   return String(value || '').trim().toLowerCase()
 }
@@ -490,7 +520,7 @@ async function requestBinary(url, options = {}) {
 }
 
 function shouldUseLocalGalleryApi() {
-  return isLocalGalleryStoreEnabled()
+  return !shouldUseMockGalleryApi() && isLocalGalleryStoreEnabled()
 }
 
 export async function fetchGallery(spaceName, session = null) {
@@ -667,19 +697,44 @@ export async function createGalleryItem({
     throw new Error('invalid_projection_name')
   }
 
-  const payload = shouldUseLocalGalleryApi()
-    ? await createLocalGalleryItem({
-      spaceName,
-      title,
-      description,
-      file,
-      schematic,
-      previewModel,
-      placement,
-      visibility,
-      thumbnailDataUrl,
-      projectionName,
-    })
+  const payload = shouldUseMockGalleryApi()
+    ? await (async () => {
+      const fileBuffer = await file.arrayBuffer()
+      return requestJson('/api/gallery/items', {
+        method: 'POST',
+        headers: buildHeaders(session, {
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          space: String(spaceName || '').trim(),
+          title: String(title || '').trim(),
+          description: String(description || '').trim(),
+          projectionName: String(projectionName || '').trim(),
+          visibility: String(visibility || 'public').trim(),
+          schematic: schematic || null,
+          previewModel: previewModel || null,
+          placement: placement || null,
+          thumbnailDataUrl: String(thumbnailDataUrl || '').trim(),
+          fileName: file?.name || 'uploaded.schematic',
+          mimeType: file?.type || 'application/octet-stream',
+          fileSize: Number(file?.size || fileBuffer.byteLength || 0),
+          fileBase64: arrayBufferToBase64(fileBuffer),
+        }),
+      })
+    })()
+    : shouldUseLocalGalleryApi()
+        ? await createLocalGalleryItem({
+            spaceName,
+            title,
+            description,
+            file,
+            schematic,
+            previewModel,
+            placement,
+            visibility,
+            thumbnailDataUrl,
+            projectionName,
+          })
     : await (async () => {
       const formData = new FormData()
       formData.set('space', String(spaceName || '').trim())

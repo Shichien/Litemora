@@ -7,6 +7,7 @@ import { useUiStore } from '@pinia/uiStore.js'
  */
 import { onMounted, onUnmounted } from 'vue'
 import KeyFeedbackPanel from './KeyFeedbackPanel.vue'
+import RedstoneReplayPanel from './RedstoneReplayPanel.vue'
 import TopInfoBar from './TopInfoBar.vue'
 
 const hud = useHudStore()
@@ -31,5 +32,7 @@ onUnmounted(() => {
     <div class="hud-top-right-stack">
       <KeyFeedbackPanel />
     </div>
+
+    <RedstoneReplayPanel />
   </div>
 </template>

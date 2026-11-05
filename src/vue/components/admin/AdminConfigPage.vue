@@ -23,6 +23,10 @@ import {
   isValidProjectionName,
   sanitizeProjectionNameInput,
 } from '@three/utils/projection-name.js'
+import {
+  buildProjectionBlockSpawnPoint,
+  buildProjectionTopCenterSpawnPoint,
+} from '@three/utils/projection-spawn.js'
 
 import {
   DEFAULT_BACKEND_WORLD_CONFIG,
@@ -45,8 +49,6 @@ import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
 
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-
-const DEFAULT_PROJECTION_SPAWN_LIFT = 2
 
 const authProviders = getAuthProviders()
 const authSession = ref(loadAdminAuthSession())
@@ -81,6 +83,7 @@ const schematicApplyProgress = ref(null)
 const resourcePackInfo = ref(null)
 const isSavingResourcePack = ref(false)
 const schematicRendererCanvasRef = ref(null)
+const projectionSpawnSelection = ref(null)
 
 const cameraPresetOptions = ['off', 'default', 'cinematic', 'arcade']
 const visualPresetOptions = ['off', 'default', 'cinematic', 'arcade']
@@ -118,7 +121,9 @@ const schematicPlacedBounds = computed(() => {
 })
 
 const formattedProjectionSpawnPoint = computed(() => {
-  const spawnPoint = configDraft.value?.player?.spawnPoint || {}
+  const spawnPoint = resolveProjectionSpawnPointFromSelection()
+    || configDraft.value?.player?.spawnPoint
+    || {}
   const parts = ['x', 'y', 'z'].map((axis) => {
     const value = Number(spawnPoint[axis])
     if (!Number.isFinite(value)) {
@@ -204,6 +209,61 @@ function getCurrentRouteScope() {
   }
 }
 
+function getPreviewPlacementOffset() {
+  return {
+    x: 0,
+    y: normalizeSchematicOffsetY(schematicOffsetY.value),
+    z: 0,
+  }
+}
+
+function resolveProjectionSpawnPointFromSelection(selection = projectionSpawnSelection.value) {
+  if (!selection || typeof selection !== 'object') {
+    return null
+  }
+
+  if (selection.type === 'block') {
+    return buildProjectionBlockSpawnPoint(selection, getPreviewPlacementOffset())
+  }
+
+  if (selection.type === 'bounds-center-top') {
+    return buildProjectionTopCenterSpawnPoint(
+      schematicPreview.value?.bounds || null,
+      getPreviewPlacementOffset(),
+    )
+  }
+
+  return null
+}
+
+function syncDraftSpawnPointFromSelection() {
+  const spawnPoint = resolveProjectionSpawnPointFromSelection()
+  if (!spawnPoint) {
+    return null
+  }
+
+  configDraft.value = normalizeBackendWorldConfig({
+    ...configDraft.value,
+    player: {
+      ...configDraft.value?.player,
+      spawnPoint,
+    },
+  })
+  return spawnPoint
+}
+
+function primeProjectionSpawnSelectionForCreate() {
+  if (getActiveProjectionId() || !schematicPreview.value) {
+    projectionSpawnSelection.value = null
+    return null
+  }
+
+  projectionSpawnSelection.value = {
+    type: 'bounds-center-top',
+  }
+  return resolveProjectionSpawnPointFromSelection()
+}
+
 function markSaved(config) {
   configDraft.value = config
   lastSavedSnapshot.value = JSON.stringify(config)
@@ -242,6 +302,7 @@ async function restorePersistedSchematic() {
     schematicSourceFile.value = persisted.file
     schematicPreview.value = schematicService.getPreview()
     schematicOffsetY.value = normalizeSchematicOffsetY(schematicOffsetY.value)
+    primeProjectionSpawnSelectionForCreate()
     if (!sanitizedProjectionName.value) {
       schematicProjectionName.value = ensureProjectionDisplayName(
         schematic.name || persisted.fileName || persisted.file.name || '',
@@ -402,6 +463,7 @@ async function handleSchematicFileSelect(event) {
       schematic.name || file.name.replace(/\.(litematic|schem)$/iu, ''),
     )
     schematicOffsetY.value = normalizeSchematicOffsetY(schematicOffsetY.value)
+    primeProjectionSpawnSelectionForCreate()
     await saveAdminSchematicFile({
       accountId: currentAccountId.value,
       file,
@@ -432,6 +494,7 @@ function clearSchematicFile({ withStatus = true } = {}) {
   schematicSourceFile.value = null
   schematicObject.value = null
   schematicPreview.value = null
+  projectionSpawnSelection.value = null
   schematicProjectionName.value = ''
   schematicVisibility.value = 'public'
   schematicOffsetY.value = 0
@@ -454,7 +517,7 @@ async function applySchematic() {
 
   if (!isInProjection && spaceName && projectionId) {
     setStatus('当前在投影设置页，正在进入该投影以应用原理图...', 'neutral')
-    navigateToUrl(`${buildSpaceProjectionUrl(spaceName, projectionId)}#admin-config`)
+    navigateToUrl(buildSpaceProjectionUrl(spaceName, projectionId))
     return
   }
 
@@ -497,6 +560,56 @@ async function applySchematic() {
         thumbnailDataUrl = ''
       }
 
+      const projectionSpawnPoint = resolveProjectionSpawnPointFromSelection()
+      const projectionBaseConfig = normalizeBackendWorldConfig({
+        ...DEFAULT_BACKEND_WORLD_CONFIG,
+        player: {
+          ...DEFAULT_BACKEND_WORLD_CONFIG.player,
+          ...configDraft.value?.player,
+        },
+        settings: {
+          ...DEFAULT_BACKEND_WORLD_CONFIG.settings,
+          cameraPreset: configDraft.value?.settings?.cameraPreset ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.cameraPreset,
+          visualPreset: configDraft.value?.settings?.visualPreset ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.visualPreset,
+          portalLinks: {
+            ...DEFAULT_BACKEND_WORLD_CONFIG.settings.portalLinks,
+            ...(configDraft.value?.settings?.portalLinks || {}),
+          },
+          redstoneArchive: {
+            ...DEFAULT_BACKEND_WORLD_CONFIG.settings.redstoneArchive,
+            ...(configDraft.value?.settings?.redstoneArchive || {}),
+          },
+          chunk: {
+            ...DEFAULT_BACKEND_WORLD_CONFIG.settings.chunk,
+            ...(configDraft.value?.settings?.chunk || {}),
+          },
+          // New projection worlds must start from a visible baseline instead of
+          // inheriting arbitrary ambient/light overrides from the current world.
+          environment: {
+            ...DEFAULT_BACKEND_WORLD_CONFIG.settings.environment,
+          },
+        },
+        ui: {
+          ...DEFAULT_BACKEND_WORLD_CONFIG.ui,
+          ...(configDraft.value?.ui || {}),
+          pauseMenu: {
+            ...DEFAULT_BACKEND_WORLD_CONFIG.ui.pauseMenu,
+            ...(configDraft.value?.ui?.pauseMenu || {}),
+          },
+          controls: {
+            ...DEFAULT_BACKEND_WORLD_CONFIG.ui.controls,
+            ...(configDraft.value?.ui?.controls || {}),
+          },
+        },
+      })
+      const projectionConfig = normalizeBackendWorldConfig({
+        ...projectionBaseConfig,
+        player: {
+          ...projectionBaseConfig.player,
+          ...(projectionSpawnPoint ? { spawnPoint: projectionSpawnPoint } : {}),
+        },
+      })
+
       // 创建 Gallery Item
       const payload = await createGalleryItem({
         spaceName,
@@ -523,7 +636,7 @@ async function applySchematic() {
         let savedProjectionConfig = null
         try {
           savedProjectionConfig = await saveBackendWorldConfigRemote(
-            configDraft.value,
+            projectionConfig,
             currentAccountId.value,
             {
               spaceName,
@@ -533,7 +646,7 @@ async function applySchematic() {
         }
         catch {
           savedProjectionConfig = saveAdminWorldConfig(
-            configDraft.value,
+            projectionConfig,
             currentAccountId.value,
             {
               spaceName,
@@ -546,8 +659,8 @@ async function applySchematic() {
           markSaved(savedProjectionConfig)
         }
 
-        setStatus('投影已创建，可继续设置或稍后进入世界。', 'success')
-        const targetUrl = buildSpaceWorldsAdminUrl(spaceName, projectionRouteId)
+        setStatus('投影已创建，正在进入世界。', 'success')
+        const targetUrl = buildSpaceProjectionUrl(spaceName, projectionRouteId)
         navigateToUrl(targetUrl)
         return
       }
@@ -664,19 +777,15 @@ async function applySchematic() {
 }
 
 function setProjectionSpawnPreset() {
-  const bounds = schematicPlacedBounds.value
-  if (!bounds) {
+  projectionSpawnSelection.value = {
+    type: 'bounds-center-top',
+  }
+  const spawnPoint = syncDraftSpawnPointFromSelection()
+  if (!spawnPoint) {
     setStatus('当前原理图还没有可用于计算出生点的边界', 'warning')
     return
   }
 
-  const spawnPoint = {
-    x: Number((((bounds.minX + bounds.maxX) * 0.5)).toFixed(2)),
-    y: Number((bounds.maxY + 0.5 + DEFAULT_PROJECTION_SPAWN_LIFT).toFixed(2)),
-    z: Number((((bounds.minZ + bounds.maxZ) * 0.5)).toFixed(2)),
-  }
-
-  configDraft.value.player.spawnPoint = spawnPoint
   setStatus(`已将出生点设置到投影顶部中心 (${spawnPoint.x}, ${spawnPoint.y}, ${spawnPoint.z})`, 'success')
 }
 
@@ -690,14 +799,17 @@ function setProjectionSpawnFromPreviewBlock(payload) {
     return
   }
 
-  const yOffset = normalizeSchematicOffsetY(schematicOffsetY.value)
-  const spawnPoint = {
-    x: Number(x.toFixed(2)),
-    y: Number((y + yOffset + 0.5 + DEFAULT_PROJECTION_SPAWN_LIFT).toFixed(2)),
-    z: Number(z.toFixed(2)),
+  projectionSpawnSelection.value = {
+    type: 'block',
+    x,
+    y,
+    z,
   }
-
-  configDraft.value.player.spawnPoint = spawnPoint
+  const spawnPoint = syncDraftSpawnPointFromSelection()
+  if (!spawnPoint) {
+    setStatus('当前高亮方块没有可用坐标，暂时无法设置出生点', 'warning')
+    return
+  }
   setStatus(`已将出生点设置到方块 (${x}, ${y}, ${z}) 上方 (${spawnPoint.x}, ${spawnPoint.y}, ${spawnPoint.z})`, 'success')
 }
 
@@ -810,7 +922,6 @@ onBeforeUnmount(() => {
             </label>
           </div>
           <div class="setting-row toggles">
-            <label><input v-model="configDraft.player.flight.ignoreMiningSlowdown" type="checkbox">飞行时忽略挖掘减速</label>
             <label><input v-model="configDraft.player.flight.groundWalkAnimationWhenMoving" type="checkbox">飞行移动模拟地面行走动画</label>
           </div>
           <div class="setting-row toggles">
@@ -905,6 +1016,24 @@ onBeforeUnmount(() => {
           </div>
           <p class="schematic-preview-hint">
             玩家身体触碰到对应传送门方块时会跳转。留空则不触发，支持站内路径或完整网址。
+          </p>
+          <div class="subsection-title">
+            红石档案回放
+          </div>
+          <div class="setting-row grid-three">
+            <label class="full">
+              回放文件 URL
+              <input
+                v-model.trim="configDraft.settings.redstoneArchive.replayUrl"
+                placeholder="/redstone-archive/example.replay.json"
+                type="text"
+              >
+            </label>
+            <div />
+            <div />
+          </div>
+          <p class="schematic-preview-hint">
+            回放文件由 redstone-rs 场景生成，进入投影后可播放、逐刻查看和拖动时间线。
           </p>
           <div class="setting-row setting-row-spacer-top setting-preset-row">
             <span class="row-label">相机风格</span>

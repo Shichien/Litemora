@@ -1,5 +1,26 @@
 import emitter from '../event/event-bus.js'
 
+const GAMEPLAY_SHORTCUT_KEYS = new Set([
+  'w',
+  'a',
+  's',
+  'd',
+  'r',
+  'f',
+  'q',
+  'y',
+  'z',
+  'x',
+  'c',
+  'v',
+  ' ',
+  'arrowup',
+  'arrowdown',
+  'arrowleft',
+  'arrowright',
+  'tab',
+])
+
 /**
  * InputManager - 统一管理键盘和鼠标输入
  * 负责监听用户输入并通过 mitt 发送事件
@@ -38,7 +59,8 @@ export default class InputManager {
       middle: false,
     }
 
-    this._forwardTapWindowMs = 250
+    // Minecraft-style sprint window is about 7 ticks at 20 TPS.
+    this._forwardTapWindowMs = 350
     this._lastForwardTapAt = 0
 
     // 绑定方法（用于移除监听器）
@@ -95,6 +117,11 @@ export default class InputManager {
     // 如果焦点在输入框或文本域，忽略游戏控制逻辑 (允许打字)
     if (['INPUT', 'TEXTAREA'].includes(event.target.tagName)) {
       return
+    }
+
+    // 防止浏览器把游戏按键当成快捷键处理，尤其是 Ctrl+W / Ctrl+R
+    if ((event.ctrlKey || event.metaKey) && GAMEPLAY_SHORTCUT_KEYS.has(key)) {
+      event.preventDefault()
     }
 
     // 阻止游戏控制键的默认行为（如空格滚动页面）
@@ -159,6 +186,9 @@ export default class InputManager {
         if (isPressed) {
           this.keys.sprint = false
         }
+        break
+      case 'control':
+        this.keys.control = isPressed
         break
       case 'v':
         this.keys.v = isPressed

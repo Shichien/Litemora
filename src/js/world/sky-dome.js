@@ -78,21 +78,51 @@ export default class SkyDome {
       moonGlowSize,
     } = state
 
-    if (zenithDayColor) this.material.uniforms.zenithDayColor.value.set(zenithDayColor)
-    if (horizonDayColor) this.material.uniforms.horizonDayColor.value.set(horizonDayColor)
-    if (zenithNightColor) this.material.uniforms.zenithNightColor.value.set(zenithNightColor)
-    if (horizonNightColor) this.material.uniforms.horizonNightColor.value.set(horizonNightColor)
-    if (sunDirection) this.material.uniforms.sunDirection.value.copy(sunDirection).normalize()
-    if (moonDirection) this.material.uniforms.moonDirection.value.copy(moonDirection).normalize()
-    if (sunColor) this.material.uniforms.sunColor.value.set(sunColor)
-    if (moonColor) this.material.uniforms.moonColor.value.set(moonColor)
-    if (Number.isFinite(dayFactor)) this.material.uniforms.dayFactor.value = dayFactor
-    if (Number.isFinite(twilightFactor)) this.material.uniforms.twilightFactor.value = twilightFactor
-    if (Number.isFinite(starsStrength)) this.material.uniforms.starsStrength.value = starsStrength
-    if (Number.isFinite(sunDiscSize)) this.material.uniforms.sunDiscSize.value = sunDiscSize
-    if (Number.isFinite(sunGlowSize)) this.material.uniforms.sunGlowSize.value = sunGlowSize
-    if (Number.isFinite(moonDiscSize)) this.material.uniforms.moonDiscSize.value = moonDiscSize
-    if (Number.isFinite(moonGlowSize)) this.material.uniforms.moonGlowSize.value = moonGlowSize
+    if (zenithDayColor) {
+      this.material.uniforms.zenithDayColor.value.set(zenithDayColor)
+    }
+    if (horizonDayColor) {
+      this.material.uniforms.horizonDayColor.value.set(horizonDayColor)
+    }
+    if (zenithNightColor) {
+      this.material.uniforms.zenithNightColor.value.set(zenithNightColor)
+    }
+    if (horizonNightColor) {
+      this.material.uniforms.horizonNightColor.value.set(horizonNightColor)
+    }
+    if (sunDirection) {
+      this.material.uniforms.sunDirection.value.copy(sunDirection).normalize()
+    }
+    if (moonDirection) {
+      this.material.uniforms.moonDirection.value.copy(moonDirection).normalize()
+    }
+    if (sunColor) {
+      this.material.uniforms.sunColor.value.set(sunColor)
+    }
+    if (moonColor) {
+      this.material.uniforms.moonColor.value.set(moonColor)
+    }
+    if (Number.isFinite(dayFactor)) {
+      this.material.uniforms.dayFactor.value = dayFactor
+    }
+    if (Number.isFinite(twilightFactor)) {
+      this.material.uniforms.twilightFactor.value = twilightFactor
+    }
+    if (Number.isFinite(starsStrength)) {
+      this.material.uniforms.starsStrength.value = starsStrength
+    }
+    if (Number.isFinite(sunDiscSize)) {
+      this.material.uniforms.sunDiscSize.value = sunDiscSize
+    }
+    if (Number.isFinite(sunGlowSize)) {
+      this.material.uniforms.sunGlowSize.value = sunGlowSize
+    }
+    if (Number.isFinite(moonDiscSize)) {
+      this.material.uniforms.moonDiscSize.value = moonDiscSize
+    }
+    if (Number.isFinite(moonGlowSize)) {
+      this.material.uniforms.moonGlowSize.value = moonGlowSize
+    }
   }
 
   /**

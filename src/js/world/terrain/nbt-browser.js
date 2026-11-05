@@ -1,4 +1,4 @@
-/* eslint-disable node/prefer-global/buffer */
+/* eslint-disable unicorn/prefer-node-protocol -- browser NBT parsing must use Vite's buffer polyfill; node:buffer is externalized in client code. */
 import { Buffer as BufferPolyfill } from 'buffer'
 
 const TAG_TYPE = {
@@ -41,7 +41,7 @@ class NbtReader {
 
   ensure(size) {
     if (this.offset + size > this.buffer.length) {
-      throw new Error('Unexpected EOF while reading NBT')
+      throw new TypeError('Unexpected EOF while reading NBT')
     }
   }
 
@@ -152,7 +152,7 @@ class NbtReader {
         if (length < 0) {
           throw new Error('Invalid TAG_List length')
         }
-        const values = new Array(length)
+        const values = Array.from({ length })
         for (let i = 0; i < length; i++) {
           values[i] = this.readTagPayload(listType)
         }
@@ -182,7 +182,7 @@ class NbtReader {
         if (length < 0) {
           throw new Error('Invalid TAG_Int_Array length')
         }
-        const values = new Array(length)
+        const values = Array.from({ length })
         for (let i = 0; i < length; i++) {
           values[i] = this.readInt32()
         }
@@ -193,7 +193,7 @@ class NbtReader {
         if (length < 0) {
           throw new Error('Invalid TAG_Long_Array length')
         }
-        const values = new Array(length)
+        const values = Array.from({ length })
         for (let i = 0; i < length; i++) {
           values[i] = this.readBigInt64()
         }
@@ -224,7 +224,7 @@ class NbtReader {
 export async function parseNbt(data) {
   const buffer = data instanceof ArrayBuffer ? BufferPolyfill.from(data) : data
   if (!(buffer instanceof BufferPolyfill)) {
-    throw new Error('Invalid argument: `data` must be a Buffer or ArrayBuffer object')
+    throw new TypeError('Invalid argument: `data` must be a Buffer or ArrayBuffer object')
   }
 
   const reader = new NbtReader(buffer)

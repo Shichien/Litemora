@@ -4,6 +4,7 @@ import blockDefinitions from 'minecraft-data/minecraft-data/data/pc/1.21.4/block
 const blocksByName = new Map(blockDefinitions.map(block => [block.name, block]))
 const defaultStateValueCache = new Map()
 const collisionProfileCache = new Map()
+const movementProfileCache = new Map()
 const CLIMBABLE_BLOCK_NAMES = new Set([
   'ladder',
   'scaffolding',
@@ -277,5 +278,40 @@ export function getMinecraftBlockCollisionProfile(blockName = '', properties = {
   }
 
   collisionProfileCache.set(cacheKey, profile)
+  return profile
+}
+
+const DEFAULT_MOVEMENT_PROFILE = Object.freeze({
+  slipperiness: 0.6,
+  speedMultiplier: 1,
+})
+
+const NORMAL_WALK_SPEED = 4.317
+const WIKI_SPEED = speed => Number(speed) / NORMAL_WALK_SPEED
+
+const MOVEMENT_PROFILE_OVERRIDES = new Map([
+  ['ice', { slipperiness: 0.98 }],
+  ['packed_ice', { slipperiness: 0.98 }],
+  ['blue_ice', { slipperiness: 0.989 }],
+  ['slime_block', { slipperiness: 0.8, speedMultiplier: WIKI_SPEED(1.359) }],
+  ['honey_block', { speedMultiplier: WIKI_SPEED(2.508) }],
+  ['soul_sand', { speedMultiplier: WIKI_SPEED(2.508) }],
+])
+
+export function getMinecraftBlockMovementProfile(blockName = '', properties = {}) {
+  const normalizedBlockName = normalizeMinecraftBlockName(blockName)
+  const cacheKey = `${normalizedBlockName}::${buildVariantKey(properties)}`
+
+  if (movementProfileCache.has(cacheKey)) {
+    return movementProfileCache.get(cacheKey)
+  }
+
+  const override = MOVEMENT_PROFILE_OVERRIDES.get(normalizedBlockName) || {}
+  const profile = {
+    ...DEFAULT_MOVEMENT_PROFILE,
+    ...override,
+  }
+
+  movementProfileCache.set(cacheKey, profile)
   return profile
 }

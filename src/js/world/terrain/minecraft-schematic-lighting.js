@@ -101,7 +101,7 @@ function isBlockLightPassable(entry = null) {
     || blockName === 'campfire'
     || blockName === 'soul_campfire'
     || blockName === 'end_rod'
-  }
+}
 
 function resolveEmissionLevel(entry = null) {
   if (!entry) {
@@ -206,7 +206,7 @@ function computeBrightness(lightLevel, exposedFaces, emissionLevel, selfLightLev
   const ambientFloor = exposedFaces > 0 ? (2 + Math.round(exposureRatio * 3)) : 0
   const effectiveLightLevel = Math.max(lightLevel, ambientFloor)
   const normalizedLight = clamp(effectiveLightLevel / 15, 0, 1)
-  const curved = Math.pow(normalizedLight, 1.35)
+  const curved = normalizedLight ** 1.35
   const exposureBoost = exposureRatio * 0.08
   const emissiveBoost = emissionLevel > 0 ? 0.06 : 0
   const selfBoost = selfLightLevel > 0 ? 0.05 : 0

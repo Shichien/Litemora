@@ -6,7 +6,7 @@ export const CHUNK_BASIC_CONFIG = {
   unloadPadding: 1, // 卸载滞后（chunk 数量），卸载半径 = viewDistance + unloadPadding，用于减少边界抖动
   seed: 1337, // 随机种子，用于地形生成的随机数序列，相同 seed 生成相同地形
   worldName: 'default', // 世界名称，用于持久化存储的标识符
-  useIndexedDB: false, // 是否使用 IndexedDB 进行持久化存储，false 使用 localStorage
+  useIndexedDB: true, // 是否使用 IndexedDB 进行持久化存储，适合保存大型原理图语义快照
   autoSaveDelay: 2000, // 自动保存延迟（毫秒），玩家修改地形后的节流保存时间
 }
 

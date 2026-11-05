@@ -27,6 +27,10 @@ export default class Experience {
 
     // Global access
     window.Experience = this
+    this._renderGameToTextHook = this.renderGameToText.bind(this)
+    this._advanceTimeHook = this.advanceTime.bind(this)
+    window.render_game_to_text = this._renderGameToTextHook
+    window.advanceTime = this._advanceTimeHook
 
     this.canvas = canvas
 
@@ -82,6 +86,61 @@ export default class Experience {
     this.iMouse.update()
   }
 
+  renderGameToText() {
+    const player = this.world?.player || null
+    const position = player?.getPosition?.() || null
+    const velocity = player?.getVelocity?.() || null
+    const runtimeStats = this.world?.minecraftSchematicRenderLayer?.getStats?.()?.runtime || null
+    return JSON.stringify({
+      coordinateSystem: 'Block centers use integer x/y/z; +y is up.',
+      mode: this.isPaused ? 'paused' : 'playing',
+      sceneReady: !!this.world?.isSceneReady,
+      projectionId: this.world?.activeProjectionContext?.projectionId || '',
+      player: position
+        ? {
+            x: Number(position.x),
+            y: Number(position.y),
+            z: Number(position.z),
+            velocity: velocity
+              ? { x: Number(velocity.x), y: Number(velocity.y), z: Number(velocity.z) }
+              : null,
+            grounded: !!player?.movement?.isGrounded,
+            flying: !!player?.movement?.isFlying,
+          }
+        : null,
+      schematic: runtimeStats
+        ? {
+            active: !!this.world?.minecraftSchematicRenderLayer?.isRuntimeRendererActive?.(),
+            streamReady: !!runtimeStats.streamReady,
+            dimensions: runtimeStats.dimensions,
+            bounds: runtimeStats.bounds,
+            streamCenter: runtimeStats.streamCenter,
+            meshes: runtimeStats.meshCount,
+            residentChunks: runtimeStats.residentChunkCount,
+            loadingChunks: runtimeStats.loadingChunkCount,
+            queuedChunks: runtimeStats.queuedChunkCount,
+            totalChunks: runtimeStats.totalChunkCount,
+            firstChunkMs: runtimeStats.firstChunkMs,
+            sharedMemory: runtimeStats.sharedMemory,
+            error: runtimeStats.streamError,
+          }
+        : null,
+    })
+  }
+
+  advanceTime(milliseconds = 0) {
+    const totalMilliseconds = Math.max(0, Number(milliseconds) || 0)
+    const frameMilliseconds = 1000 / 60
+    const steps = Math.max(1, Math.round(totalMilliseconds / frameMilliseconds))
+    const previousDelta = this.time.delta
+    for (let step = 0; step < steps; step++) {
+      this.time.delta = frameMilliseconds
+      this.time.elapsed += frameMilliseconds
+      this.update()
+    }
+    this.time.delta = previousDelta
+  }
+
   destroy() {
     // 1. Stop update loop first
     this.time?.destroy()
@@ -123,6 +182,12 @@ export default class Experience {
     // 6. Clear global references
     if (window.Experience === this) {
       window.Experience = null
+    }
+    if (window.render_game_to_text === this._renderGameToTextHook) {
+      delete window.render_game_to_text
+    }
+    if (window.advanceTime === this._advanceTimeHook) {
+      delete window.advanceTime
     }
 
     // 7. Reset singleton

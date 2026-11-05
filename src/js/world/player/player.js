@@ -66,7 +66,6 @@ export default class Player {
     // 挖掘状态
     this.isMining = false
     this._hideForFirstPerson = false
-    this.isFirstPersonView = false
 
     // Resource - 使用当前选中的皮肤
     const skinStore = useSkinStore()
@@ -171,7 +170,7 @@ export default class Player {
    * Handler for when core is ready (resources loaded) - set up player model
    */
   _onCoreReady() {
-    console.log('[Player] Core ready, setting up player model')
+    console.debug('[Player] Core ready, setting up player model')
     const skinStore = useSkinStore()
     this.resource = this._getModelResource(skinStore.currentSkinId)
 
@@ -187,7 +186,7 @@ export default class Player {
 
     this.setModel()
     this.animation = new PlayerAnimationController(this.model, this.resource.animations)
-    console.log('[Player] Player model set up successfully')
+    console.debug('[Player] Player model set up successfully')
   }
 
   /**
@@ -343,10 +342,6 @@ export default class Player {
     })
 
     emitter.on('input:jump', () => {
-      // 挖掘时阻断跳跃输入
-      if (this.isMining) {
-        return
-      }
       if (this.movement.isFlying) {
         return
       }
@@ -368,7 +363,6 @@ export default class Player {
     })
 
     emitter.on('camera:perspective-changed', (payload = {}) => {
-      this.isFirstPersonView = !!payload.firstPerson
       this.targetFacingAngle = this.config.facingAngle
       this.setFirstPersonHidden(!!payload.firstPerson)
     })
@@ -459,14 +453,12 @@ export default class Player {
    */
   setRespawnPoint(x, y, z, movePlayer = true) {
     this.config.respawn.position = { x, y, z }
-    if (movePlayer) {
-      this.setPosition(x, y, z)
-    }
+    this.movement.setRespawnPoint(x, y, z, movePlayer)
   }
 
   /**
    * 设置飞行行为参数
-   * @param {{ignoreMiningSlowdown?:boolean, groundWalkAnimationWhenMoving?:boolean, speedMultiplier?:number}} options
+   * @param {{groundWalkAnimationWhenMoving?:boolean, speedMultiplier?:number}} options
    */
   setFlightOptions(options = {}) {
     this.movement.setFlightConfig(options)
@@ -490,31 +482,8 @@ export default class Player {
 
     // Resolve Input (Conflict & Normalize)
     const { resolvedInput, weights } = resolveDirectionInput(this.inputState)
-
-    const bypassMiningLock = this.movement.shouldIgnoreMiningSlowdown?.() ?? false
-    const blockedByMining = this.isMining && !bypassMiningLock
     const simulateGroundWalk = this.movement.shouldSimulateGroundWalk?.(resolvedInput) ?? false
-
-    // 挖掘时强制清空方向输入与水平速度，确保立即停下
-    const effectiveInput = blockedByMining
-      ? {
-          forward: false,
-          backward: false,
-          left: false,
-          right: false,
-          control: false,
-          sprint: false,
-          shift: false,
-          v: false,
-          space: false,
-          sneak: false,
-        }
-      : resolvedInput
-
-    if (blockedByMining) {
-      this.movement.worldVelocity.x = 0
-      this.movement.worldVelocity.z = 0
-    }
+    const effectiveInput = resolvedInput
 
     // Update Movement
     this.movement.update(effectiveInput, isCombat)
@@ -522,11 +491,11 @@ export default class Player {
     // Prepare state for animation
     const playerState = {
       inputState: effectiveInput,
-      directionWeights: blockedByMining ? { forward: 0, backward: 0, left: 0, right: 0 } : weights, // Pass normalized weights
-      isMoving: blockedByMining ? false : this.movement.isMoving(effectiveInput),
+      directionWeights: weights,
+      isMoving: this.movement.isMoving(effectiveInput),
       isGrounded: simulateGroundWalk ? true : this.movement.isGrounded,
       speedProfile: this.movement.getSpeedProfile(effectiveInput),
-      isMining: blockedByMining,
+      isMining: this.isMining,
     }
 
     // Update Animation
@@ -574,11 +543,11 @@ export default class Player {
 
   /**
    * 更新速度线效果
-   * 当玩家按住 Shift + 方向键冲刺时，显示速度线
+   * 当玩家按住 Ctrl 或双击 W 冲刺时，显示速度线
    * @param {object} inputState - 输入状态
    */
   updateSpeedLines(inputState) {
-    // 检查是否处于冲刺状态：Ctrl + 前进移动
+    // 检查是否处于冲刺状态：Minecraft 风格的冲刺输入
     const isMoving = inputState.forward || inputState.backward || inputState.left || inputState.right
     const isSprinting = !!inputState.sprint && isMoving
 
@@ -772,5 +741,6 @@ export default class Player {
 
   destroy() {
     // Cleanup
+    this.movement?.destroy?.()
   }
 }

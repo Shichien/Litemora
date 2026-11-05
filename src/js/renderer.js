@@ -338,7 +338,6 @@ export default class Renderer {
     // 同步更新 Composer 尺寸
     this.composer.setSize(this.sizes.width, this.sizes.height)
     this.composer.setPixelRatio(this.sizes.pixelRatio)
-
   }
 
   /**
@@ -356,8 +355,11 @@ export default class Renderer {
       = this.experience.time.elapsed * 0.001
 
     // 使用 EffectComposer 渲染（包含所有后期处理）
-    this.composer.render()
+    this.renderFrame()
+  }
 
+  renderFrame() {
+    this.composer.render()
   }
 
   /**

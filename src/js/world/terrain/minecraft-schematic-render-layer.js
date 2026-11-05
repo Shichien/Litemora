@@ -8,6 +8,7 @@ import {
   loadPreferredMinecraftResourcePack,
 } from './minecraft-resource-pack.js'
 import { buildSchematicLighting } from './minecraft-schematic-lighting.js'
+import SchematicRendererRuntimeBridge from './schematic-renderer-runtime-bridge.js'
 
 const BUILD_BATCH_SIZE = 12
 const INSTANCE_UPLOAD_BATCH_SIZE = 4096
@@ -48,7 +49,7 @@ function createPreviewSyncedMaterial(material) {
 
   const synced = new THREE.MeshBasicMaterial({
     name: material.name ? `${material.name}-preview-synced` : 'minecraft-preview-synced',
-    color: material.color?.clone?.() || new THREE.Color(0xffffff),
+    color: material.color?.clone?.() || new THREE.Color(0xFFFFFF),
     map: material.map || null,
     alphaMap: material.alphaMap || null,
     transparent: material.transparent,
@@ -120,6 +121,9 @@ export default class MinecraftSchematicRenderLayer {
       source: 'none',
     }
     this._resourcePackSignature = ''
+    this._runtimeBridge = new SchematicRendererRuntimeBridge({ hostGroup: this.group })
+    this._runtimeSource = null
+    this._runtimeActive = false
 
     this._tempTranslation = new THREE.Matrix4()
     this._tempMatrix = new THREE.Matrix4()
@@ -220,15 +224,18 @@ export default class MinecraftSchematicRenderLayer {
       source: 'none',
       name: '',
     }
+    this._runtimeBridge?.invalidateResourcePack?.()
   }
 
   getStats() {
     return {
+      renderMode: this.isRuntimeRendererActive() ? 'schematic-renderer-wasm' : 'cubane-instanced',
       meshCount: this._meshEntries.length,
       childCount: this.group.children.length,
       lastBuildProfile: this._lastBuildProfile ? { ...this._lastBuildProfile } : null,
       lastVisibilityStats: this._lastVisibilityStats ? { ...this._lastVisibilityStats } : null,
       resourcePackStatus: { ...this._resourcePackStatus },
+      runtime: this._runtimeBridge?.getStats?.() || null,
     }
   }
 
@@ -236,8 +243,140 @@ export default class MinecraftSchematicRenderLayer {
     return this._overlayGeometryCache.get(blockString) || null
   }
 
+  async createBlockPreviewObject(blockString) {
+    const normalizedBlockString = String(blockString || '').trim()
+    if (!normalizedBlockString || normalizedBlockString === 'minecraft:air') {
+      return null
+    }
+
+    const cubane = await this.ensureCubane()
+    const prototype = await cubane.getBlockMesh(normalizedBlockString, 'plains', true)
+    if (!prototype) {
+      throw new Error(`Unable to build Minecraft block preview: ${normalizedBlockString}`)
+    }
+
+    const descriptors = this._extractMeshDescriptors(prototype)
+    if (!descriptors.length) {
+      throw new Error(`Minecraft block preview has no renderable geometry: ${normalizedBlockString}`)
+    }
+
+    const group = new THREE.Group()
+    group.name = `minecraft-block-preview:${normalizedBlockString}`
+    group.userData.minecraftBlockPreview = true
+    group.userData.blockString = normalizedBlockString
+
+    for (const descriptor of descriptors) {
+      const mesh = new THREE.Mesh(
+        descriptor.geometry,
+        createPreviewSyncedMaterial(descriptor.material),
+      )
+      mesh.matrixAutoUpdate = false
+      mesh.matrix.copy(descriptor.relativeMatrix)
+      mesh.castShadow = false
+      mesh.receiveShadow = false
+      mesh.frustumCulled = false
+      group.add(mesh)
+    }
+
+    return group
+  }
+
   async rebuildFromLayer(layer, options = {}) {
+    if ('runtimeSource' in options) {
+      this.setRuntimeSource(options.runtimeSource)
+    }
+
+    if (this._runtimeSource?.buffer instanceof ArrayBuffer) {
+      return this._syncRuntimeRendererFromSource(layer, options)
+    }
+
+    this._runtimeBridge.detachRuntimeGroup()
+    this._runtimeActive = false
     return this._syncRenderGroupsFromLayer(layer, null, options)
+  }
+
+  setRuntimeSource(source = null) {
+    const buffer = source?.buffer
+    if (!(buffer instanceof ArrayBuffer) || buffer.byteLength <= 0) {
+      this._runtimeSource = null
+      this._runtimeBridge.detachRuntimeGroup()
+      this._runtimeActive = false
+      this.chunkManager?.setMinecraftRuntimeBlockProvider?.(null)
+      return false
+    }
+
+    const offset = source.offset || {}
+    this._runtimeSource = {
+      id: String(source.id || source.name || 'runtime-schematic'),
+      name: String(source.name || source.id || 'runtime-schematic'),
+      buffer,
+      offset: {
+        x: Math.floor(Number(offset.x || 0)),
+        y: Math.floor(Number(offset.y || 0)),
+        z: Math.floor(Number(offset.z || 0)),
+      },
+      blockCount: Math.max(0, Math.round(Number(source.blockCount || 0))),
+    }
+    return true
+  }
+
+  isRuntimeRendererActive() {
+    return this._runtimeActive && !!this._runtimeBridge
+  }
+
+  setRuntimeBlockAtWorld(worldX, worldY, worldZ, blockString = 'minecraft:air') {
+    return this.setRuntimeBlocksAtWorld([{
+      worldX,
+      worldY,
+      worldZ,
+      blockString,
+    }])
+  }
+
+  setRuntimeBlocksAtWorld(worldBlocks = []) {
+    if (!this._runtimeBridge?.schematicObject) {
+      return false
+    }
+
+    const patched = this._runtimeBridge.setBlocksAtWorld(worldBlocks)
+    if (patched) {
+      this._lastBuildProfile = {
+        ...(this._lastBuildProfile || {}),
+        lastPatch: {
+          mode: 'schematic-renderer-wasm',
+          worldBlocks: (Array.isArray(worldBlocks) ? worldBlocks : []).map(worldBlock => ({
+            x: Math.floor(Number(worldBlock?.worldX ?? worldBlock?.x ?? 0)),
+            y: Math.floor(Number(worldBlock?.worldY ?? worldBlock?.y ?? 0)),
+            z: Math.floor(Number(worldBlock?.worldZ ?? worldBlock?.z ?? 0)),
+            blockString: String(worldBlock?.blockString || 'minecraft:air'),
+          })),
+        },
+      }
+    }
+    return patched
+  }
+
+  async setRuntimeBlocksAtWorldAsync(worldBlocks = []) {
+    if (!this._runtimeBridge?.schematicObject) {
+      return false
+    }
+
+    const patched = await this._runtimeBridge.setBlocksAtWorldAsync(worldBlocks)
+    if (patched) {
+      this._lastBuildProfile = {
+        ...(this._lastBuildProfile || {}),
+        lastPatch: {
+          mode: 'schematic-renderer-wasm',
+          worldBlocks: (Array.isArray(worldBlocks) ? worldBlocks : []).map(worldBlock => ({
+            x: Math.floor(Number(worldBlock?.worldX ?? worldBlock?.x ?? 0)),
+            y: Math.floor(Number(worldBlock?.worldY ?? worldBlock?.y ?? 0)),
+            z: Math.floor(Number(worldBlock?.worldZ ?? worldBlock?.z ?? 0)),
+            blockString: String(worldBlock?.blockString || 'minecraft:air'),
+          })),
+        },
+      }
+    }
+    return patched
   }
 
   async syncBlockStatesFromLayer(layer, blockStrings = [], options = {}) {
@@ -255,11 +394,127 @@ export default class MinecraftSchematicRenderLayer {
       }
     }
 
+    if (this.isRuntimeRendererActive()) {
+      const runtimeStats = this._runtimeBridge.getStats()
+      return {
+        uniqueBlockStates: normalizedBlockStrings.length,
+        builtMeshes: runtimeStats.meshCount,
+        profile: this._lastBuildProfile,
+        resourcePackStatus: { ...this._resourcePackStatus },
+        runtime: runtimeStats,
+        runtimePatchRequired: true,
+      }
+    }
+
     return this._syncRenderGroupsFromLayer(layer, normalizedBlockStrings, options)
+  }
+
+  async _syncRuntimeRendererFromSource(layer, options = {}) {
+    const source = this._runtimeSource
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
+    const rebuildToken = ++this._rebuildToken
+    const buildStart = performance.now()
+    const blockCount = Math.max(
+      Number(layer?.getStats?.()?.blockCount || 0),
+      Number(source?.blockCount || 0),
+    )
+
+    this.clear()
+
+    let runtimeStats
+    try {
+      runtimeStats = await this._runtimeBridge.loadSource(source, {
+        playerPosition: this.experience.world?.player?.getPosition?.() || null,
+        streaming: {
+          horizontalLoadRadius: Math.max(
+            2,
+            Math.ceil(((this.chunkManager?.viewDistance ?? 1) * (this.chunkManager?.chunkWidth ?? 64)) / 16),
+          ),
+          verticalLoadRadius: Math.max(
+            1,
+            Math.ceil((this.chunkManager?.chunkHeight ?? 32) / 16),
+          ),
+          unloadPadding: 1,
+          maxConcurrentBuilds: 2,
+        },
+        onRuntimeReady: (readyStats) => {
+          if (this._disposed || rebuildToken !== this._rebuildToken) {
+            return
+          }
+          this._runtimeActive = true
+          this._meshEntries = this._runtimeBridge.getMeshes()
+          this.chunkManager?.setMinecraftRuntimeBlockProvider?.(this._runtimeBridge)
+          this._resourcePackStatus = readyStats.resourcePackStatus || this._resourcePackStatus
+        },
+        onProgress: (progress) => {
+          onProgress?.({
+            ...progress,
+            mode: 'schematic-renderer-wasm',
+            runtime: true,
+          })
+        },
+        resourcePackSignature: this._resourcePackSignature,
+      })
+    }
+    catch (error) {
+      if (rebuildToken === this._rebuildToken) {
+        this._runtimeActive = false
+        this.chunkManager?.setMinecraftRuntimeBlockProvider?.(null)
+      }
+      throw error
+    }
+
+    if (this._disposed || rebuildToken !== this._rebuildToken) {
+      this._runtimeBridge.detachRuntimeGroup()
+      this.chunkManager?.setMinecraftRuntimeBlockProvider?.(null)
+      return {
+        cancelled: true,
+        uniqueBlockStates: 0,
+        builtMeshes: runtimeStats.meshCount,
+      }
+    }
+
+    this._runtimeActive = true
+    this._meshEntries = this._runtimeBridge.getMeshes()
+    this.chunkManager?.setMinecraftRuntimeBlockProvider?.(this._runtimeBridge)
+    this._resourcePackStatus = runtimeStats.resourcePackStatus || {
+      attempted: true,
+      loaded: true,
+      source: 'schematic-renderer',
+      name: '',
+    }
+
+    const elapsedMs = performance.now() - buildStart
+    this._lastBuildProfile = {
+      mode: 'schematic-renderer-wasm',
+      blockCount,
+      builtMeshes: runtimeStats.meshCount,
+      meshCount: runtimeStats.meshCount,
+      elapsedMs: Number(elapsedMs.toFixed(2)),
+      dimensions: runtimeStats.dimensions,
+      bounds: runtimeStats.bounds,
+      sourceSignature: runtimeStats.sourceSignature,
+    }
+
+    console.debug('[MinecraftSchematicRenderLayer] Runtime build profile', this._lastBuildProfile)
+
+    return {
+      uniqueBlockStates: 0,
+      builtMeshes: runtimeStats.meshCount,
+      profile: this._lastBuildProfile,
+      resourcePackStatus: { ...this._resourcePackStatus },
+      runtime: runtimeStats,
+    }
   }
 
   async _syncRenderGroupsFromLayer(layer, blockStrings = null, options = {}) {
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null
+    if (!Array.isArray(blockStrings)) {
+      this._runtimeBridge.detachRuntimeGroup()
+      this._runtimeActive = false
+      this.chunkManager?.setMinecraftRuntimeBlockProvider?.(null)
+    }
+
     const cubane = await this.ensureCubane()
     const rebuildToken = ++this._rebuildToken
     const buildStart = performance.now()
@@ -348,7 +603,7 @@ export default class MinecraftSchematicRenderLayer {
         }
       : nextProfile
 
-    console.info('[MinecraftSchematicRenderLayer] Build profile', this._lastBuildProfile)
+    console.debug('[MinecraftSchematicRenderLayer] Build profile', this._lastBuildProfile)
 
     return {
       uniqueBlockStates: uniqueStateCount,
@@ -608,12 +863,16 @@ export default class MinecraftSchematicRenderLayer {
       return []
     }
 
+    const candidates = this.isRuntimeRendererActive()
+      ? this._runtimeBridge.getRaycastTargets()
+      : this.group.children
+
     if (!origin || !Number.isFinite(maxDistance)) {
-      return this.group.children.filter(mesh => mesh.visible !== false)
+      return candidates.filter(mesh => mesh.visible !== false)
     }
 
     const maxDistanceSq = maxDistance * maxDistance
-    return this.group.children.filter((mesh) => {
+    return candidates.filter((mesh) => {
       if (mesh.visible === false) {
         return false
       }
@@ -821,8 +1080,14 @@ export default class MinecraftSchematicRenderLayer {
 
   async _yieldToMainThread() {
     await new Promise((resolve) => {
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => resolve())
+      if (typeof MessageChannel === 'function') {
+        const channel = new MessageChannel()
+        channel.port1.onmessage = () => {
+          channel.port1.close()
+          channel.port2.close()
+          resolve()
+        }
+        channel.port2.postMessage(null)
         return
       }
       setTimeout(resolve, 0)
@@ -855,7 +1120,31 @@ export default class MinecraftSchematicRenderLayer {
   }
 
   update(playerPosition = null, camera = null) {
-    this._cubane?.updateAnimations?.()
+    const resolvedPlayerPosition = playerPosition || this.experience.world?.player?.getPosition?.() || null
+    const resolvedCamera = camera || this.experience.camera?.instance || null
+    const runtimeRendererActive = this.isRuntimeRendererActive()
+
+    if (runtimeRendererActive) {
+      this._runtimeBridge.update({
+        playerPosition: resolvedPlayerPosition,
+      })
+      this._meshEntries = this._runtimeBridge.getMeshes()
+
+      // Runtime chunk residency follows the player. Three.js culls resident
+      // meshes every frame without changing their lifecycle or visible state.
+      this._lastVisibilityStats = {
+        totalMeshes: this._meshEntries.length,
+        residentMeshes: this._meshEntries.length,
+        visibleMeshes: null,
+        activeDistance: null,
+        cullingMode: 'renderer-frustum',
+        updatedAt: Number(performance.now().toFixed(2)),
+      }
+      return
+    }
+    else {
+      this._cubane?.updateAnimations?.()
+    }
 
     const now = performance.now()
     if ((now - this._lastVisibilityUpdateAt) < VISIBILITY_UPDATE_INTERVAL_MS) {
@@ -864,8 +1153,6 @@ export default class MinecraftSchematicRenderLayer {
 
     this._lastVisibilityUpdateAt = now
 
-    const resolvedPlayerPosition = playerPosition || this.experience.world?.player?.getPosition?.() || null
-    const resolvedCamera = camera || this.experience.camera?.instance || null
     const chunkWidth = this.chunkManager?.chunkWidth ?? 64
     const viewDistance = this.chunkManager?.viewDistance ?? 2
     const activeDistance = Math.max((viewDistance + 1) * chunkWidth, 96)
@@ -909,7 +1196,7 @@ export default class MinecraftSchematicRenderLayer {
     }
   }
 
-  clear() {
+  clear(options = {}) {
     const blockStrings = [...this._groupKeysByBlockString.keys()]
     for (const blockString of blockStrings) {
       this._removeRenderGroupsForBlockString(blockString)
@@ -918,6 +1205,12 @@ export default class MinecraftSchematicRenderLayer {
     this._meshGroups.clear()
     this._groupKeysByBlockString.clear()
     this._meshEntries = []
+
+    if (options.preserveRuntime !== true) {
+      this._runtimeBridge.detachRuntimeGroup()
+      this._runtimeActive = false
+      this.chunkManager?.setMinecraftRuntimeBlockProvider?.(null)
+    }
   }
 
   dispose() {
@@ -929,6 +1222,7 @@ export default class MinecraftSchematicRenderLayer {
     }
     this._overlayGeometryCache.clear()
     this.scene.remove(this.group)
+    this._runtimeBridge?.dispose?.()
     this._cubane?.dispose?.()
     this._cubane = null
     this._cubanePromise = null

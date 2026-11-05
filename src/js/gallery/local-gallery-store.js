@@ -99,6 +99,7 @@ async function readRecord(key, fallbackValue = null) {
 }
 
 async function writeRecord(key, value) {
+  let savedToIndexedDb = false
   try {
     const db = await openDb()
     try {
@@ -114,13 +115,24 @@ async function writeRecord(key, value) {
         tx.onerror = () => reject(tx.error || new Error('indexeddb_write_failed'))
         tx.onabort = () => reject(tx.error || new Error('indexeddb_write_aborted'))
       })
+      savedToIndexedDb = true
     }
     finally {
       db.close()
     }
   }
   catch {
-    // ignore and use localStorage fallback below
+    // continue with localStorage fallback below
+  }
+
+  if (savedToIndexedDb) {
+    try {
+      localStorage.removeItem(fallbackKey(key))
+    }
+    catch {
+      // localStorage cleanup is optional when IndexedDB succeeds
+    }
+    return
   }
 
   localStorage.setItem(fallbackKey(key), JSON.stringify(value))
@@ -251,6 +263,7 @@ async function writeSourceRecord(key, value = {}) {
     throw new Error('invalid_source_record')
   }
 
+  let savedToIndexedDb = false
   try {
     const db = await openDb()
     try {
@@ -266,13 +279,24 @@ async function writeSourceRecord(key, value = {}) {
         tx.onerror = () => reject(tx.error || new Error('indexeddb_write_failed'))
         tx.onabort = () => reject(tx.error || new Error('indexeddb_write_aborted'))
       })
+      savedToIndexedDb = true
     }
     finally {
       db.close()
     }
   }
   catch {
-    // ignore and continue with localStorage fallback below
+    // continue with localStorage fallback below
+  }
+
+  if (savedToIndexedDb) {
+    try {
+      localStorage.removeItem(fallbackKey(key))
+    }
+    catch {
+      // localStorage cleanup is optional when IndexedDB succeeds
+    }
+    return
   }
 
   localStorage.setItem(fallbackKey(key), JSON.stringify({

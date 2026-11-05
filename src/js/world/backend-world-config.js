@@ -1,5 +1,5 @@
-import { buildSpaceScopedKey, getActiveProjectionId, getActiveSpaceName } from '../utils/space-context.js'
 import { getAdminAuthToken } from '../auth/admin-auth.js'
+import { buildSpaceScopedKey, getActiveProjectionId, getActiveSpaceName } from '../utils/space-context.js'
 
 const BACKEND_CONFIG_URLS = [
   '/api/world-config',
@@ -45,8 +45,11 @@ function buildAdminWorldConfigStorageKey(accountId = '', options = {}) {
 const DEFAULT_BACKEND_WORLD_CONFIG = {
   player: {
     spawnPoint: { x: 32, y: 20, z: 32 },
+    view: {
+      yaw: 180,
+      pitch: 0,
+    },
     flight: {
-      ignoreMiningSlowdown: true,
       groundWalkAnimationWhenMoving: true,
     },
   },
@@ -56,6 +59,9 @@ const DEFAULT_BACKEND_WORLD_CONFIG = {
     portalLinks: {
       netherPortalUrl: '',
       endPortalUrl: '',
+    },
+    redstoneArchive: {
+      replayUrl: '',
     },
     chunk: {
       height: 256,
@@ -110,9 +116,15 @@ function mergeBackendConfig(raw = {}) {
         y: toNumber(player.spawnPoint?.y, DEFAULT_BACKEND_WORLD_CONFIG.player.spawnPoint.y),
         z: toNumber(player.spawnPoint?.z, DEFAULT_BACKEND_WORLD_CONFIG.player.spawnPoint.z),
       },
+      view: {
+        yaw: toNumber(player.view?.yaw, DEFAULT_BACKEND_WORLD_CONFIG.player.view.yaw),
+        pitch: clamp(
+          toNumber(player.view?.pitch, DEFAULT_BACKEND_WORLD_CONFIG.player.view.pitch),
+          -89,
+          89,
+        ),
+      },
       flight: {
-        ignoreMiningSlowdown: player.flight?.ignoreMiningSlowdown
-          ?? DEFAULT_BACKEND_WORLD_CONFIG.player.flight.ignoreMiningSlowdown,
         groundWalkAnimationWhenMoving: player.flight?.groundWalkAnimationWhenMoving
           ?? DEFAULT_BACKEND_WORLD_CONFIG.player.flight.groundWalkAnimationWhenMoving,
       },
@@ -129,6 +141,12 @@ function mergeBackendConfig(raw = {}) {
         endPortalUrl: String(
           settings.portalLinks?.endPortalUrl
           ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.portalLinks.endPortalUrl,
+        ).trim(),
+      },
+      redstoneArchive: {
+        replayUrl: String(
+          settings.redstoneArchive?.replayUrl
+          ?? DEFAULT_BACKEND_WORLD_CONFIG.settings.redstoneArchive.replayUrl,
         ).trim(),
       },
       chunk: {
@@ -243,7 +261,7 @@ export async function saveBackendWorldConfigRemote(raw = {}, accountId = '', opt
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(normalized),
   })

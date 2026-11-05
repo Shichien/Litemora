@@ -2,6 +2,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
+import { getOverlayGeometryForTarget } from '../world/terrain/block-overlay-geometry.js'
 import { getBlockTypeById, getGeometryForBlockType } from '../world/terrain/blocks-config.js'
 
 /**
@@ -127,6 +128,17 @@ export default class BlockSelectionHelper {
     if (this.mode !== 'remove') {
       if (this.object.geometry !== this.geometry) {
         this.object.geometry = this.geometry
+      }
+      return
+    }
+
+    const targetGeometry = getOverlayGeometryForTarget(info, this._geometryCache, {
+      scale: 1.01,
+      world: this.experience.world,
+    })
+    if (targetGeometry) {
+      if (this.object.geometry !== targetGeometry) {
+        this.object.geometry = targetGeometry
       }
       return
     }

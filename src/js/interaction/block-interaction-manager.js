@@ -8,8 +8,8 @@ import {
   isStairBlockType,
   isWallBlockType,
 } from '../world/terrain/block-behaviors.js'
-import { buildMinecraftInteractableToggleUpdates } from '../world/terrain/minecraft-interactive-blocks.js'
 import { ensureDynamicBlockType, getBlockTypeById } from '../world/terrain/blocks-config.js'
+import { buildMinecraftInteractableToggleUpdates } from '../world/terrain/minecraft-interactive-blocks.js'
 
 function buildMinecraftBlockString(blockName = '', properties = {}) {
   const normalizedBlockName = String(blockName || '')
@@ -54,6 +54,7 @@ export default class BlockInteractionManager {
     // State
     this.mode = INTERACTION_CONFIG.modes.REMOVE // 'remove' | 'add'
     this._tmpLookDirection = new THREE.Vector3()
+    this._useBlockInterceptor = null
 
     // Hotbar state (synced via events from hudStore)
     this._selectedBlockId = null
@@ -133,6 +134,10 @@ export default class BlockInteractionManager {
       return false
     }
 
+    if (this._useBlockInterceptor?.({ target })) {
+      return true
+    }
+
     const minecraftBlock = target?.minecraftBlock
     const updates = buildMinecraftInteractableToggleUpdates({
       worldX: target.worldBlock.x,
@@ -166,6 +171,7 @@ export default class BlockInteractionManager {
         update.z,
         update.blockName,
         update.properties,
+        { refreshTerrain: false },
       )
       changed = changed || !!nextEntry
       if (previousBlockString) {
@@ -189,7 +195,8 @@ export default class BlockInteractionManager {
       return false
     }
 
-    this.chunkManager.syncMinecraftSchematicLayerState({ scheduleSave: true })
+    this.chunkManager.syncMinecraftSchematicLayerState()
+    this.chunkManager.refreshImportedMinecraftBlocks?.(appliedUpdates)
     emitter.emit('game:block-use', {
       source: 'minecraft-schematic',
       worldBlock: { ...target.worldBlock },
@@ -202,6 +209,10 @@ export default class BlockInteractionManager {
     })
 
     return true
+  }
+
+  setUseBlockInterceptor(interceptor = null) {
+    this._useBlockInterceptor = typeof interceptor === 'function' ? interceptor : null
   }
 
   _onMiningComplete(payload = {}) {

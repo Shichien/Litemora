@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import Experience from '../../experience.js'
+import { isSlabBlockName, isSlabBlockType, isStairBlockName, isStairBlockType } from '../terrain/block-behaviors.js'
+import { getBlockTypeById } from '../terrain/blocks-config.js'
 
 const EMPTY_BLOCK_ID = 0
 
@@ -76,23 +78,39 @@ export default class PlayerCollisionSystem {
     const minZ = Math.floor(center.z - radius)
     const maxZ = Math.ceil(center.z + radius)
 
+    const positions = []
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
-          const block = provider.getBlockWorld(x, y, z)
-          const hasCollision = block?.hasCollision ?? (block?.id && block.id !== EMPTY_BLOCK_ID)
-          if (hasCollision) {
-            candidates.push({
-              x,
-              y,
-              z,
-              collisionBoxes: this._buildCollisionBoxesForCandidate(x, y, z, block?.collisionBoxes),
-            })
-            if (this.debug.active && this.params.showCandidates) {
-              this._addCandidateHelper(x, y, z)
-            }
-          }
+          positions.push({ x, y, z })
         }
+      }
+    }
+
+    const blocksAtPositions = typeof provider.getBlocksWorld === 'function'
+      ? provider.getBlocksWorld(positions)
+      : positions.map(position => provider.getBlockWorld(position.x, position.y, position.z))
+
+    for (let index = 0; index < positions.length; index++) {
+      const { x, y, z } = positions[index]
+      const block = blocksAtPositions[index]
+      const hasCollision = block?.hasCollision ?? (block?.id && block.id !== EMPTY_BLOCK_ID)
+      if (!hasCollision) {
+        continue
+      }
+
+      const candidateCollisionBoxes = this._buildCollisionBoxesForCandidate(x, y, z, block?.collisionBoxes)
+      candidates.push({
+        x,
+        y,
+        z,
+        id: block?.id,
+        name: block?.name,
+        minecraftBlock: block?.minecraftBlock,
+        collisionBoxes: candidateCollisionBoxes,
+      })
+      if (this.debug.active && this.params.showCandidates) {
+        this._addCandidateHelper(candidateCollisionBoxes)
       }
     }
 
@@ -194,8 +212,13 @@ export default class PlayerCollisionSystem {
           const isAscendingIntoHigherLedge = Number.isFinite(topSurfaceY)
             && playerState.worldVelocity.y > 0.12
             && topSurfaceY > playerState.basePosition.y + 0.15
+          const isWalkableEdgeContact = this._isWalkableEdgeContact(collision.block)
 
-          if (isBelowOrLevelWithTop && !isAscendingIntoHigherLedge) {
+          if (isWalkableEdgeContact && isBelowOrLevelWithTop && !isAscendingIntoHigherLedge) {
+            responseNormal.set(0, 1, 0)
+            treatAsGround = true
+          }
+          else if (isBelowOrLevelWithTop && !isAscendingIntoHigherLedge) {
             const horizontalLengthSq = (responseNormal.x * responseNormal.x) + (responseNormal.z * responseNormal.z)
             if (horizontalLengthSq > 1e-6) {
               const horizontalLength = Math.sqrt(horizontalLengthSq)
@@ -293,6 +316,16 @@ export default class PlayerCollisionSystem {
     return { normal, overlap, ground }
   }
 
+  _isWalkableEdgeContact(block = null) {
+    const blockType = getBlockTypeById(block?.id)
+    if (blockType && (isSlabBlockType(blockType) || isStairBlockType(blockType))) {
+      return true
+    }
+
+    const blockName = block?.minecraftBlock?.name || block?.name || ''
+    return isSlabBlockName(blockName) || isStairBlockName(blockName)
+  }
+
   _isTopEdgeContact(point, collisionBox) {
     if (!point || !collisionBox) {
       return false
@@ -340,15 +373,34 @@ export default class PlayerCollisionSystem {
 
   /**
    * 调试：高亮候选方块
-   * @param {number} x 方块世界 x
-   * @param {number} y 方块世界 y
-   * @param {number} z 方块世界 z
+   * @param {Array<{minX:number,minY:number,minZ:number,maxX:number,maxY:number,maxZ:number}>} collisionBoxes 候选碰撞盒
    */
-  _addCandidateHelper(x, y, z) {
-    const helper = this._candidateHelpers[this._candidateIndex] || this._createCandidateHelper()
-    helper.position.set(x, y, z)
-    helper.visible = true
-    this._candidateIndex++
+  _addCandidateHelper(collisionBoxes = []) {
+    const boxes = Array.isArray(collisionBoxes) && collisionBoxes.length
+      ? collisionBoxes
+      : [{
+          minX: -0.5,
+          minY: -0.5,
+          minZ: -0.5,
+          maxX: 0.5,
+          maxY: 0.5,
+          maxZ: 0.5,
+        }]
+
+    for (const box of boxes) {
+      const helper = this._candidateHelpers[this._candidateIndex] || this._createCandidateHelper()
+      const width = Math.max(0.001, Number(box.maxX) - Number(box.minX))
+      const height = Math.max(0.001, Number(box.maxY) - Number(box.minY))
+      const depth = Math.max(0.001, Number(box.maxZ) - Number(box.minZ))
+      helper.position.set(
+        (Number(box.minX) + Number(box.maxX)) * 0.5,
+        (Number(box.minY) + Number(box.maxY)) * 0.5,
+        (Number(box.minZ) + Number(box.maxZ)) * 0.5,
+      )
+      helper.scale.set(width, height, depth)
+      helper.visible = true
+      this._candidateIndex++
+    }
   }
 
   /**

@@ -7,8 +7,8 @@ import {
 } from '../../config/chunk-config.js'
 import Experience from '../../experience.js'
 import IdleQueue from '../../utils/utils/idle-queue.js'
+import { blocks, getBlockTypeById, getCollisionBoxesForBlockType, resources } from './blocks-config.js'
 import MinecraftSchematicLayer from './minecraft-schematic-layer.js'
-import { blocks, resources } from './blocks-config.js'
 import TerrainChunk from './terrain-chunk.js'
 import TerrainPersistence from './terrain-persistence.js'
 
@@ -73,7 +73,13 @@ export default class ChunkManager {
     this._lastPlayerChunkZ = null
     this.schematicOnlyMode = false
     this.minecraftRenderOverlayActive = false
+    this.minecraftRuntimeBlockProvider = null
     this._transientRemovedMinecraftBlocks = new Map()
+    this._sessionBlockModifications = new Map()
+    this._sessionImportedBlockOrigins = new Map()
+    this._sessionMinecraftBlockLayer = new MinecraftSchematicLayer({
+      chunkWidth: this.chunkWidth,
+    })
 
     this.persistence = new TerrainPersistence({
       worldName: options.worldName || CHUNK_BASIC_CONFIG.worldName,
@@ -82,9 +88,11 @@ export default class ChunkManager {
     this.minecraftSchematicLayer = new MinecraftSchematicLayer({
       chunkWidth: this.chunkWidth,
     })
-    this.restoreRuntimeStateFromPersistence()
-
-    this.schematicOnlyMode = !!this.persistence.getWorldState?.().schematicOnlyMode
+    this.persistenceReady = this.persistence.ready || Promise.resolve()
+    this.persistenceReady.then(() => {
+      this.restoreRuntimeStateFromPersistence()
+      this.schematicOnlyMode = !!this.persistence.getWorldState?.().schematicOnlyMode
+    })
 
     this._saveTimeout = null
     this._autoSaveDelay = CHUNK_BASIC_CONFIG.autoSaveDelay
@@ -102,12 +110,136 @@ export default class ChunkManager {
     return `${Math.floor(worldX)},${Math.floor(worldY)},${Math.floor(worldZ)}`
   }
 
+  _parseWorldBlockKey(blockKey = '') {
+    const [worldX, worldY, worldZ] = String(blockKey || '')
+      .split(',')
+      .map(value => Number(value))
+
+    if (!Number.isFinite(worldX) || !Number.isFinite(worldY) || !Number.isFinite(worldZ)) {
+      return null
+    }
+
+    return { worldX, worldY, worldZ }
+  }
+
   _createEmptyBlockRecord() {
     return { id: blocks.empty.id, instanceId: null }
   }
 
   _hasLegacyBlock(block) {
     return !!(block?.id && block.id !== blocks.empty.id)
+  }
+
+  _chunkLocalBlockKey(localX, localY, localZ) {
+    return `${Math.floor(localX)},${Math.floor(localY)},${Math.floor(localZ)}`
+  }
+
+  _cloneImportedMinecraftBlockEntry(entry = null) {
+    if (!entry || typeof entry !== 'object') {
+      return null
+    }
+
+    return {
+      ...entry,
+      properties: entry.properties && typeof entry.properties === 'object'
+        ? { ...entry.properties }
+        : {},
+      collisionBoxes: Array.isArray(entry.collisionBoxes)
+        ? entry.collisionBoxes.map(box => Array.isArray(box) ? [...box] : box)
+        : entry.collisionBoxes,
+    }
+  }
+
+  _rememberSessionImportedBlockOrigin(worldX, worldY, worldZ) {
+    const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
+    if (this._sessionImportedBlockOrigins.has(blockKey)) {
+      return this._sessionImportedBlockOrigins.get(blockKey)
+    }
+
+    const originEntry = this._cloneImportedMinecraftBlockEntry(
+      this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+      || this.minecraftRuntimeBlockProvider?.getBlockWorld?.(worldX, worldY, worldZ),
+    )
+
+    this._sessionImportedBlockOrigins.set(blockKey, originEntry)
+    return originEntry
+  }
+
+  _getSessionImportedBlockOrigin(worldX, worldY, worldZ) {
+    const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
+    if (!this._sessionImportedBlockOrigins.has(blockKey)) {
+      return undefined
+    }
+
+    return this._sessionImportedBlockOrigins.get(blockKey)
+  }
+
+  _clearSessionImportedBlockOrigin(worldX, worldY, worldZ) {
+    this._sessionImportedBlockOrigins.delete(this._worldBlockKey(worldX, worldY, worldZ))
+  }
+
+  clearSessionInteractionState() {
+    this._transientRemovedMinecraftBlocks.clear()
+    this._sessionMinecraftBlockLayer.clear()
+    this._sessionBlockModifications.clear()
+    this._sessionImportedBlockOrigins.clear()
+  }
+
+  _setSessionBlockModification(worldX, worldY, worldZ, blockId) {
+    const chunkX = Math.floor(worldX / this.chunkWidth)
+    const chunkZ = Math.floor(worldZ / this.chunkWidth)
+    const chunkKey = this._key(chunkX, chunkZ)
+    const localX = Math.floor(worldX - chunkX * this.chunkWidth)
+    const localZ = Math.floor(worldZ - chunkZ * this.chunkWidth)
+    const blockKey = this._chunkLocalBlockKey(localX, worldY, localZ)
+
+    if (!this._sessionBlockModifications.has(chunkKey)) {
+      this._sessionBlockModifications.set(chunkKey, new Map())
+    }
+
+    this._sessionBlockModifications.get(chunkKey).set(blockKey, Number(blockId))
+  }
+
+  _getSessionBlockModification(worldX, worldY, worldZ) {
+    const chunkX = Math.floor(worldX / this.chunkWidth)
+    const chunkZ = Math.floor(worldZ / this.chunkWidth)
+    const chunkKey = this._key(chunkX, chunkZ)
+    const localX = Math.floor(worldX - chunkX * this.chunkWidth)
+    const localZ = Math.floor(worldZ - chunkZ * this.chunkWidth)
+    const blockKey = this._chunkLocalBlockKey(localX, worldY, localZ)
+
+    return this._sessionBlockModifications.get(chunkKey)?.get(blockKey)
+  }
+
+  _getSessionChunkModificationCoords() {
+    const chunkCoords = []
+    for (const chunkKey of this._sessionBlockModifications.keys()) {
+      const [chunkX, chunkZ] = chunkKey.split(',').map(Number)
+      if (!Number.isFinite(chunkX) || !Number.isFinite(chunkZ)) {
+        continue
+      }
+      chunkCoords.push({ chunkX, chunkZ })
+    }
+    return chunkCoords
+  }
+
+  _getSessionChunkModifications(chunkX, chunkZ) {
+    return this._sessionBlockModifications.get(this._key(chunkX, chunkZ)) || new Map()
+  }
+
+  _mergeChunkCoordLists(...coordGroups) {
+    const merged = new Map()
+    for (const coords of coordGroups) {
+      for (const coord of coords || []) {
+        const chunkX = Number(coord?.chunkX)
+        const chunkZ = Number(coord?.chunkZ)
+        if (!Number.isFinite(chunkX) || !Number.isFinite(chunkZ)) {
+          continue
+        }
+        merged.set(this._key(chunkX, chunkZ), { chunkX, chunkZ })
+      }
+    }
+    return [...merged.values()]
   }
 
   initInitialGrid() {
@@ -150,7 +282,10 @@ export default class ChunkManager {
   }
 
   _restoreSchematicOnlyChunks() {
-    const coords = this.persistence?.getModifiedChunkCoords?.() || []
+    const coords = this._mergeChunkCoordLists(
+      this.persistence?.getModifiedChunkCoords?.() || [],
+      this._getSessionChunkModificationCoords(),
+    )
     if (!coords.length) {
       this._updateStats()
       return
@@ -247,23 +382,32 @@ export default class ChunkManager {
 
     const localX = Math.floor(x - chunkX * this.chunkWidth)
     const localZ = Math.floor(z - chunkZ * this.chunkWidth)
+    const sessionBlockId = this._getSessionBlockModification(x, y, z)
 
     const baseBlock = !this.schematicOnlyMode && chunk
       ? chunk.container.getBlock(localX, y, localZ)
       : this._createEmptyBlockRecord()
+    const resolvedBaseBlock = Number.isFinite(sessionBlockId)
+      ? {
+          id: sessionBlockId,
+          instanceId: baseBlock?.instanceId ?? null,
+        }
+      : baseBlock
 
     const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(x, y, z)
     const hasImportedMinecraftBlock = !!importedMinecraftBlock
     const hasImportedCollision = Array.isArray(importedMinecraftBlock?.collisionBoxes)
+    const legacyBlockType = getBlockTypeById(resolvedBaseBlock?.id)
+    const legacyCollisionBoxes = getCollisionBoxesForBlockType(legacyBlockType)
     const hasCollision = hasImportedCollision
       ? importedMinecraftBlock.collisionBoxes.length > 0
-      : this._hasLegacyBlock(baseBlock)
+      : (Array.isArray(legacyCollisionBoxes) ? legacyCollisionBoxes.length > 0 : this._hasLegacyBlock(resolvedBaseBlock))
 
     return {
-      ...baseBlock,
+      ...resolvedBaseBlock,
       source: hasImportedMinecraftBlock
         ? 'minecraft-schematic'
-        : (this._hasLegacyBlock(baseBlock) ? 'legacy' : 'empty'),
+        : (this._hasLegacyBlock(resolvedBaseBlock) ? 'legacy' : 'empty'),
       minecraftBlock: importedMinecraftBlock
         ? {
             name: `minecraft:${importedMinecraftBlock.blockName}`,
@@ -271,12 +415,61 @@ export default class ChunkManager {
           }
         : null,
       isImportedMinecraft: hasImportedMinecraftBlock,
-      collisionBoxes: hasImportedCollision ? importedMinecraftBlock.collisionBoxes : null,
+      collisionBoxes: hasImportedCollision ? importedMinecraftBlock.collisionBoxes : legacyCollisionBoxes,
       collisionSource: importedMinecraftBlock?.collisionSource || null,
       hasCollision,
       stateId: importedMinecraftBlock?.stateId ?? null,
       isClimbable: !!importedMinecraftBlock?.isClimbable,
     }
+  }
+
+  getBlocksWorld(worldPositions = []) {
+    const positions = Array.isArray(worldPositions) ? worldPositions : []
+    if (!positions.length) {
+      return []
+    }
+
+    const runtimeEntries = this.schematicOnlyMode
+      ? this.minecraftRuntimeBlockProvider?.getBlocksWorld?.(positions)
+      : null
+    if (!Array.isArray(runtimeEntries) || runtimeEntries.length !== positions.length) {
+      return positions.map(position => this.getBlockWorld(position.x, position.y, position.z))
+    }
+
+    return positions.map((position, index) => {
+      const x = Number(position?.x)
+      const y = Number(position?.y)
+      const z = Number(position?.z)
+      const blockKey = this._worldBlockKey(x, y, z)
+      const hasLocalOverride = Number.isFinite(this._getSessionBlockModification(x, y, z))
+        || !!this._sessionMinecraftBlockLayer.getBlock(x, y, z)
+        || !!this.minecraftSchematicLayer.getBlock(x, y, z)
+        || this._transientRemovedMinecraftBlocks.has(blockKey)
+      if (hasLocalOverride) {
+        return this.getBlockWorld(x, y, z)
+      }
+
+      const importedMinecraftBlock = runtimeEntries[index]
+      const collisionBoxes = Array.isArray(importedMinecraftBlock?.collisionBoxes)
+        ? importedMinecraftBlock.collisionBoxes
+        : []
+      return {
+        ...this._createEmptyBlockRecord(),
+        source: importedMinecraftBlock ? 'minecraft-schematic' : 'empty',
+        minecraftBlock: importedMinecraftBlock
+          ? {
+              name: `minecraft:${importedMinecraftBlock.blockName}`,
+              properties: importedMinecraftBlock.properties,
+            }
+          : null,
+        isImportedMinecraft: !!importedMinecraftBlock,
+        collisionBoxes,
+        collisionSource: importedMinecraftBlock?.collisionSource || null,
+        hasCollision: collisionBoxes.length > 0,
+        stateId: importedMinecraftBlock?.stateId ?? null,
+        isClimbable: !!importedMinecraftBlock?.isClimbable,
+      }
+    })
   }
 
   shouldRenderTerrainBlock(worldX, worldY, worldZ) {
@@ -295,6 +488,177 @@ export default class ChunkManager {
 
     this.minecraftRenderOverlayActive = nextValue
     this._rebuildAllChunks()
+  }
+
+  setMinecraftRuntimeBlockProvider(provider = null) {
+    this.minecraftRuntimeBlockProvider = provider && typeof provider.getBlockWorld === 'function'
+      ? provider
+      : null
+  }
+
+  _refreshImportedMinecraftChunk(worldX, worldZ) {
+    if (!this.minecraftRenderOverlayActive) {
+      return false
+    }
+
+    const chunkX = Math.floor(Number(worldX) / this.chunkWidth)
+    const chunkZ = Math.floor(Number(worldZ) / this.chunkWidth)
+    const chunk = this.getChunk(chunkX, chunkZ)
+    if (!chunk || chunk.state === 'disposed') {
+      return false
+    }
+
+    const refreshed = chunk.refreshMesh?.()
+    if (!refreshed) {
+      return false
+    }
+
+    chunk.renderer?.group?.scale?.setScalar?.(this.renderParams.scale)
+    chunk.plantRenderer?.group?.scale?.setScalar?.(this.renderParams.scale)
+    this._updateStats()
+    return true
+  }
+
+  refreshImportedMinecraftBlocks(worldBlocks = []) {
+    if (!Array.isArray(worldBlocks) || !worldBlocks.length) {
+      return false
+    }
+
+    const normalizedBlocks = new Map()
+    const refreshedChunks = new Set()
+    let refreshed = false
+    for (const worldBlock of worldBlocks) {
+      const worldX = Number(worldBlock?.worldX ?? worldBlock?.x)
+      const worldY = Number(worldBlock?.worldY ?? worldBlock?.y)
+      const worldZ = Number(worldBlock?.worldZ ?? worldBlock?.z)
+      if (!Number.isFinite(worldX) || !Number.isFinite(worldY) || !Number.isFinite(worldZ)) {
+        continue
+      }
+
+      const blockString = String(
+        worldBlock?.blockString
+        || worldBlock?.nextBlockString
+        || buildMinecraftBlockString(worldBlock?.blockName, worldBlock?.properties),
+      ).trim()
+      normalizedBlocks.set(this._worldBlockKey(worldX, worldY, worldZ), {
+        worldX,
+        worldY,
+        worldZ,
+        blockString,
+      })
+
+      const chunkX = Math.floor(worldX / this.chunkWidth)
+      const chunkZ = Math.floor(worldZ / this.chunkWidth)
+      const chunkKey = this._key(chunkX, chunkZ)
+      if (refreshedChunks.has(chunkKey)) {
+        continue
+      }
+
+      if (this._refreshImportedMinecraftChunk(worldX, worldZ)) {
+        refreshedChunks.add(chunkKey)
+        refreshed = true
+      }
+    }
+
+    const runtimeBlocks = [...normalizedBlocks.values()]
+      .filter(worldBlock => worldBlock.blockString)
+    if (runtimeBlocks.length && this.minecraftRuntimeBlockProvider?.setBlocksAtWorld) {
+      refreshed = this.minecraftRuntimeBlockProvider.setBlocksAtWorld(runtimeBlocks) || refreshed
+    }
+
+    return refreshed
+  }
+
+  async refreshImportedMinecraftBlocksAsync(worldBlocks = []) {
+    if (!Array.isArray(worldBlocks) || !worldBlocks.length) {
+      return false
+    }
+
+    const normalizedBlocks = new Map()
+    const refreshedChunks = new Set()
+    let refreshed = false
+    for (const worldBlock of worldBlocks) {
+      const worldX = Number(worldBlock?.worldX ?? worldBlock?.x)
+      const worldY = Number(worldBlock?.worldY ?? worldBlock?.y)
+      const worldZ = Number(worldBlock?.worldZ ?? worldBlock?.z)
+      if (!Number.isFinite(worldX) || !Number.isFinite(worldY) || !Number.isFinite(worldZ)) {
+        continue
+      }
+
+      const blockString = String(
+        worldBlock?.blockString
+        || worldBlock?.nextBlockString
+        || buildMinecraftBlockString(worldBlock?.blockName, worldBlock?.properties),
+      ).trim()
+      normalizedBlocks.set(this._worldBlockKey(worldX, worldY, worldZ), {
+        worldX,
+        worldY,
+        worldZ,
+        blockString,
+      })
+
+      const chunkX = Math.floor(worldX / this.chunkWidth)
+      const chunkZ = Math.floor(worldZ / this.chunkWidth)
+      const chunkKey = this._key(chunkX, chunkZ)
+      if (refreshedChunks.has(chunkKey)) {
+        continue
+      }
+
+      if (this._refreshImportedMinecraftChunk(worldX, worldZ)) {
+        refreshedChunks.add(chunkKey)
+        refreshed = true
+      }
+    }
+
+    const runtimeBlocks = [...normalizedBlocks.values()]
+      .filter(worldBlock => worldBlock.blockString)
+    if (runtimeBlocks.length && this.minecraftRuntimeBlockProvider?.setBlocksAtWorldAsync) {
+      refreshed = (await this.minecraftRuntimeBlockProvider.setBlocksAtWorldAsync(runtimeBlocks)) || refreshed
+    }
+    else if (runtimeBlocks.length && this.minecraftRuntimeBlockProvider?.setBlocksAtWorld) {
+      refreshed = this.minecraftRuntimeBlockProvider.setBlocksAtWorld(runtimeBlocks) || refreshed
+    }
+
+    return refreshed
+  }
+
+  getImportedMinecraftBlockRefreshUpdates({
+    includeLayerBlocks = true,
+    includeTransientRemoved = true,
+  } = {}) {
+    const updates = new Map()
+
+    if (includeLayerBlocks) {
+      this.getImportedMinecraftBlockLayer()?.forEachBlock?.(({ worldX, worldY, worldZ }, entry) => {
+        const blockString = buildMinecraftBlockString(entry?.blockName, entry?.properties)
+        if (!blockString) {
+          return
+        }
+
+        updates.set(this._worldBlockKey(worldX, worldY, worldZ), {
+          worldX,
+          worldY,
+          worldZ,
+          blockString,
+        })
+      })
+    }
+
+    if (includeTransientRemoved) {
+      for (const blockKey of this._transientRemovedMinecraftBlocks.keys()) {
+        const coords = this._parseWorldBlockKey(blockKey)
+        if (!coords) {
+          continue
+        }
+
+        updates.set(blockKey, {
+          ...coords,
+          blockString: 'minecraft:air',
+        })
+      }
+    }
+
+    return [...updates.values()]
   }
 
   getCollisionBoxesWorld(x, y, z) {
@@ -324,10 +688,35 @@ export default class ChunkManager {
     return []
   }
 
-  setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties = {}) {
+  setBaseImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties = {}, options = {}) {
     const placed = this.minecraftSchematicLayer.setBlock(worldX, worldY, worldZ, blockName, properties)
     if (placed) {
       this._transientRemovedMinecraftBlocks.delete(this._worldBlockKey(worldX, worldY, worldZ))
+      if (options.refreshTerrain !== false) {
+        this.refreshImportedMinecraftBlocks([{
+          worldX,
+          worldY,
+          worldZ,
+          blockString: buildMinecraftBlockString(blockName, properties),
+        }])
+      }
+    }
+    return placed
+  }
+
+  setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties = {}, options = {}) {
+    this._rememberSessionImportedBlockOrigin(worldX, worldY, worldZ)
+    const placed = this._sessionMinecraftBlockLayer.setBlock(worldX, worldY, worldZ, blockName, properties)
+    if (placed) {
+      this._transientRemovedMinecraftBlocks.delete(this._worldBlockKey(worldX, worldY, worldZ))
+      if (options.refreshTerrain !== false) {
+        this.refreshImportedMinecraftBlocks([{
+          worldX,
+          worldY,
+          worldZ,
+          blockString: buildMinecraftBlockString(blockName, properties),
+        }])
+      }
     }
     return placed
   }
@@ -338,27 +727,114 @@ export default class ChunkManager {
       return false
     }
 
-    const placed = this.setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties)
+    const placed = this.setImportedMinecraftBlock(worldX, worldY, worldZ, blockName, properties, options)
     if (!placed) {
       return false
     }
 
     this.syncMinecraftSchematicLayerState()
 
-    if (options.scheduleSave !== false) {
-      this._scheduleSave()
-    }
-
     return placed
   }
 
-  clearImportedMinecraftBlock(worldX, worldY, worldZ) {
-    this._transientRemovedMinecraftBlocks.delete(this._worldBlockKey(worldX, worldY, worldZ))
-    return this.minecraftSchematicLayer.removeBlock(worldX, worldY, worldZ)
+  clearImportedMinecraftBlock(worldX, worldY, worldZ, options = {}) {
+    const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
+    const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(worldX, worldY, worldZ, {
+      includeTransientRemoved: true,
+    })
+    if (!importedMinecraftBlock) {
+      return false
+    }
+
+    const removedSessionOverride = this._sessionMinecraftBlockLayer.removeBlock(worldX, worldY, worldZ)
+    const rememberedOrigin = this._getSessionImportedBlockOrigin(worldX, worldY, worldZ)
+    const baseImportedBlock = rememberedOrigin !== undefined
+      ? this._cloneImportedMinecraftBlockEntry(rememberedOrigin)
+      : this._cloneImportedMinecraftBlockEntry(
+          this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+          || this.minecraftRuntimeBlockProvider?.getBlockWorld?.(worldX, worldY, worldZ),
+        )
+
+    if (!removedSessionOverride && !baseImportedBlock) {
+      return false
+    }
+
+    this._clearSessionImportedBlockOrigin(worldX, worldY, worldZ)
+
+    if (baseImportedBlock) {
+      this._transientRemovedMinecraftBlocks.set(blockKey, {
+        blockName: String(baseImportedBlock.blockName || '').replace(/^minecraft:/u, ''),
+        properties: { ...(baseImportedBlock.properties || {}) },
+      })
+    }
+    else {
+      this._transientRemovedMinecraftBlocks.delete(blockKey)
+    }
+
+    if (options.refreshTerrain !== false) {
+      this.refreshImportedMinecraftBlocks([{
+        worldX,
+        worldY,
+        worldZ,
+        blockString: 'minecraft:air',
+      }])
+    }
+
+    return true
+  }
+
+  async clearImportedMinecraftBlockAsync(worldX, worldY, worldZ, options = {}) {
+    const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
+    const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(worldX, worldY, worldZ, {
+      includeTransientRemoved: true,
+    })
+    if (!importedMinecraftBlock) {
+      return false
+    }
+
+    const removedSessionOverride = this._sessionMinecraftBlockLayer.removeBlock(worldX, worldY, worldZ)
+    const rememberedOrigin = this._getSessionImportedBlockOrigin(worldX, worldY, worldZ)
+    const baseImportedBlock = rememberedOrigin !== undefined
+      ? this._cloneImportedMinecraftBlockEntry(rememberedOrigin)
+      : this._cloneImportedMinecraftBlockEntry(
+          this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+          || this.minecraftRuntimeBlockProvider?.getBlockWorld?.(worldX, worldY, worldZ),
+        )
+
+    if (!removedSessionOverride && !baseImportedBlock) {
+      return false
+    }
+
+    this._clearSessionImportedBlockOrigin(worldX, worldY, worldZ)
+
+    if (baseImportedBlock) {
+      this._transientRemovedMinecraftBlocks.set(blockKey, {
+        blockName: String(baseImportedBlock.blockName || '').replace(/^minecraft:/u, ''),
+        properties: { ...(baseImportedBlock.properties || {}) },
+      })
+    }
+    else {
+      this._transientRemovedMinecraftBlocks.delete(blockKey)
+    }
+
+    if (options.refreshTerrain !== false) {
+      await this.refreshImportedMinecraftBlocksAsync([{
+        worldX,
+        worldY,
+        worldZ,
+        blockString: 'minecraft:air',
+      }])
+    }
+
+    return true
   }
 
   getImportedMinecraftBlockWorld(worldX, worldY, worldZ, options = {}) {
-    const entry = this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+    const sessionEntry = this._sessionMinecraftBlockLayer.getBlock(worldX, worldY, worldZ)
+    const persistedEntry = this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+    const entry = sessionEntry
+      || persistedEntry
+      || this.minecraftRuntimeBlockProvider?.getBlockWorld?.(worldX, worldY, worldZ)
     if (!entry) {
       return null
     }
@@ -377,7 +853,9 @@ export default class ChunkManager {
   }
 
   clearImportedMinecraftBlockTransient(worldX, worldY, worldZ) {
-    const importedMinecraftBlock = this.minecraftSchematicLayer.getBlock(worldX, worldY, worldZ)
+    const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(worldX, worldY, worldZ, {
+      includeTransientRemoved: true,
+    })
     if (!importedMinecraftBlock) {
       return false
     }
@@ -387,10 +865,44 @@ export default class ChunkManager {
       return false
     }
 
-    this._transientRemovedMinecraftBlocks.set(blockKey, {
-      blockName: importedMinecraftBlock.blockName,
-      properties: { ...(importedMinecraftBlock.properties || {}) },
+    const removed = this.clearImportedMinecraftBlock(worldX, worldY, worldZ)
+    if (!removed) {
+      return false
+    }
+
+    return {
+      removed: true,
+      source: 'minecraft-schematic',
+      worldBlock: { x: worldX, y: worldY, z: worldZ },
+      blockId: null,
+      minecraftBlock: {
+        name: `minecraft:${importedMinecraftBlock.blockName}`,
+        properties: importedMinecraftBlock.properties,
+      },
+      affectedBlockStates: [
+        buildMinecraftBlockString(importedMinecraftBlock.blockName, importedMinecraftBlock.properties),
+      ].filter(Boolean),
+      transient: true,
+    }
+  }
+
+  async clearImportedMinecraftBlockTransientAsync(worldX, worldY, worldZ) {
+    const importedMinecraftBlock = this.getImportedMinecraftBlockWorld(worldX, worldY, worldZ, {
+      includeTransientRemoved: true,
     })
+    if (!importedMinecraftBlock) {
+      return false
+    }
+
+    const blockKey = this._worldBlockKey(worldX, worldY, worldZ)
+    if (this._transientRemovedMinecraftBlocks.has(blockKey)) {
+      return false
+    }
+
+    const removed = await this.clearImportedMinecraftBlockAsync(worldX, worldY, worldZ)
+    if (!removed) {
+      return false
+    }
 
     return {
       removed: true,
@@ -410,7 +922,9 @@ export default class ChunkManager {
 
   syncMinecraftSchematicLayerState({ scheduleSave = false } = {}) {
     this.persistence?.setWorldState?.({
+      schematicOnlyMode: !!this.schematicOnlyMode,
       minecraftSchematicLayer: this.minecraftSchematicLayer.exportSnapshot(),
+      minecraftTransientRemovedBlocks: null,
     })
 
     if (scheduleSave) {
@@ -420,8 +934,23 @@ export default class ChunkManager {
 
   restoreRuntimeStateFromPersistence() {
     const worldState = this.persistence?.getWorldState?.() || {}
-    this._transientRemovedMinecraftBlocks.clear()
+    this.clearSessionInteractionState()
     this.minecraftSchematicLayer.importSnapshot(worldState.minecraftSchematicLayer)
+  }
+
+  getImportedMinecraftBlockLayer() {
+    const overlayLayer = new MinecraftSchematicLayer({
+      chunkWidth: this.chunkWidth,
+    })
+
+    this.minecraftSchematicLayer?.forEachBlock?.(({ worldX, worldY, worldZ }, entry) => {
+      overlayLayer.setBlock(worldX, worldY, worldZ, entry?.blockName, entry?.properties || {})
+    })
+    this._sessionMinecraftBlockLayer?.forEachBlock?.(({ worldX, worldY, worldZ }, entry) => {
+      overlayLayer.setBlock(worldX, worldY, worldZ, entry?.blockName, entry?.properties || {})
+    })
+
+    return overlayLayer
   }
 
   // #region 世界坐标删除方块
@@ -440,7 +969,6 @@ export default class ChunkManager {
       }
 
       this.syncMinecraftSchematicLayerState()
-      this._scheduleSave()
 
       return {
         removed: true,
@@ -511,12 +1039,10 @@ export default class ChunkManager {
       }
     }
 
-    // 记录修改（0 表示删除）
-    this.persistence.recordModification(x, y, z, blocks.empty.id, this.chunkWidth)
+    this._setSessionBlockModification(x, y, z, blocks.empty.id)
     if (removedMinecraftBlock) {
       this.syncMinecraftSchematicLayerState()
     }
-    this._scheduleSave()
 
     return {
       removed: true,
@@ -599,12 +1125,10 @@ export default class ChunkManager {
       }
     }
 
-    // 记录修改
-    this.persistence.recordModification(x, y, z, blockId, this.chunkWidth)
+    this._setSessionBlockModification(x, y, z, blockId)
     if (removedMinecraftBlock) {
       this.syncMinecraftSchematicLayerState()
     }
-    this._scheduleSave()
 
     return true
   }
@@ -621,9 +1145,13 @@ export default class ChunkManager {
     const z = Math.floor(worldZ)
     for (let y = this.chunkHeight - 1; y >= 0; y--) {
       const block = this.getBlockWorld(x, y, z)
+      const hasLegacySolidBlock = !!block?.id && block.id !== blocks.empty.id
+      const hasImportedSolidBlock = !!block?.isImportedMinecraft && block.hasCollision !== false
 
-      if (!block?.id || block.id === blocks.empty.id)
+      if (!hasLegacySolidBlock && !hasImportedSolidBlock)
         continue
+      if (hasImportedSolidBlock)
+        return y
 
       // 排除所有树干和树叶类型
       const isTree
@@ -677,7 +1205,12 @@ export default class ChunkManager {
     this.chunks.set(key, chunk)
 
     // 标记需要应用修改（在生成后执行）
-    chunk._pendingModifications = this.persistence.getChunkModifications(chunkX, chunkZ)
+    const persistedMods = this.persistence.getChunkModifications(chunkX, chunkZ)
+    const sessionMods = this._getSessionChunkModifications(chunkX, chunkZ)
+    chunk._pendingModifications = new Map([
+      ...persistedMods.entries(),
+      ...sessionMods.entries(),
+    ])
 
     return chunk
   }
@@ -1309,5 +1842,6 @@ export default class ChunkManager {
     })
     this.chunks.clear()
     this.minecraftSchematicLayer?.clear?.()
+    this.clearSessionInteractionState()
   }
 }

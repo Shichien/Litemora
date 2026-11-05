@@ -1,6 +1,6 @@
 <script setup>
-import emitter from '@three/utils/event/event-bus.js'
 import { useUiStore } from '@pinia/uiStore.js'
+import emitter from '@three/utils/event/event-bus.js'
 import { onMounted, onUnmounted, reactive } from 'vue'
 
 const ui = useUiStore()
@@ -10,6 +10,7 @@ const keys = reactive({
   a: false,
   s: false,
   d: false,
+  control: false,
   shift: false,
   space: false,
   z: false,
@@ -29,6 +30,7 @@ function handleInputUpdate(inputKeys) {
   keys.a = inputKeys.left
   keys.s = inputKeys.backward
   keys.d = inputKeys.right
+  keys.control = inputKeys.control || false
   keys.shift = inputKeys.shift || false
   keys.space = inputKeys.space || false
   keys.z = inputKeys.z || false
@@ -54,6 +56,7 @@ function resetKeys() {
   keys.a = false
   keys.s = false
   keys.d = false
+  keys.control = false
   keys.shift = false
   keys.space = false
   keys.z = false
@@ -103,6 +106,9 @@ onUnmounted(() => {
       </div>
 
       <div class="movement-right">
+        <div class="key-cap wide" :class="{ pressed: keys.control }">
+          CTRL
+        </div>
         <div class="key-cap wide" :class="{ pressed: keys.shift }">
           SHIFT
         </div>
@@ -117,7 +123,7 @@ onUnmounted(() => {
         <div
           class="key-cap camera-mode"
           :class="{
-            pressed: keys.y,
+            'pressed': keys.y,
             'camera-mode-first': keys.cameraMode === 'first-person',
             'camera-mode-back': keys.cameraMode === 'third-person-back',
             'camera-mode-front': keys.cameraMode === 'third-person-front',

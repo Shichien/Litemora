@@ -12,6 +12,35 @@ const EMPTY_BLOCK_NAMES = new Set([
   'minecraft:void_air',
 ])
 
+const RUNTIME_SOURCE_FIELD = Symbol('litemoraSchematicRuntimeSource')
+
+function cloneRuntimeOffset(offset = {}) {
+  return {
+    x: Math.floor(Number(offset.x || 0)),
+    y: Math.floor(Number(offset.y || 0)),
+    z: Math.floor(Number(offset.z || 0)),
+  }
+}
+
+function addRuntimeOffsets(baseOffset = {}, sourceOffset = {}) {
+  const base = cloneRuntimeOffset(baseOffset)
+  const source = cloneRuntimeOffset(sourceOffset)
+  return {
+    x: base.x + source.x,
+    y: base.y + source.y,
+    z: base.z + source.z,
+  }
+}
+
+function buildBufferSignature(arrayBuffer = null) {
+  if (!(arrayBuffer instanceof ArrayBuffer)) {
+    return ''
+  }
+
+  const bytes = new Uint8Array(arrayBuffer, 0, Math.min(32, arrayBuffer.byteLength))
+  return `${arrayBuffer.byteLength}:${Array.from(bytes).join(',')}`
+}
+
 /**
  * Minecraft 原理图服务
  * 解析 .litematic / .schem 文件并注入方块到地形
@@ -23,10 +52,67 @@ class SchematicService {
     this.nbtParser = null
   }
 
+  _attachRuntimeSource(schematic, arrayBuffer, options = {}) {
+    if (!schematic || !(arrayBuffer instanceof ArrayBuffer) || arrayBuffer.byteLength <= 0) {
+      return schematic
+    }
+
+    const sourceName = String(options.sourceName || schematic.name || 'runtime-schematic').trim()
+    const source = {
+      id: [
+        schematic.format || 'schematic',
+        sourceName,
+        buildBufferSignature(arrayBuffer),
+      ].join(':'),
+      name: sourceName,
+      buffer: arrayBuffer,
+      visualOffset: this._resolveRuntimeVisualOffset(schematic),
+    }
+
+    Object.defineProperty(schematic, RUNTIME_SOURCE_FIELD, {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: source,
+    })
+
+    return schematic
+  }
+
+  getRuntimeRenderSource(offset = { x: 0, y: 0, z: 0 }, schematic = this.currentSchematic) {
+    const source = schematic?.[RUNTIME_SOURCE_FIELD]
+    if (!source?.buffer) {
+      return null
+    }
+
+    return {
+      id: source.id,
+      name: source.name,
+      buffer: source.buffer,
+      offset: addRuntimeOffsets(offset, source.visualOffset),
+    }
+  }
+
+  _resolveRuntimeVisualOffset(schematic = null) {
+    if (schematic?.format !== 'schem') {
+      return { x: 0, y: 0, z: 0 }
+    }
+
+    const regions = Object.values(schematic.regions || {})
+    const region = regions[0] || null
+    return cloneRuntimeOffset(region?.position || {})
+  }
+
   async _yieldToMainThread() {
     await new Promise((resolve) => {
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => resolve())
+      if (typeof MessageChannel === 'function') {
+        const channel = new MessageChannel()
+        channel.port1.onmessage = () => {
+          channel.port1.close()
+          channel.port2.close()
+          resolve()
+        }
+        channel.port2.postMessage(null)
         return
       }
       setTimeout(resolve, 0)
@@ -129,6 +215,7 @@ class SchematicService {
   async _parseBuffer(arrayBuffer, options = {}) {
     const simplified = await this._parseNbtPayload(arrayBuffer)
     const schematic = this._normalizeParsedSchematic(simplified, options)
+    this._attachRuntimeSource(schematic, arrayBuffer, options)
 
     if (options.includeRawNbt) {
       schematic.rawNBT = simplified
@@ -403,7 +490,7 @@ class SchematicService {
   }
 
   _stripSchematicExtension(fileName = '') {
-    return String(fileName || '').replace(/\.(litematic|schem|schematic)$/iu, '')
+    return String(fileName || '').replace(/\.(?:litematic|schem|schematic)$/iu, '')
   }
 
   _toUint64BigInt(value) {
@@ -677,12 +764,12 @@ class SchematicService {
   /**
    * 获取原理图的预览信息
    */
-  getPreview() {
-    if (!this.currentSchematic) {
+  getPreview(schematic = this.currentSchematic) {
+    if (!schematic) {
       return null
     }
 
-    const { name, author, size, regions } = this.currentSchematic
+    const { name, author, size, regions } = schematic
     const regionCount = Object.keys(regions).length
 
     return {
@@ -838,8 +925,8 @@ class SchematicService {
       maxZ: Number.NEGATIVE_INFINITY,
     }
 
-    const blocksPerFrame = 1400
-    const chunksPerFrame = 6
+    const blocksPerFrame = 8192
+    const chunksPerFrame = 16
     let processedSinceYield = 0
 
     const totalSolidBlocks = this._estimateSolidBlockCount(schematic.regions)
@@ -935,12 +1022,13 @@ class SchematicService {
               const chunkKey = `${chunkX},${chunkZ}`
 
               const existing = chunkManager.minecraftSchematicLayer?.getBlock?.(worldX, worldY, worldZ)
-              chunkManager.setImportedMinecraftBlock?.(
+              chunkManager.setBaseImportedMinecraftBlock?.(
                 worldX,
                 worldY,
                 worldZ,
                 blockName,
                 paletteEntry?.properties || {},
+                { refreshTerrain: false },
               )
 
               if (existing) {
@@ -974,12 +1062,12 @@ class SchematicService {
       }
 
       chunkManager.syncMinecraftSchematicLayerState?.({
-        scheduleSave: persistModifications,
+        scheduleSave: false,
       })
 
       if (persistModifications) {
         stats.persisted = stats.placed + stats.replaced
-        chunkManager.persistence.save()
+        await chunkManager.persistence.save()
       }
 
       stats.touchedChunks = touchedChunkKeys.size
