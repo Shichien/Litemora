@@ -45,6 +45,10 @@ yarn-error.log*
 
 # local artifacts
 /output/
+/logs/
+/.playwright-cli/
+/tmp-vite.*.log
+/.wrangler/
 /progress.md
 /tmp-terrain-renderer-prev.js
 /.npm-cache/
