@@ -89,19 +89,6 @@ export const useSkinStore = defineStore('skin', () => {
   }
 
   // ----------------------------------------
-  // Helpers
-  // ----------------------------------------
-
-  /**
-   * 获取皮肤配置
-   * @param {string} skinId - 皮肤 ID
-   * @returns {object|undefined} 皮肤配置对象
-   */
-  function getSkinConfig(skinId) {
-    return SKIN_LIST.find(s => s.id === skinId)
-  }
-
-  // ----------------------------------------
   // Initialization
   // ----------------------------------------
 
@@ -126,8 +113,5 @@ export const useSkinStore = defineStore('skin', () => {
     setPreviewSkin,
     applySkin,
     cancelPreview,
-
-    // Helpers
-    getSkinConfig,
   }
 })

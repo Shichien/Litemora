@@ -7,6 +7,16 @@
     "resume": "继续游戏",
     "exitWorld": "退出世界"
   },
+  "loadError": {
+    "title": "世界加载失败",
+    "gallery_item_not_found": "这个世界不存在，或已被删除。",
+    "projection_source_file_missing": "找不到这个世界的原理图文件。",
+    "projection_metadata_load_failed": "无法读取这个世界的信息，可能已被删除或网络异常。",
+    "generic": "加载过程中出错了，请稍后重试。",
+    "retry": "重试",
+    "back": "返回世界列表",
+    "continue": "仍然进入"
+  },
   "settings": {
     "title": "游戏设置",
     "camera": "相机设置",

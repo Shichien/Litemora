@@ -136,6 +136,7 @@ function normalizeStreamingConfig(config = {}) {
   return {
     horizontalLoadRadius,
     verticalLoadRadius,
+    unloadPadding,
     horizontalUnloadRadius: horizontalLoadRadius + unloadPadding,
     verticalUnloadRadius: verticalLoadRadius + unloadPadding,
     maxConcurrentBuilds: clampInteger(
@@ -1758,6 +1759,24 @@ export default class SchematicRendererRuntimeBridge {
 
   isActive() {
     return !!(this.runtimeGroup && this.schematicObject)
+  }
+
+  /**
+   * 运行时修改卸载滞后（单位：运行时 16³ chunk），下一帧按新的卸载半径重新筛选常驻 chunk
+   * @returns {boolean} 配置是否发生变化。
+   */
+  setUnloadPadding(unloadPadding) {
+    const nextConfig = normalizeStreamingConfig({
+      ...this._streamConfig,
+      unloadPadding,
+    })
+    if (nextConfig.unloadPadding === this._streamConfig.unloadPadding) {
+      return false
+    }
+
+    this._streamConfig = nextConfig
+    this._streamCenterKey = ''
+    return true
   }
 
   update(options = {}) {

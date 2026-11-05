@@ -1,17 +1,8 @@
 /**
- * 方块与矿产元数据配置
- * 仅声明 id / 名称 / 纹理键 / 稀有度，不直接持有纹理实例
- * 渲染阶段统一使用共享几何体：new THREE.BoxGeometry(1, 1, 1)
+ * 方块元数据配置（快捷栏物品 / 选中框与挖掘覆盖层几何体）
+ * 仅声明 id / 名称 / 纹理键，不直接持有纹理实例；放置时经 getMinecraftBlockStateForBlockType 映射为 Minecraft 方块
  */
 import * as THREE from 'three'
-import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
-
-import aoFragmentShader from '../../../shaders/blocks/ao.frag.glsl'
-// 导入 AO 着色器
-import aoVertexShader from '../../../shaders/blocks/ao.vert.glsl'
-// 导入动画着色器
-import windVertexShader from '../../../shaders/blocks/wind.vert.glsl'
-import { requestAtlasTexture, resolveAtlasVirtualTextureKey } from './java-atlas-texture-provider.js'
 import { getMinecraftBlockCollisionProfile } from './minecraft-block-data.js'
 
 // 方块 ID 常量，便于在代码中保持一致引用
@@ -57,31 +48,6 @@ export const BLOCK_IDS = {
   PEARLESCENT_FROGLIGHT: 30,
   STONE_SLAB: 31,
   STONE_STAIRS: 32,
-}
-
-/**
- * 动画类型默认参数
- * 用于配置不同类型的方块动画效果
- */
-const ANIMATION_DEFAULTS = {
-  wind: {
-    windSpeed: 2.0, // 风速，影响摇摆频率
-    swayAmplitude: 0.7, // 摇摆幅度
-    phaseScale: 2.0, // 相位缩放，控制不同树的差异程度
-  },
-  // 预留其他动画类型
-  // pulse: { frequency: 1.0, intensity: 0.1 },
-  // wave: { speed: 1.0, amplitude: 0.05 },
-}
-
-/**
- * 动画着色器映射表
- * 根据 animationType 获取对应的着色器代码
- */
-const ANIMATION_SHADERS = {
-  wind: windVertexShader,
-  // pulse: pulseVertexShader, // 预留
-  // wave: waveVertexShader,   // 预留
 }
 
 /**
@@ -400,9 +366,6 @@ export const blocks = {
   },
 }
 
-const DYNAMIC_BLOCK_ID_START = 1000
-const dynamicBlockBySignature = new Map()
-
 let blockByIdCache = null
 let blockByIdCacheSize = -1
 
@@ -424,297 +387,36 @@ export function getBlockTypeById(id) {
   return blockByIdCache[id]
 }
 
-export function ensureDynamicBlockType(textureName, options = {}) {
-  if (!textureName) {
-    return null
-  }
-
-  const geometryType = options.geometryType || 'cube'
-  const signature = `${textureName}::${geometryType}`
-
-  if (dynamicBlockBySignature.has(signature)) {
-    return dynamicBlockBySignature.get(signature)
-  }
-
-  const preferredId = Number(options.preferredId)
-  const canUsePreferredId = Number.isFinite(preferredId)
-    && preferredId > 0
-    && !getBlockTypeById(preferredId)
-
-  const dynamicIndex = dynamicBlockBySignature.size
-  const blockType = {
-    id: canUsePreferredId ? preferredId : (DYNAMIC_BLOCK_ID_START + dynamicIndex),
-    name: options.blockName || textureName,
-    visible: true,
-    textureKeys: {
-      all: textureName,
-    },
-    geometryType,
-  }
-
-  const hintSource = `${options.blockName || ''} ${textureName}`.toLowerCase()
-  if (hintSource.includes('glass') || hintSource.includes('ice')) {
-    blockType.transparent = true
-    blockType.opacity = 0.45
-    blockType.depthWrite = false
-  }
-  else if (hintSource.includes('iron_bars') || hintSource.includes('_bars')) {
-    blockType.transparent = true
-    blockType.alphaTest = 0.5
-    blockType.depthWrite = false
-  }
-
-  if (hintSource.includes('vine') || hintSource.includes('torch')) {
-    blockType.transparent = true
-    blockType.alphaTest = blockType.alphaTest ?? 0.5
-    blockType.depthWrite = false
-  }
-
-  if (geometryType === 'plant_cross') {
-    blockType.transparent = true
-    blockType.alphaTest = blockType.alphaTest ?? 0.5
-    blockType.depthWrite = false
-    blockType.side = THREE.DoubleSide
-  }
-
-  if (geometryType === 'potted_plant') {
-    blockType.transparent = true
-    blockType.alphaTest = blockType.alphaTest ?? 0.5
-    blockType.depthWrite = false
-    blockType.side = THREE.DoubleSide
-  }
-
-  if (geometryType === 'fire_cross' || geometryType.startsWith('rail_')) {
-    blockType.transparent = true
-    blockType.alphaTest = blockType.alphaTest ?? 0.5
-    blockType.depthWrite = false
-  }
-
-  if (hintSource.includes('leaves')) {
-    blockType.mixColor = 0x5E9C45
-    blockType.alphaTest = blockType.alphaTest ?? 0.5
-    blockType.transparent = true
-  }
-
-  if (hintSource.includes('grass_block') || hintSource.includes('grass')) {
-    blockType.mixColor = blockType.mixColor ?? 0x7FBF3F
-  }
-
-  const key = `dynamicBedrock_${dynamicIndex}`
-  blocks[key] = blockType
-  dynamicBlockBySignature.set(signature, blockType)
-
-  blockByIdCache = null
-  blockByIdCacheSize = -1
-
-  return blockType
+// 旧方块 id（快捷栏物品）→ Minecraft 方块名 + 默认属性，放置时写入原理图运行时层
+const LEGACY_BLOCK_MINECRAFT_STATE = {
+  grass: { name: 'grass_block', properties: { snowy: 'false' } },
+  tree_trunk: { name: 'oak_log', properties: { axis: 'y' } },
+  tree_leaves: { name: 'oak_leaves', properties: { distance: '7', persistent: 'true', waterlogged: 'false' } },
+  birch_trunk: { name: 'birch_log', properties: { axis: 'y' } },
+  birch_leaves: { name: 'birch_leaves', properties: { distance: '7', persistent: 'true', waterlogged: 'false' } },
+  cherry_trunk: { name: 'cherry_log', properties: { axis: 'y' } },
+  cherry_leaves: { name: 'cherry_leaves', properties: { distance: '7', persistent: 'true', waterlogged: 'false' } },
+  cactus: { name: 'cactus', properties: { age: '0' } },
+  snow: { name: 'snow_block', properties: {} },
+  ochre_froglight: { name: 'ochre_froglight', properties: { axis: 'y' } },
+  pearlescent_froglight: { name: 'pearlescent_froglight', properties: { axis: 'y' } },
 }
 
-// 需要通过 3D 噪声生成的矿产列表
-export const resources = [
-  blocks.stone,
-  blocks.coalOre,
-  blocks.ironOre,
-]
-
 /**
- * 根据方块类型和资源纹理，生成材质（草方块返回 6 面材质数组）
- * @param {object} blockType 方块配置
- * @param {Record<string, THREE.Texture>} textureItems 资源管理器加载的纹理
- * @returns {THREE.Material|THREE.Material[]|null} 生成的材质（或材质数组），缺失纹理时返回 null
+ * 旧方块类型对应的 Minecraft 方块状态（不含 slab/stairs 这类依赖放置朝向的属性）
+ * @returns {{ name: string, properties: Record<string, string> } | null} 无法映射时返回 null。
  */
-export function createMaterials(blockType, textureItems) {
-  if (blockType.id === blocks.empty.id)
+export function getMinecraftBlockStateForBlockType(blockType) {
+  const legacyName = String(blockType?.name || '').trim().replace(/^minecraft:/u, '')
+  if (!legacyName || legacyName === blocks.empty.name) {
     return null
-
-  const getOrCreateMissingTexture = () => {
-    if (textureItems.__missing_block_texture) {
-      return textureItems.__missing_block_texture
-    }
-
-    let texture = null
-    if (typeof document !== 'undefined') {
-      const canvas = document.createElement('canvas')
-      canvas.width = 16
-      canvas.height = 16
-      const context = canvas.getContext('2d')
-
-      if (context) {
-        context.fillStyle = '#ff00ff'
-        context.fillRect(0, 0, 16, 16)
-        context.fillStyle = '#111111'
-        context.fillRect(0, 0, 8, 8)
-        context.fillRect(8, 8, 8, 8)
-      }
-
-      texture = new THREE.CanvasTexture(canvas)
-    }
-    else {
-      const pixels = new Uint8Array([
-        255,
-        0,
-        255,
-        255,
-        17,
-        17,
-        17,
-        255,
-        17,
-        17,
-        17,
-        255,
-        255,
-        0,
-        255,
-        255,
-      ])
-      texture = new THREE.DataTexture(pixels, 2, 2)
-      texture.needsUpdate = true
-    }
-
-    texture.magFilter = THREE.NearestFilter
-    texture.minFilter = THREE.NearestFilter
-    texture.colorSpace = THREE.SRGBColorSpace
-    textureItems.__missing_block_texture = texture
-    return texture
   }
 
-  const ensureTexture = (key) => {
-    const atlasResolvedKey = resolveAtlasVirtualTextureKey(key)
-    const tex = requestAtlasTexture(atlasResolvedKey || key) || textureItems[key] || getOrCreateMissingTexture()
-    tex.magFilter = THREE.NearestFilter
-    tex.minFilter = THREE.NearestFilter
-    tex.colorSpace = THREE.SRGBColorSpace
-    return tex
+  const mapped = LEGACY_BLOCK_MINECRAFT_STATE[legacyName]
+  return {
+    name: mapped?.name || legacyName,
+    properties: { ...(mapped?.properties || {}) },
   }
-
-  /**
-   * 构建动画材质的 uniforms 和着色器
-   * @param {object} blockType 方块配置
-   * @returns {{ uniforms: object, vertexShader: string } | null} 动画配置对象，无动画时返回 null
-   */
-  const buildAnimationConfig = (blockType) => {
-    if (!blockType.animated || !blockType.animationType)
-      return null
-
-    const animationType = blockType.animationType
-    const shaderCode = ANIMATION_SHADERS[animationType]
-
-    if (!shaderCode) {
-      console.warn(`Unknown animation type: ${animationType}`)
-      return null
-    }
-
-    // 合并默认参数和自定义参数
-    const defaults = ANIMATION_DEFAULTS[animationType] || {}
-    const params = { ...defaults, ...blockType.animationParams }
-
-    // 构建 uniforms 对象
-    const uniforms = {
-      uTime: { value: 0 },
-    }
-
-    // 根据动画类型添加特定 uniforms
-    if (animationType === 'wind') {
-      uniforms.uWindSpeed = { value: params.windSpeed }
-      uniforms.uSwayAmplitude = { value: params.swayAmplitude }
-      uniforms.uPhaseScale = { value: params.phaseScale }
-    }
-    // 预留其他动画类型的 uniforms 配置
-    // else if (animationType === 'pulse') { ... }
-
-    return {
-      uniforms,
-      vertexShader: shaderCode,
-    }
-  }
-
-  // 使用 custom shader 包装的标准材质，便于后续扩展
-  const makeCustomMaterial = (tex, options = {}) => {
-    // 获取动画配置（如果有）
-    const animConfig = buildAnimationConfig(blockType)
-
-    // 基础材质配置
-    const materialConfig = {
-      baseMaterial: THREE.MeshPhongMaterial,
-      map: tex,
-      flatShading: true,
-      // 合并额外的材质参数，如 alphaTest, transparent 等
-      ...options,
-    }
-
-    // 始终注入 AO 着色器（非透明方块）
-    // 透明方块（如树叶）不使用 AO，避免视觉问题
-    const useAO = !blockType.transparent
-
-    if (useAO) {
-      // 合并 AO 顶点着色器
-      let vertexShader = aoVertexShader
-
-      // 如果同时有动画，需要合并着色器
-      if (animConfig) {
-        // 动画材质：AO + 动画
-        // TODO: 合并两个顶点着色器（当前先使用动画着色器，后续迭代）
-        vertexShader = animConfig.vertexShader
-        materialConfig.uniforms = animConfig.uniforms
-      }
-
-      materialConfig.vertexShader = vertexShader
-      materialConfig.fragmentShader = aoFragmentShader
-    }
-    else if (animConfig) {
-      // 仅动画（透明方块如树叶）
-      materialConfig.uniforms = animConfig.uniforms
-      materialConfig.vertexShader = animConfig.vertexShader
-    }
-
-    const material = new CustomShaderMaterial(materialConfig)
-
-    // 标记是否为动画材质，供渲染器追踪
-    material._isAnimated = !!animConfig
-    material._animationType = blockType.animationType || null
-
-    return material
-  }
-
-  // 提取通用的材质参数
-  const materialOptions = {}
-  if (blockType.alphaTest !== undefined)
-    materialOptions.alphaTest = blockType.alphaTest
-  if (blockType.transparent !== undefined)
-    materialOptions.transparent = blockType.transparent
-  if (blockType.mixColor !== undefined)
-    materialOptions.color = new THREE.Color(blockType.mixColor)
-  if (blockType.opacity !== undefined)
-    materialOptions.opacity = blockType.opacity
-  if (blockType.depthWrite !== undefined)
-    materialOptions.depthWrite = blockType.depthWrite
-  if (blockType.side !== undefined)
-    materialOptions.side = blockType.side
-
-  // 六面贴图方块：草/树干（右、左、上、下、前、后）
-  if (blockType.textureKeys?.side && blockType.textureKeys?.top && blockType.textureKeys?.bottom) {
-    const side = ensureTexture(blockType.textureKeys.side)
-    const top = ensureTexture(blockType.textureKeys.top)
-    const bottom = ensureTexture(blockType.textureKeys.bottom)
-    if (!side || !top || !bottom)
-      return null
-
-    return [
-      makeCustomMaterial(side, materialOptions), // right
-      makeCustomMaterial(side, materialOptions), // left
-      makeCustomMaterial(top, materialOptions), // top
-      makeCustomMaterial(bottom, materialOptions), // bottom
-      makeCustomMaterial(side, materialOptions), // front
-      makeCustomMaterial(side, materialOptions), // back
-    ]
-  }
-
-  // 其余方块：单一材质
-  const mainTexture = ensureTexture(blockType.textureKeys.all)
-  if (!mainTexture)
-    return null
-  return makeCustomMaterial(mainTexture, materialOptions)
 }
 
 /**

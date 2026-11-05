@@ -19,7 +19,7 @@ import {
 // ========================================
 const STORAGE_KEY = 'mc-game-settings'
 
-const DEFAULT_SETTINGS = {
+export const DEFAULT_SETTINGS = {
   // Graphics
   shadowQuality: 'high', // 'low' | 'medium' | 'high'
 

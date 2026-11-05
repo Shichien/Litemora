@@ -800,7 +800,6 @@ class SchematicService {
     }
 
     const blocksPerFrame = 8192
-    const chunksPerFrame = 16
     let processedSinceYield = 0
 
     const totalSolidBlocks = this._estimateSolidBlockCount(schematic.regions)
@@ -828,28 +827,6 @@ class SchematicService {
     if (replaceWorld) {
       chunkManager.setMinecraftRenderOverlayActive?.(false)
       chunkManager.minecraftSchematicLayer?.clear?.()
-      chunkManager.persistence?.clearAllModifications?.()
-
-      const loadedChunks = Array.from(chunkManager.chunks?.entries?.() || [])
-      for (let index = 0; index < loadedChunks.length; index++) {
-        const [chunkKey, chunk] = loadedChunks[index]
-        if (!chunk || chunk.state === 'disposed') {
-          continue
-        }
-
-        chunk.dispose?.()
-        chunkManager.chunks?.delete?.(chunkKey)
-        stats.worldClearedChunks++
-
-        reportProgress('clearing-world', {
-          clearedChunks: stats.worldClearedChunks,
-          totalLoadedChunks: loadedChunks.length,
-        })
-
-        if ((index + 1) % chunksPerFrame === 0) {
-          await this._yieldToMainThread()
-        }
-      }
     }
 
     for (const region of Object.values(schematic.regions)) {
@@ -943,7 +920,6 @@ class SchematicService {
     }
 
     stats.touchedChunks = touchedChunkKeys.size
-    chunkManager._updateStats?.()
 
     reportProgress('done', {
       touchedChunks: stats.touchedChunks,

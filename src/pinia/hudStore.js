@@ -43,6 +43,9 @@ export const useHudStore = defineStore('hud', () => {
   /** Player facing angle in radians (0 = +Z, PI/2 = +X) */
   const facingAngle = ref(0)
 
+  /** Block edit mode from BlockInteractionManager: 'remove' | 'add' */
+  const blockEditMode = ref('remove')
+
   // ========================================
   // Actions
   // ========================================
@@ -79,14 +82,7 @@ export const useHudStore = defineStore('hud', () => {
    * @param {number} delta - +1 or -1
    */
   function cycleSlot(delta) {
-    let newSlot = selectedSlot.value + delta
-    if (newSlot < 0)
-      newSlot = 8
-    if (newSlot > 8)
-      newSlot = 0
-    selectedSlot.value = newSlot
-    // Notify Three.js interaction manager of the new selected block
-    emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
+    selectSlot((selectedSlot.value + Math.sign(delta) + 9) % 9)
   }
 
   /**
@@ -161,6 +157,10 @@ export const useHudStore = defineStore('hud', () => {
     emitter.emit('hud:selected-block-update', { blockId: getSelectedBlockId() })
   }
 
+  function handleEditModeChanged({ mode } = {}) {
+    blockEditMode.value = mode === 'add' ? 'add' : 'remove'
+  }
+
   function setupListeners() {
     emitter.on('hud:update', updatePlayerInfo)
     emitter.on('hud:select-slot', selectSlot)
@@ -168,6 +168,7 @@ export const useHudStore = defineStore('hud', () => {
     emitter.on('hud:add-item', handleAddItem)
     emitter.on('hud:request-selected-block', handleRequestSelectedBlock)
     emitter.on('hud:consume-selected-item', handleConsumeSelectedItem)
+    emitter.on('game:block_edit_mode_changed', handleEditModeChanged)
   }
 
   function cleanupListeners() {
@@ -177,6 +178,8 @@ export const useHudStore = defineStore('hud', () => {
     emitter.off('hud:add-item', handleAddItem)
     emitter.off('hud:request-selected-block', handleRequestSelectedBlock)
     emitter.off('hud:consume-selected-item', handleConsumeSelectedItem)
+    emitter.off('game:block_edit_mode_changed', handleEditModeChanged)
+    blockEditMode.value = 'remove'
   }
 
   // ========================================
@@ -187,6 +190,7 @@ export const useHudStore = defineStore('hud', () => {
     // Hotbar
     selectedSlot,
     hotbarItems,
+    blockEditMode,
 
     // Position & Facing
     position,

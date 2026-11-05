@@ -7,6 +7,16 @@
     "resume": "Resume",
     "exitWorld": "Exit World"
   },
+  "loadError": {
+    "title": "Failed to load world",
+    "gallery_item_not_found": "This world does not exist or has been deleted.",
+    "projection_source_file_missing": "The schematic file for this world could not be found.",
+    "projection_metadata_load_failed": "Could not read this world's info. It may have been deleted, or the network failed.",
+    "generic": "Something went wrong while loading. Please try again.",
+    "retry": "Retry",
+    "back": "Back to worlds",
+    "continue": "Enter anyway"
+  },
   "settings": {
     "title": "Settings",
     "camera": "Camera",

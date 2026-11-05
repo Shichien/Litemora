@@ -1,8 +1,7 @@
 /**
- * TerrainPersistence：地形修改持久化管理
- * - 记录玩家对地形的所有修改（增删方块）
- * - 保存到 localStorage/IndexedDB
- * - chunk 生成后自动应用修改
+ * TerrainPersistence：世界状态持久化
+ * - 保存 worldState（含 minecraftSchematicLayer 快照）到 localStorage/IndexedDB
+ * - 旧体素地形的 `modifications` 已移除：读取时忽略，导出时恒为空对象（保持快照格式兼容）
  */
 const TERRAIN_DB_NAME = 'litemora-terrain-persistence'
 const TERRAIN_DB_STORE = 'snapshots'
@@ -65,15 +64,7 @@ async function writeTerrainRecord(id, value) {
   }
 }
 
-function hasMeaningfulTerrainState(worldState = {}, modifications = {}) {
-  if (modifications && typeof modifications === 'object') {
-    for (const value of Object.values(modifications)) {
-      if (value && typeof value === 'object' && Object.keys(value).length > 0) {
-        return true
-      }
-    }
-  }
-
+function hasMeaningfulTerrainState(worldState = {}) {
   const minecraftChunks = worldState?.minecraftSchematicLayer?.chunks
   if (minecraftChunks && typeof minecraftChunks === 'object') {
     for (const chunk of Object.values(minecraftChunks)) {
@@ -107,11 +98,6 @@ export default class TerrainPersistence {
       schematicOnlyMode: false,
     }
 
-    // 每个 chunk 的修改记录：Map<chunkKey, Map<blockKey, blockId>>
-    // chunkKey: "x,z"
-    // blockKey: "x,y,z" (chunk 局部坐标)
-    // blockId: 方块类型 ID (0 表示删除)
-    this.modifications = new Map()
     this.ready = Promise.resolve()
     this.lastSavePromise = Promise.resolve(true)
 
@@ -148,45 +134,6 @@ export default class TerrainPersistence {
     }
   }
 
-  /**
-   * 获取 chunk 的存储 key
-   */
-  _chunkKey(chunkX, chunkZ) {
-    return `${chunkX},${chunkZ}`
-  }
-
-  /**
-   * 获取某个 chunk 的所有修改
-   * @returns {Map<string, number>} blockKey -> blockId
-   */
-  getChunkModifications(chunkX, chunkZ) {
-    const key = this._chunkKey(chunkX, chunkZ)
-    return this.modifications.get(key) || new Map()
-  }
-
-  /**
-   * 获取所有存在修改记录的 chunk 坐标
-   * @returns {Array<{chunkX:number, chunkZ:number}>} 已保存修改涉及的 chunk 坐标列表。
-   */
-  getModifiedChunkCoords() {
-    const coords = []
-    for (const chunkKey of this.modifications.keys()) {
-      const [chunkX, chunkZ] = chunkKey.split(',').map(Number)
-      if (!Number.isFinite(chunkX) || !Number.isFinite(chunkZ)) {
-        continue
-      }
-      coords.push({ chunkX, chunkZ })
-    }
-    return coords
-  }
-
-  /**
-   * 清空所有修改记录
-   */
-  clearAllModifications() {
-    this.modifications.clear()
-  }
-
   setWorldState(patch = {}) {
     this.worldState = {
       ...this.worldState,
@@ -200,39 +147,17 @@ export default class TerrainPersistence {
     }
   }
 
-  /**
-   * 序列化为可保存的格式
-   */
-  serialize() {
-    const data = {}
-    for (const [chunkKey, blocks] of this.modifications.entries()) {
-      data[chunkKey] = Object.fromEntries(blocks)
-    }
-    return data
-  }
-
   exportSnapshot() {
     return {
       worldState: { ...this.worldState },
-      modifications: this.serialize(),
-    }
-  }
-
-  /**
-   * 从序列化数据恢复
-   */
-  deserialize(data) {
-    this.modifications.clear()
-    for (const [chunkKey, blocks] of Object.entries(data)) {
-      const blockMap = new Map(Object.entries(blocks).map(([k, v]) => [k, Number(v)]))
-      this.modifications.set(chunkKey, blockMap)
+      // 旧体素地形修改格式已废弃；保留空字段让 world-state 编解码与后端保持兼容
+      modifications: {},
     }
   }
 
   applySnapshot(snapshot = {}, { persist = true } = {}) {
     const worldState = snapshot?.worldState || {}
-    const modifications = snapshot?.modifications || {}
-    const hasMeaningfulContent = hasMeaningfulTerrainState(worldState, modifications)
+    const hasMeaningfulContent = hasMeaningfulTerrainState(worldState)
 
     // Preserve full worldState including minecraftSchematicLayer for schematic persistence
     this.worldState = {
@@ -241,7 +166,6 @@ export default class TerrainPersistence {
       schematicOnlyMode: (worldState.schematicOnlyMode ?? this.worldState?.schematicOnlyMode ?? false)
         && hasMeaningfulContent,
     }
-    this.deserialize(modifications)
 
     if (persist) {
       return this.save()
@@ -290,8 +214,7 @@ export default class TerrainPersistence {
 
   async _saveToLocalStorage() {
     try {
-      const data = this.serialize()
-      localStorage.setItem(this._modsStorageKey(), JSON.stringify(data))
+      localStorage.removeItem(this._modsStorageKey())
 
       if (this._shouldStoreWorldStateInIndexedDB()) {
         const key = this._worldStateRecordKey()
@@ -313,14 +236,6 @@ export default class TerrainPersistence {
 
   async _loadFromLocalStorage() {
     try {
-      const json = localStorage.getItem(this._modsStorageKey())
-      if (json) {
-        const data = JSON.parse(json)
-        if (data?.format !== INDEXED_DB_MARKER_FORMAT) {
-          this.deserialize(data)
-        }
-      }
-
       const worldStateRaw = localStorage.getItem(this._stateStorageKey())
       if (worldStateRaw) {
         const parsedState = JSON.parse(worldStateRaw)
@@ -336,7 +251,7 @@ export default class TerrainPersistence {
             this.worldState = {
               ...normalizedWorldState,
               schematicOnlyMode: normalizedWorldState.schematicOnlyMode
-                && hasMeaningfulTerrainState(normalizedWorldState, this.modifications),
+                && hasMeaningfulTerrainState(normalizedWorldState),
             }
           }
         }
@@ -345,7 +260,7 @@ export default class TerrainPersistence {
           this.worldState = {
             ...normalizedWorldState,
             schematicOnlyMode: normalizedWorldState.schematicOnlyMode
-              && hasMeaningfulTerrainState(normalizedWorldState, this.modifications),
+              && hasMeaningfulTerrainState(normalizedWorldState),
           }
         }
       }
@@ -390,19 +305,5 @@ export default class TerrainPersistence {
     }
 
     return this._loadFromLocalStorage()
-  }
-
-  /**
-   * 获取统计信息
-   */
-  getStats() {
-    let totalModifications = 0
-    for (const blocks of this.modifications.values()) {
-      totalModifications += blocks.size
-    }
-    return {
-      chunkCount: this.modifications.size,
-      totalModifications,
-    }
   }
 }

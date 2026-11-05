@@ -80,8 +80,8 @@ function axisNormal(axis, direction) {
 
 /**
  * BlockRaycaster
- * - 面向 InstancedMesh 的方块拾取
- * - 支持 chunk 场景：通过 chunk 的 group userData 还原世界坐标（网格坐标 + 真实世界坐标）
+ * - 原理图渲染层 / 红石动态方块：InstancedMesh 求交
+ * - 运行时（WASM）原理图层：按 chunkManager 方块数据做体素步进
  * - 结果保存在 this.current，由 BlockSelectionHelper 等在 update 中轮询读取
  */
 export default class BlockRaycaster {
@@ -106,7 +106,6 @@ export default class BlockRaycaster {
     // 缓存对象，避免每帧分配
     this._instanceMatrix = new THREE.Matrix4()
     this._worldMatrix = new THREE.Matrix4()
-    this._localPos = new THREE.Vector3()
     this._worldPos = new THREE.Vector3()
     this._hitPoint = new THREE.Vector3()
     this._hitNormal = new THREE.Vector3()
@@ -162,7 +161,7 @@ export default class BlockRaycaster {
    * 每帧更新：做一次拾取并广播“hover 方块信息”
    */
   update() {
-    if (!this.params.enabled || !this.chunkManager?.chunks) {
+    if (!this.params.enabled || !this.chunkManager) {
       this._clear()
       return
     }
@@ -223,18 +222,11 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
   }
 
   /**
-   * 收集当前可拾取的目标对象
-   * - 使用每个 chunk 的 renderer.group 作为根对象（true 递归即可）
+   * 收集当前可拾取的目标对象：原理图渲染层的 mesh + 红石回放的动态方块
+   * - 运行时（WASM）原理图层不走 mesh 求交，改为按方块数据做体素步进
    */
   _collectTargets() {
     const meshTargets = []
-    for (const chunk of this.chunkManager.chunks.values()) {
-      const g = chunk?.renderer?.group
-      if (g) {
-        meshTargets.push(g)
-      }
-    }
-
     const playerPosition = this.experience.world?.player?.getPosition?.() || null
     const schematicTargets = this.experience.world?.minecraftSchematicRenderLayer?.getRaycastTargets?.(
       playerPosition,
@@ -286,7 +278,7 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       return this._buildMinecraftSchematicHitInfo(hit)
     }
 
-    return this._buildLegacyHitInfo(hit)
+    return null
   }
 
   _raycastWasmSchematicLayer() {
@@ -551,78 +543,6 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     return runtimeDistance < meshDistance
       ? runtimeInfo
       : meshInfo
-  }
-
-  _buildLegacyHitInfo(hit) {
-    const mesh = hit.object
-    const instanceId = hit.instanceId
-
-    // chunk 信息：由 TerrainChunk 写入 group.userData
-    const group = mesh.parent
-    const chunkX = group?.userData?.chunkX ?? null
-    const chunkZ = group?.userData?.chunkZ ?? null
-    const originX = group?.userData?.originX ?? 0
-    const originZ = group?.userData?.originZ ?? 0
-
-    // 逻辑网格参数：与碰撞/采样一致（scale 仅用于视觉调试）
-    const heightScale = this.chunkManager?.renderParams?.heightScale ?? 1
-    const renderScale = this.chunkManager?.renderParams?.scale ?? 1
-
-    // 1) instanceMatrix -> 局部位置（chunk 局部坐标）
-    mesh.getMatrixAt(instanceId, this._instanceMatrix)
-    this._localPos.setFromMatrixPosition(this._instanceMatrix)
-
-    // 注意：y 在构建矩阵时被乘了 heightScale，需要反解回“方块索引 y”
-    const localX = Math.round(this._localPos.x)
-    const localZ = Math.round(this._localPos.z)
-    const localY = Math.round(this._localPos.y / heightScale)
-
-    // 2) 世界网格坐标（chunk 原点 + local）
-    const worldBlockX = originX + localX
-    const worldBlockZ = originZ + localZ
-    const worldBlockY = localY
-
-    // 3) Three.js 真实世界坐标：matrixWorld * instanceMatrix
-    // 用于 selection helper / 后续交互特效
-    this._worldMatrix.multiplyMatrices(mesh.matrixWorld, this._instanceMatrix)
-    this._worldPos.setFromMatrixPosition(this._worldMatrix)
-
-    // 4) 方块数据：优先用容器查询（避免 mesh.userData 在未来变化时失真）
-    const block = this.chunkManager.getBlockWorld(worldBlockX, worldBlockY, worldBlockZ)
-    const blockId = block?.id ?? mesh.userData?.blockId ?? blocks.empty.id
-    const blockName = block?.minecraftBlock?.name || mesh.userData?.blockName
-
-    return {
-      // chunk 信息
-      chunkX,
-      chunkZ,
-      origin: { x: originX, z: originZ },
-
-      // instance 信息
-      instanceId,
-      blockId,
-      blockName,
-
-      // 坐标信息
-      local: { x: localX, y: worldBlockY, z: localZ },
-      worldBlock: { x: worldBlockX, y: worldBlockY, z: worldBlockZ },
-      worldPosition: this._worldPos.clone(),
-
-      // 渲染参数（供 helper 对齐）
-      renderScale,
-      heightScale,
-
-      // 命中点（可能不是方块中心，但对“放置/破坏朝向”有用）
-      point: hit.point?.clone?.() ?? null,
-      face: hit.face ?? null,
-      distance: hit.distance ?? null,
-
-      source: block?.source || 'legacy',
-      minecraftBlock: block?.minecraftBlock || null,
-      isImportedMinecraft: !!block?.isImportedMinecraft,
-      collisionBoxes: block?.collisionBoxes || null,
-      blockString: null,
-    }
   }
 
   _buildMinecraftSchematicHitInfo(hit) {

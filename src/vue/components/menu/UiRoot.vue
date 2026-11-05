@@ -22,6 +22,12 @@ function syncReadyStateFromRuntime() {
     return
   }
 
+  // UiRoot loads asynchronously; an error may have fired before it mounted.
+  const earlyError = window.Experience?.bootstrapError
+  if (earlyError) {
+    ui.setLoadError(earlyError)
+  }
+
   if (window.Experience?.world?.isSceneReady) {
     handleSceneReady()
   }
@@ -30,6 +36,7 @@ function syncReadyStateFromRuntime() {
 // Transition from loading only after the scene is actually playable.
 onMounted(() => {
   emitter.on('world:scene-ready', handleSceneReady)
+  emitter.on('projection:bootstrap-error', handleBootstrapError)
   emitter.on('ui:escape', handleEscape)
   window.addEventListener('blur', handleWindowBlur)
   syncReadyStateFromRuntime()
@@ -37,13 +44,25 @@ onMounted(() => {
 
 onUnmounted(() => {
   emitter.off('world:scene-ready', handleSceneReady)
+  emitter.off('projection:bootstrap-error', handleBootstrapError)
   emitter.off('ui:escape', handleEscape)
   window.removeEventListener('blur', handleWindowBlur)
 })
 
+function handleBootstrapError(payload) {
+  if (ui.screen === 'loading') {
+    ui.setLoadError(payload)
+  }
+}
+
 function handleSceneReady() {
   // A new Experience has fresh listeners; give it the user's current settings.
   settings.emitAllSettings()
+  if (ui.loadError) {
+    // Keep the error visible; the loading screen offers "continue anyway".
+    ui.markLoadErrorSceneReady()
+    return
+  }
   ui.bootstrapBackendWorld()
 }
 

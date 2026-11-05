@@ -342,21 +342,8 @@ async function persistWorldStateLocally(storageKey, payload) {
 }
 
 function hasSnapshotContent(snapshot = null) {
-  const modifications = snapshot?.modifications
-  if (modifications && typeof modifications === 'object') {
-    for (const value of Object.values(modifications)) {
-      if (value && typeof value === 'object' && Object.keys(value).length > 0) {
-        return true
-      }
-    }
-  }
-
-  // Check if schematic actually has block data, not just empty chunk structures
-  if (hasSchematicBlockContent(snapshot)) {
-    return true
-  }
-
-  return false
+  // 旧体素地形的 snapshot.modifications 已不再渲染，只看原理图层是否真的有方块
+  return hasSchematicBlockContent(snapshot)
 }
 
 /**
@@ -900,23 +887,13 @@ export default class World {
     let result
     if (runtimeOnly) {
       const replaceWorld = options.replaceWorld !== false
-      let worldClearedChunks = 0
 
       if (replaceWorld) {
         this.chunkManager?.setMinecraftRenderOverlayActive?.(false)
         this.chunkManager?.minecraftSchematicLayer?.clear?.()
-
-        const loadedChunks = Array.from(this.chunkManager?.chunks?.entries?.() || [])
-        for (const [chunkKey, chunk] of loadedChunks) {
-          chunk?.dispose?.()
-          this.chunkManager?.chunks?.delete?.(chunkKey)
-          worldClearedChunks++
-        }
-
         this.chunkManager?.syncMinecraftSchematicLayerState?.({
           scheduleSave: false,
         })
-        this.chunkManager?._updateStats?.()
       }
 
       const totalBlocks = getRuntimeRenderBlockCount(this._minecraftSchematicRuntimeSource)
@@ -943,7 +920,7 @@ export default class World {
         persisted: 0,
         skipped: 0,
         touchedChunks: 0,
-        worldClearedChunks,
+        worldClearedChunks: 0,
         skippedOutOfHeight: 0,
       }
     }
@@ -1069,8 +1046,6 @@ export default class World {
       await nextManager.persistence.applySnapshot(snapshot, { persist: true })
       nextManager.restoreRuntimeStateFromPersistence?.()
     }
-
-    nextManager.initInitialGrid()
 
     previousManager.destroy()
 
@@ -1307,10 +1282,9 @@ export default class World {
     }
   }
 
-  _onMinecraftBlockPlace() {
-    if (this.chunkManager?.minecraftRenderOverlayActive) {
-      this._scheduleMinecraftSchematicRenderLayerSync()
-    }
+  _onMinecraftBlockPlace(payload = {}) {
+    // 放置与开关交互走同一条会话层补丁路径，渲染层同步规则一致
+    this._onMinecraftBlockUse(payload)
   }
 
   _onMinecraftBlockUse(payload = {}) {
@@ -1498,7 +1472,7 @@ export default class World {
     }
   }
 
-  /** 地形：ChunkManager + 暴露 terrainDataManager + 初始网格 */
+  /** 地形：ChunkManager（Minecraft 方块数据层）+ 暴露 terrainDataManager */
   async _initTerrain(config = null, sharedWorldState = null) {
     const activeSpace = getActiveSpaceName()
     const activeProjectionId = getActiveProjectionId()
@@ -1506,11 +1480,13 @@ export default class World {
     const backendChunk = config?.settings?.chunk || {}
     const chunkHeight = backendChunk.height ?? CHUNK_BASIC_CONFIG.chunkHeight
     const viewDistance = backendChunk.viewDistance ?? CHUNK_BASIC_CONFIG.viewDistance
+    const unloadPadding = useSettingsStore().chunkUnloadPadding ?? CHUNK_BASIC_CONFIG.unloadPadding
 
     this.chunkManager = new ChunkManager({
       chunkWidth: CHUNK_BASIC_CONFIG.chunkWidth,
       chunkHeight,
       viewDistance,
+      unloadPadding,
       worldName: scopedWorldName || 'default',
     })
     await this.chunkManager.waitForPersistenceReady?.()
@@ -1521,7 +1497,6 @@ export default class World {
     }
 
     this.experience.terrainDataManager = this.chunkManager
-    this.chunkManager.initInitialGrid()
 
     const runtimeSnapshot = this.chunkManager.persistence?.exportSnapshot?.() || null
     if (!hasSnapshotContent(sharedWorldState) && hasSnapshotContent(runtimeSnapshot)) {
@@ -1592,17 +1567,17 @@ export default class World {
         return
       if (data.viewDistance !== undefined)
         this.chunkManager.viewDistance = data.viewDistance
-      if (data.unloadPadding !== undefined)
+      if (data.unloadPadding !== undefined) {
         this.chunkManager.unloadPadding = data.unloadPadding
+        this.minecraftSchematicRenderLayer?.setUnloadPadding?.(data.unloadPadding)
+      }
     })
   }
 
   /**
-   * 每帧更新，顺序与依赖一致：地形动画 → 挖矿 → 玩家/环境 → 射线/选中框 → 粒子
+   * 每帧更新，顺序与依赖一致：原理图渲染层 → 挖矿 → 玩家/环境 → 射线/选中框 → 粒子
    */
   update() {
-    if (this.chunkManager)
-      this.chunkManager.update()
     if (this.minecraftSchematicRenderLayer)
       this.minecraftSchematicRenderLayer.update()
     if (this.redstoneReplayController)

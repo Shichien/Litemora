@@ -23,6 +23,9 @@ export const useUiStore = defineStore('ui', () => {
   /** Whether the game is paused */
   const isPaused = ref(false)
 
+  /** World load failure shown on the loading screen: { code, projectionId, spaceName, sceneReady } | null */
+  const loadError = ref(null)
+
   /** Pause menu visibility options from backend */
   const pauseMenuConfig = reactive({
     showSettings: true,
@@ -52,6 +55,7 @@ export const useUiStore = defineStore('ui', () => {
    */
   function toPlaying({ requestPointerLock = true } = {}) {
     screen.value = 'playing'
+    overlayView.value = 'root'
     isPaused.value = false
     emitter.emit('ui:pause-changed', false)
     if (requestPointerLock) {
@@ -90,6 +94,37 @@ export const useUiStore = defineStore('ui', () => {
     screen.value = 'loading'
     overlayView.value = 'root'
     isPaused.value = false
+    loadError.value = null
+  }
+
+  /**
+   * Record a world load failure so the loading screen can show it
+   * instead of waiting forever.
+   * @param {{ error?: string, projectionId?: string, spaceName?: string }} payload
+   */
+  function setLoadError(payload = {}) {
+    if (loadError.value) {
+      return
+    }
+    loadError.value = {
+      code: String(payload.error || 'unknown_error'),
+      projectionId: payload.projectionId || '',
+      spaceName: payload.spaceName || '',
+      sceneReady: false,
+    }
+  }
+
+  /** Scene finished despite an earlier error: let the user decide to continue */
+  function markLoadErrorSceneReady() {
+    if (loadError.value) {
+      loadError.value.sceneReady = true
+    }
+  }
+
+  /** Dismiss the error and enter the (possibly incomplete) world */
+  function continueDespiteLoadError() {
+    loadError.value = null
+    bootstrapBackendWorld()
   }
 
   // ----------------------------------------
@@ -153,7 +188,11 @@ export const useUiStore = defineStore('ui', () => {
         exitSettings()
         break
       case 'pauseMenu':
-        toPlaying()
+        // Sub-views (skin selector) step back to the pause menu first
+        if (overlayView.value !== 'root')
+          exitSkinSelector()
+        else
+          toPlaying()
         break
       case 'playing':
         toPauseMenu()
@@ -170,6 +209,7 @@ export const useUiStore = defineStore('ui', () => {
     screen,
     overlayView,
     isPaused,
+    loadError,
     pauseMenuConfig,
     controlPermissions,
 
@@ -190,6 +230,9 @@ export const useUiStore = defineStore('ui', () => {
     bootstrapBackendWorld,
     applyBackendUiConfig,
     resetForNewWorld,
+    setLoadError,
+    markLoadErrorSceneReady,
+    continueDespiteLoadError,
 
     // ESC
     handleEscape,

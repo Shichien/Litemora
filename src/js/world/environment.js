@@ -1,8 +1,17 @@
 import * as THREE from 'three'
 
+import { DEFAULT_SETTINGS } from '../../pinia/settingsStore.js'
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
 import DayCycle from './day-cycle.js'
+
+function toScale(value, reference) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || !reference) {
+    return 1
+  }
+  return number / reference
+}
 
 export default class Environment {
   constructor() {
@@ -26,6 +35,9 @@ export default class Environment {
       fogDensity: 0.01,
       background: 'DayCycle',
     }
+
+    // 用户设置的倍率（1 = 默认），由昼夜循环乘到当前时段的光照/雾气上
+    this.lightingScale = { sun: 1, ambient: 1, fog: 1 }
 
     // Axes Helper
     this.axesHelper = new THREE.AxesHelper(5)
@@ -54,17 +66,19 @@ export default class Environment {
         this.params.background = patch.skyMode
         this.updateBackground()
       }
+      // 设置面板的太阳/环境光/雾气值以默认值为 1×，作为昼夜曲线的倍率；
+      // 昼夜循环不再覆盖这些值，拖动滑块会立刻生效（暂停时也一样）
       if (patch.sunIntensity !== undefined) {
+        this.lightingScale.sun = toScale(patch.sunIntensity, DEFAULT_SETTINGS.envSunIntensity)
         this.params.sunIntensity = patch.sunIntensity
-        this.updateSunLightIntensity()
       }
       if (patch.ambientIntensity !== undefined) {
+        this.lightingScale.ambient = toScale(patch.ambientIntensity, DEFAULT_SETTINGS.envAmbientIntensity)
         this.params.ambientIntensity = patch.ambientIntensity
-        this.updateAmbientLight()
       }
       if (patch.fogDensity !== undefined) {
+        this.lightingScale.fog = toScale(patch.fogDensity, DEFAULT_SETTINGS.envFogDensity)
         this.params.fogDensity = patch.fogDensity
-        this.updateFog()
       }
       if (patch.timeOfDay !== undefined) {
         this.dayCycle?.setTimeOfDay?.(patch.timeOfDay)
@@ -72,7 +86,22 @@ export default class Environment {
       if (patch.timeAutoPlay !== undefined) {
         this.dayCycle?.setAutoPlay?.(patch.timeAutoPlay)
       }
+      this._applyLighting()
     })
+  }
+
+  /**
+   * Re-apply lights and fog from the current time of day and the user scales.
+   * Falls back to the raw params when the day cycle is unavailable.
+   */
+  _applyLighting() {
+    if (this.dayCycle) {
+      this.dayCycle.applyLighting(this)
+      return
+    }
+    this.updateSunLightIntensity()
+    this.updateAmbientLight()
+    this.updateFog()
   }
 
   setFog() {

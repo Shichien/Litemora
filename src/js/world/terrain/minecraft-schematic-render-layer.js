@@ -333,6 +333,11 @@ export default class MinecraftSchematicRenderLayer {
     return this._runtimeActive && !!this._runtimeBridge
   }
 
+  /** 设置面板的卸载滞后实时生效（下次加载原理图时也会从 chunkManager.unloadPadding 读取） */
+  setUnloadPadding(unloadPadding) {
+    return this._runtimeBridge?.setUnloadPadding?.(unloadPadding) || false
+  }
+
   async setRuntimeBlocksAtWorldAsync(worldBlocks = []) {
     if (!this._runtimeBridge?.schematicObject) {
       return false
@@ -411,7 +416,7 @@ export default class MinecraftSchematicRenderLayer {
             1,
             Math.ceil((this.chunkManager?.chunkHeight ?? 32) / 16),
           ),
-          unloadPadding: 1,
+          unloadPadding: this.chunkManager?.unloadPadding ?? 1,
           maxConcurrentBuilds: 2,
         },
         onRuntimeReady: (readyStats) => {

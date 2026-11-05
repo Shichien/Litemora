@@ -71,6 +71,10 @@ export default class InputManager {
     this._onContextMenu = this.onContextMenu.bind(this)
     this._onWheel = this.onWheel.bind(this)
     this._onControlPermissionsChanged = this.onControlPermissionsChanged.bind(this)
+    this._onBlockEditModeChanged = this.onBlockEditModeChanged.bind(this)
+
+    // 方块编辑模式 ('remove' | 'add')，决定滚轮用于快捷栏还是相机
+    this.blockEditMode = 'remove'
 
     this.init()
   }
@@ -90,6 +94,7 @@ export default class InputManager {
     window.addEventListener('contextmenu', this._onContextMenu)
 
     emitter.on('ui:control-permissions-changed', this._onControlPermissionsChanged)
+    emitter.on('game:block_edit_mode_changed', this._onBlockEditModeChanged)
   }
 
   onControlPermissionsChanged(payload = {}) {
@@ -138,6 +143,12 @@ export default class InputManager {
 
     if (key === 'tab') {
       emitter.emit('input:toggle_camera_side')
+      return
+    }
+
+    // 1-9: hotbar slot (Minecraft layout)
+    if (!event.repeat && key >= '1' && key <= '9' && key.length === 1) {
+      emitter.emit('hud:select-slot', Number(key) - 1)
       return
     }
 
@@ -309,10 +320,23 @@ export default class InputManager {
 
   /**
    * 鼠标滚轮事件
+   * - 放置模式 (Q) 下滚轮切换快捷栏格子
+   * - 其他情况下作为 input:wheel 交给相机 (第三人称调高度)
    */
   onWheel(event) {
+    if (!event.deltaY) {
+      return
+    }
+    if (this.blockEditMode === 'add') {
+      emitter.emit('hud:cycle-slot', event.deltaY > 0 ? 1 : -1)
+      return
+    }
     // 发送滚轮事件，deltaY 通常为 ±100 或类似值
     emitter.emit('input:wheel', { deltaY: event.deltaY })
+  }
+
+  onBlockEditModeChanged({ mode } = {}) {
+    this.blockEditMode = mode
   }
 
   // ==================== 清理 ====================
@@ -325,5 +349,6 @@ export default class InputManager {
     window.removeEventListener('wheel', this._onWheel)
     window.removeEventListener('contextmenu', this._onContextMenu)
     emitter.off('ui:control-permissions-changed', this._onControlPermissionsChanged)
+    emitter.off('game:block_edit_mode_changed', this._onBlockEditModeChanged)
   }
 }

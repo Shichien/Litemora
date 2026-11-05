@@ -47,6 +47,13 @@ export default class Experience {
     this.input = new InputManager()
     this.pointerLock = new PointerLockManager() // 鼠标锁定管理器
     this.terrainDataManager = null // 地形数据管理器 - 将在 World 中初始化
+
+    // 记录首个加载错误，UI 可能晚于错误挂载，挂载时从这里读取
+    this.bootstrapError = null
+    emitter.on('projection:bootstrap-error', (payload = {}) => {
+      this.bootstrapError ??= payload
+    })
+
     this.world = new World()
 
     emitter.on('core:resize', () => {
@@ -95,6 +102,7 @@ export default class Experience {
       coordinateSystem: 'Block centers use integer x/y/z; +y is up.',
       mode: this.isPaused ? 'paused' : 'playing',
       sceneReady: !!this.world?.isSceneReady,
+      bootstrapError: this.bootstrapError?.error || '',
       projectionId: this.world?.activeProjectionContext?.projectionId || '',
       player: position
         ? {

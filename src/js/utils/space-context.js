@@ -67,15 +67,18 @@ export function isSpaceWorldsRoute(pathname = window.location.pathname) {
   return decodeURIComponent(segments[1] || '').toLowerCase() === 'worlds'
 }
 
-export function isGalleryRoute(pathname = window.location.pathname) {
+/**
+ * Legacy `/gallery/<space>` links (the old gallery page was replaced by `/<space>/worlds`).
+ * @returns {string} the space name, or '' when the path is not a gallery link
+ */
+export function getLegacyGallerySpaceName(pathname = window.location.pathname) {
   const segments = getPathSegments(pathname)
-  if (segments.length < 2) {
-    return false
+  if (segments.length < 2 || decodeURIComponent(segments[0] || '').toLowerCase() !== 'gallery') {
+    return ''
   }
 
-  const section = decodeURIComponent(segments[0] || '').toLowerCase()
   const gallerySpaceName = decodeURIComponent(segments[1] || '').toLowerCase()
-  return section === 'gallery' && isValidSpaceName(gallerySpaceName)
+  return isValidSpaceName(gallerySpaceName) ? normalizeSpaceName(gallerySpaceName) : ''
 }
 
 function getSpaceProjectionIdFromPathname(pathname = window.location.pathname) {

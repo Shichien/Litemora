@@ -9,7 +9,7 @@ import { ANIMATION_BUTTONS, SKIN_LIST } from '@three/config/skin-config.js'
  * - 下方: 皮肤卡片选择
  * - 底部: 取消/应用按钮
  */
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 
 const skinStore = useSkinStore()
 const ui = useUiStore()
@@ -18,8 +18,8 @@ const ui = useUiStore()
 const previewCanvas = ref(null)
 const previewContainer = ref(null)
 
-// 预览场景实例
-const previewScene = ref(null)
+// 预览场景实例（Three.js 对象，不需要深层响应式）
+const previewScene = shallowRef(null)
 
 // 当前播放的动画 ID
 const currentAnim = ref('idle')
@@ -126,6 +126,9 @@ onMounted(() => {
 onUnmounted(() => {
   // 移除窗口事件监听
   window.removeEventListener('resize', updateCanvasSize)
+
+  // ESC / 退出暂停时视同取消，未应用的预览不保留
+  skinStore.cancelPreview()
 
   // 清理预览场景资源
   previewScene.value?.dispose()

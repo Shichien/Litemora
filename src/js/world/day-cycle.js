@@ -3,6 +3,9 @@ import * as THREE from 'three'
 import Experience from '../experience.js'
 import SkyDome from './sky-dome.js'
 
+// 单帧最大时间步长（ms）
+const MAX_FRAME_DELTA_MS = 100
+
 /**
  * DayCycle - 昼夜循环系统
  * 管理太阳/月亮轨迹、天空盒切换、雾气变化
@@ -286,12 +289,14 @@ export default class DayCycle {
   }
 
   /**
-   * 更新光照和雾气（插值过渡）
+   * 按当前时段计算光照和雾气，并乘以用户设置的倍率 (environment.lightingScale)。
+   * 只写入灯光/雾对象，不覆盖 environment.params 里的用户设置值。
    */
-  _updateLightingAndFog(environment) {
-    if (!environment)
+  applyLighting(environment) {
+    if (!environment?.sunLight)
       return
 
+    const scale = environment.lightingScale || { sun: 1, ambient: 1, fog: 1 }
     const { daylight, twilight, sunsetGlow, duskGlow } = this._getCelestialState()
     const warmTint = THREE.MathUtils.clamp((twilight * 0.52) + (sunsetGlow * 0.96), 0, 1)
     const coolTwilight = THREE.MathUtils.clamp(duskGlow * 0.82, 0, 1)
@@ -300,8 +305,7 @@ export default class DayCycle {
     const sunColor = this._lerpColor('#ffffff', '#ff9a58', warmTint, scratch.lightSun)
       .lerp(this._getConstantColor('#e58ab7'), coolTwilight * 0.24)
 
-    environment.params.sunIntensity = sunIntensity
-    environment.sunLight.intensity = sunIntensity
+    environment.sunLight.intensity = sunIntensity * scale.sun
     environment.sunLight.color.copy(sunColor)
 
     const ambientIntensity = this._lerp(0.16, 0.72, daylight) + (twilight * 0.06) + (sunsetGlow * 0.05)
@@ -309,8 +313,7 @@ export default class DayCycle {
       .lerp(this._getConstantColor('#ffbb84'), sunsetGlow * 0.22)
       .lerp(this._getConstantColor('#6a7fb1'), duskGlow * 0.24)
 
-    environment.params.ambientIntensity = ambientIntensity
-    environment.ambientLight.intensity = ambientIntensity
+    environment.ambientLight.intensity = ambientIntensity * scale.ambient
     environment.ambientLight.color.copy(ambientColor)
 
     const fogDensity = this._lerp(0.022, 0.008, daylight) + (duskGlow * 0.002)
@@ -318,9 +321,7 @@ export default class DayCycle {
       .lerp(this._getConstantColor('#ff9153'), warmTint * 0.4)
       .lerp(this._getConstantColor('#5b4770'), duskGlow * 0.45)
 
-    environment.params.fogDensity = fogDensity
-    environment.params.fogColor = `#${fogColor.getHexString()}`
-    environment.fog.density = fogDensity
+    environment.fog.density = fogDensity * scale.fog
     environment.fog.color.copy(fogColor)
   }
 
@@ -330,7 +331,8 @@ export default class DayCycle {
    */
   update(environment) {
     const now = performance.now()
-    const delta = now - this._lastTime
+    // 暂停或标签页隐藏期间不调用 update；限制单帧步长，避免恢复时时间突然跳变
+    const delta = Math.min(now - this._lastTime, MAX_FRAME_DELTA_MS)
     this._lastTime = now
 
     // 自动播放时更新时间
@@ -361,7 +363,7 @@ export default class DayCycle {
     }
 
     // 更新光照和雾气
-    this._updateLightingAndFog(environment)
+    this.applyLighting(environment)
   }
 
   setTimeOfDay(value) {

@@ -1075,7 +1075,7 @@ export default {
             return 'schematic-renderer-vendor'
           }
 
-          if (id.includes('/three/') || id.includes('three-custom-shader-material')) {
+          if (id.includes('/three/')) {
             return 'three-vendor'
           }
 

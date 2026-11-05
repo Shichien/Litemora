@@ -9,7 +9,7 @@ import {
   buildSpaceWorldsUrl,
   getActiveProjectionId,
   getActiveSpaceName,
-  isGalleryRoute,
+  getLegacyGallerySpaceName,
   isSpaceWorldsRoute,
   shouldUseRootPortalView,
 } from '@three/utils/space-context.js'
@@ -139,12 +139,18 @@ async function resolveActiveSpaceManageAccess(spaceName) {
 async function syncRouteState() {
   authSession.value = loadAdminAuthSession()
 
+  // Old /gallery/<space> links used to open a canvas with nothing in it; send them to the world list.
+  const legacyGallerySpaceName = getLegacyGallerySpaceName()
+  if (legacyGallerySpaceName) {
+    navigateToUrl(buildSpaceWorldsUrl(legacyGallerySpaceName), { replace: true })
+    return
+  }
+
   const nextSpaceName = getActiveSpaceName()
   const nextProjectionId = getActiveProjectionId()
-  const nextIsGalleryView = isGalleryRoute()
   const nextIsWorldsView = isSpaceWorldsRoute()
-  const nextIsRootPortal = !nextIsGalleryView && shouldUseRootPortalView()
-  const shouldRedirectSpaceRoot = !nextIsGalleryView && !!nextSpaceName && !nextIsWorldsView && !nextProjectionId
+  const nextIsRootPortal = shouldUseRootPortalView()
+  const shouldRedirectSpaceRoot = !!nextSpaceName && !nextIsWorldsView && !nextProjectionId
 
   if (shouldRedirectSpaceRoot) {
     navigateToUrl(buildSpaceWorldsUrl(nextSpaceName), { replace: true })
@@ -157,9 +163,6 @@ async function syncRouteState() {
 
   if (nextIsRootPortal) {
     routeKind.value = 'portal'
-  }
-  else if (nextIsGalleryView) {
-    routeKind.value = 'gallery'
   }
   else if (nextIsWorldsView) {
     routeKind.value = 'worlds'
