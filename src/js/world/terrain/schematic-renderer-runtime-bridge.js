@@ -560,12 +560,15 @@ export default class SchematicRendererRuntimeBridge {
   }
 
   async _ensurePreferredResourcePackNow(resourcePackSignature = '') {
+    // 资源包下载（~7 MB）和 WASM 初始化互不依赖，同时进行
+    const selectedPackPromise = loadPreferredMinecraftResourcePack()
+    selectedPackPromise.catch(() => {})
     const renderer = await this.ensureRenderer()
     if (!renderer?.packs) {
       throw new Error('schematic_renderer_resource_pack_manager_unavailable')
     }
 
-    const selectedPack = await loadPreferredMinecraftResourcePack()
+    const selectedPack = await selectedPackPromise
     const nextSignature = [
       selectedPack.source,
       selectedPack.key,
