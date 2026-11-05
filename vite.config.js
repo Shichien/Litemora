@@ -10,12 +10,49 @@ import _config from './_config'
 
 const HOST = _config.server.host
 const PORT = _config.server.port
+const CROSS_ORIGIN_ISOLATION_HEADERS = {
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+}
 const LOCAL_DEV_MOCK_ACCOUNT = {
   id: 'local-dev',
   provider: 'local-dev',
   name: 'Local Dev',
   email: 'local@litemora.dev',
   avatar: '',
+}
+const INLINE_WASM_LITERAL_PATTERN = /(["'`])data:application\/wasm;base64,([A-Za-z0-9+/=]+)\1/g
+
+// schematic-renderer ships its 8 MB WASM binary inlined twice as base64 data URLs,
+// which makes the vendor chunk ~28 MB. Cloudflare Pages rejects assets over 25 MiB,
+// so production builds emit the binary once as a real .wasm file and point both
+// string literals at its URL. The library already accepts a URL string there.
+function externalizeInlineWasm() {
+  return {
+    name: 'litemora-externalize-inline-wasm',
+    apply: 'build',
+    transform(code, id) {
+      if (!id.includes('schematic-renderer') || !code.includes('data:application/wasm;base64,')) {
+        return null
+      }
+
+      const referenceByPayload = new Map()
+      const transformed = code.replace(INLINE_WASM_LITERAL_PATTERN, (_match, _quote, payload) => {
+        let referenceId = referenceByPayload.get(payload)
+        if (!referenceId) {
+          referenceId = this.emitFile({
+            type: 'asset',
+            name: 'schematic-renderer.wasm',
+            source: Buffer.from(payload, 'base64'),
+          })
+          referenceByPayload.set(payload, referenceId)
+        }
+        return `import.meta.ROLLUP_FILE_URL_${referenceId}`
+      })
+
+      return { code: transformed, map: null }
+    },
+  }
 }
 const SAFE_SOURCE_MIME_TYPE = 'application/octet-stream'
 const ALLOWED_SOURCE_FILE_EXTENSIONS = new Set(['.litematic', '.schem', '.schematic'])
@@ -73,6 +110,7 @@ function normalizeMockSourceFileMetadata(value = {}) {
   return {
     fileName,
     mimeType: SAFE_SOURCE_MIME_TYPE,
+    size: Math.max(0, Math.round(Number(value?.size || 0) || 0)),
   }
 }
 
@@ -179,6 +217,10 @@ function resolveGalleryManifestPath(spaceName = '') {
 
 function resolveGalleryItemPath(spaceName = '', itemId = '') {
   return path.resolve(resolveGallerySpaceDir(spaceName), 'items', `${encodeURIComponent(itemId)}.json`)
+}
+
+function resolveGallerySourcePath(spaceName = '', itemId = '') {
+  return path.resolve(resolveGallerySpaceDir(spaceName), 'sources', `${encodeURIComponent(itemId)}.bin`)
 }
 
 async function readJsonFileOr(filePath, fallbackValue) {
@@ -314,7 +356,7 @@ function summarizeWorldState(payload = {}, key = 'world-state') {
 }
 
 function registerMockApi(middlewares) {
-  middlewares.use(/^\/api\/auth\/(github|google)\/exchange$/, async (req, res) => {
+  middlewares.use('/api/auth/github/exchange', async (req, res) => {
     if (req.method !== 'POST') {
       res.statusCode = 405
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -325,7 +367,7 @@ function registerMockApi(middlewares) {
     try {
       const rawBody = await readRequestBody(req)
       const payload = rawBody ? JSON.parse(rawBody) : {}
-      const provider = String(req.url || '').includes('/google/') ? 'google' : 'github'
+      const provider = 'github'
       const code = String(payload?.code || '').trim()
 
       if (!code) {
@@ -357,7 +399,7 @@ function registerMockApi(middlewares) {
     }
   })
 
-  middlewares.use(/^\/api\/gallery\/item(?:\?.*)?$/, async (req, res) => {
+  middlewares.use('/api/gallery/item', async (req, res) => {
     const spaceName = getSpaceNameFromRequest(req)
     const itemId = getItemIdFromRequest(req)
 
@@ -439,6 +481,7 @@ function registerMockApi(middlewares) {
         : null
 
       await deleteFileIfExists(resolveGalleryItemPath(spaceName, resolvedItemId))
+      await deleteFileIfExists(resolveGallerySourcePath(spaceName, resolvedItemId))
       await writeJsonFile(resolveGalleryManifestPath(spaceName), nextManifest)
       if (nextProfile) {
         await writeJsonFile(resolveGalleryProfilePath(spaceName), nextProfile)
@@ -459,7 +502,71 @@ function registerMockApi(middlewares) {
     res.end(JSON.stringify({ error: 'method_not_allowed' }))
   })
 
-  middlewares.use(/^\/api\/gallery\/items(?:\?.*)?$/, async (req, res) => {
+  middlewares.use('/api/gallery/source', async (req, res) => {
+    if (req.method !== 'GET') {
+      res.statusCode = 405
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'method_not_allowed' }))
+      return
+    }
+
+    const spaceName = getSpaceNameFromRequest(req)
+    const itemId = getItemIdFromRequest(req)
+
+    if (!spaceName) {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'invalid_space_name' }))
+      return
+    }
+
+    if (!itemId) {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'missing_item_id' }))
+      return
+    }
+
+    const profile = await readJsonFileOr(resolveGalleryProfilePath(spaceName), null)
+    const manifest = await readJsonFileOr(resolveGalleryManifestPath(spaceName), { items: [] })
+    const resolvedSummary = findGalleryManifestItemByIdentifier(manifest?.items, itemId)
+    const resolvedItemId = resolvedSummary?.id || itemId
+    const item = await readJsonFileOr(resolveGalleryItemPath(spaceName, resolvedItemId), null)
+    const viewer = readMockAccount(req)
+    const canManage = canManageMockGallery(viewer, profile)
+
+    if (!item || (item.visibility === 'private' && !canManage)) {
+      res.statusCode = 404
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ error: 'gallery_item_not_found' }))
+      return
+    }
+
+    try {
+      const sourceBuffer = await fs.readFile(resolveGallerySourcePath(spaceName, resolvedItemId))
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/octet-stream')
+      res.setHeader('Content-Length', String(sourceBuffer.byteLength))
+      res.end(sourceBuffer)
+    }
+    catch {
+      const inlineBase64 = String(item?.sourceFile?.fileBase64 || '').trim()
+      if (!inlineBase64) {
+        res.statusCode = 404
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'gallery_item_source_not_found' }))
+        return
+      }
+
+      const sourceBuffer = Buffer.from(inlineBase64, 'base64')
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'application/octet-stream')
+      res.setHeader('Content-Length', String(sourceBuffer.byteLength))
+      res.end(sourceBuffer)
+    }
+  })
+
+  middlewares.use('/api/gallery/items', async (req, res) => {
     if (req.method !== 'POST') {
       res.statusCode = 405
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -512,6 +619,7 @@ function registerMockApi(middlewares) {
 
       const sourceFileMeta = normalizeMockSourceFileMetadata({
         fileName: payload?.fileName || 'uploaded.schematic',
+        size: Number(payload?.fileSize || 0),
       })
 
       const profile = existingProfile || {
@@ -547,7 +655,7 @@ function registerMockApi(middlewares) {
         sourceFile: {
           fileName: sourceFileMeta.fileName,
           mimeType: sourceFileMeta.mimeType,
-          fileBase64: String(payload?.fileBase64 || ''),
+          size: sourceFileMeta.size,
         },
         schematic: payload?.schematic || null,
         previewModel: payload?.previewModel || null,
@@ -598,6 +706,8 @@ function registerMockApi(middlewares) {
       }
 
       await writeJsonFile(resolveGalleryItemPath(spaceName, itemId), item)
+      await fs.mkdir(path.dirname(resolveGallerySourcePath(spaceName, itemId)), { recursive: true })
+      await fs.writeFile(resolveGallerySourcePath(spaceName, itemId), Buffer.from(String(payload?.fileBase64 || ''), 'base64'))
       await writeJsonFile(profilePath, nextProfile)
       await writeJsonFile(manifestPath, nextManifest)
 
@@ -620,7 +730,7 @@ function registerMockApi(middlewares) {
     }
   })
 
-  middlewares.use(/^\/api\/gallery\/claim(?:\?.*)?$/, async (req, res) => {
+  middlewares.use('/api/gallery/claim', async (req, res) => {
     if (req.method !== 'POST') {
       res.statusCode = 405
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -699,7 +809,7 @@ function registerMockApi(middlewares) {
     }
   })
 
-  middlewares.use(/^\/api\/gallery(?:\?.*)?$/, async (req, res) => {
+  middlewares.use('/api/gallery', async (req, res) => {
     if (req.method !== 'GET') {
       res.statusCode = 405
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -947,6 +1057,10 @@ export default {
   server: {
     host: HOST,
     port: PORT,
+    headers: { ...CROSS_ORIGIN_ISOLATION_HEADERS },
+  },
+  preview: {
+    headers: { ...CROSS_ORIGIN_ISOLATION_HEADERS },
   },
   build: {
     target: 'es2022',
@@ -992,6 +1106,7 @@ export default {
     },
   },
   resolve: {
+    dedupe: ['three'],
     alias: {
       '@': path.resolve(__dirname, 'src'),
       '@ui': path.resolve(__dirname, 'src/vue'),
@@ -1011,6 +1126,7 @@ export default {
         registerMockApi(server.middlewares)
       },
     },
+    externalizeInlineWasm(),
     glsl(),
     vue(),
     partytownVite({
