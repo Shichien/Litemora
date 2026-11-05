@@ -57,6 +57,12 @@ export default class PortalLinkController {
   }
 
   update() {
+    // 没配置任何传送门地址时，碰到传送门也不会跳转，没必要每帧查方块
+    if (!this.config.netherPortalUrl && !this.config.endPortalUrl) {
+      this.activeTouchKey = ''
+      return
+    }
+
     const provider = this.getTerrainProvider()
     const probe = this.player?.getPortalProbeState?.()
 

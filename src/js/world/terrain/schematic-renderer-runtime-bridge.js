@@ -194,31 +194,36 @@ function normalizeRuntimeMaterial(material) {
   let changed = false
 
   if (material.map) {
+    let mapChanged = false
     if (material.map.colorSpace !== THREE.SRGBColorSpace) {
       material.map.colorSpace = THREE.SRGBColorSpace
-      changed = true
+      mapChanged = true
     }
     if (material.map.magFilter !== THREE.NearestFilter) {
       material.map.magFilter = THREE.NearestFilter
-      changed = true
+      mapChanged = true
     }
     if (material.map.minFilter !== THREE.NearestFilter) {
       material.map.minFilter = THREE.NearestFilter
-      changed = true
+      mapChanged = true
     }
     if (material.map.generateMipmaps !== false) {
       material.map.generateMipmaps = false
-      changed = true
+      mapChanged = true
     }
     if (material.map.wrapS !== THREE.ClampToEdgeWrapping) {
       material.map.wrapS = THREE.ClampToEdgeWrapping
-      changed = true
+      mapChanged = true
     }
     if (material.map.wrapT !== THREE.ClampToEdgeWrapping) {
       material.map.wrapT = THREE.ClampToEdgeWrapping
+      mapChanged = true
+    }
+    // 只在参数真的变了（或还没上传过）时重传。以前每个区块挂载都会把整张图集重新上传到 GPU。
+    if (mapChanged || material.map.version === 0) {
+      material.map.needsUpdate = true
       changed = true
     }
-    material.map.needsUpdate = true
   }
 
   const opacity = Number(material.opacity ?? 1)
@@ -306,6 +311,142 @@ function consolidateIndexedGeometryGroups(geometry) {
   reorderedIndexAttribute.setUsage(indexAttribute.usage)
   geometry.setIndex(reorderedIndexAttribute)
   return rangesByMaterial.size
+}
+
+// schematic-renderer 给每种着色色调（红石线 16 档亮度、草/树叶的生物群系色等）各建一个
+// 材质，彼此只差 color。一个区块网格因此被拆成十几次 draw call。只差 color 的材质可以
+// 换成同一个 vertexColors 材质，把颜色写进顶点，再交给 consolidateIndexedGeometryGroups()
+// 合并成一段。
+const tintSignatureCache = new WeakMap()
+
+function getTintMergeSignature(material) {
+  if (!material) {
+    return ''
+  }
+  // 材质很少（~20 个），但每个区块的每个组都要查；按 material.version / map 缓存
+  const cached = tintSignatureCache.get(material)
+  if (cached && cached.version === material.version && cached.map === material.map) {
+    return cached.signature
+  }
+  const signature = computeTintMergeSignature(material)
+  tintSignatureCache.set(material, { version: material.version, map: material.map, signature })
+  return signature
+}
+
+function computeTintMergeSignature(material) {
+  if (
+    !material?.isMeshStandardMaterial
+    || material.vertexColors
+    || Object.prototype.hasOwnProperty.call(material, 'onBeforeCompile')
+    || !material.color
+    || material.color.r > 1 || material.color.g > 1 || material.color.b > 1
+  ) {
+    return ''
+  }
+
+  return [
+    material.type,
+    material.map?.uuid || '',
+    material.alphaMap?.uuid || '',
+    material.side,
+    material.alphaTest,
+    material.transparent,
+    material.opacity,
+    material.depthTest,
+    material.depthWrite,
+    material.blending,
+    material.emissive?.getHex?.() ?? '',
+    material.emissiveIntensity,
+    material.roughness,
+    material.metalness,
+    material.flatShading,
+    material.wireframe,
+    material.toneMapped,
+    material.fog,
+    material.polygonOffset,
+    JSON.stringify(material.defines || {}),
+  ].join('|')
+}
+
+function mergeTintedMaterialGroups(mesh, getMergedMaterials) {
+  const geometry = mesh?.geometry
+  const materials = mesh?.material
+  const indexAttribute = geometry?.getIndex?.()
+  const position = geometry?.getAttribute?.('position')
+  const groups = geometry?.groups || []
+  if (!Array.isArray(materials) || !indexAttribute || !position || groups.length <= 1 || geometry.getAttribute('color')) {
+    return false
+  }
+
+  // 每个签名下实际出现了几种材质；只有一种的签名合并了也省不下 draw call
+  const materialsBySignature = new Map()
+  for (const group of groups) {
+    const material = materials[group.materialIndex]
+    const signature = getTintMergeSignature(material)
+    if (!signature) {
+      continue
+    }
+    if (!materialsBySignature.has(signature)) {
+      materialsBySignature.set(signature, new Set())
+    }
+    materialsBySignature.get(signature).add(material)
+  }
+  const mergeSignatures = [...materialsBySignature]
+    .filter(([, set]) => set.size > 1)
+    .map(([signature]) => signature)
+  if (!mergeSignatures.length) {
+    return false
+  }
+
+  // 顶点颜色：没被合并的组保持白色（它们的材质不读顶点色）。同一个顶点若被两种颜色的
+  // 面共用，就无法用顶点色表达，整块网格放弃合并，保持原样。
+  const vertexCount = position.count
+  const colors = new Uint8Array(vertexCount * 4).fill(255)
+  const assigned = new Int32Array(vertexCount).fill(-1)
+  const indices = indexAttribute.array
+  const mergeSignatureSet = new Set(mergeSignatures)
+  const nextGroups = []
+  for (const group of groups) {
+    const material = materials[group.materialIndex]
+    const signature = getTintMergeSignature(material)
+    if (!mergeSignatureSet.has(signature)) {
+      nextGroups.push(group)
+      continue
+    }
+
+    const r = Math.round(material.color.r * 255)
+    const g = Math.round(material.color.g * 255)
+    const b = Math.round(material.color.b * 255)
+    const packed = (r << 16) | (g << 8) | b
+    const end = group.start + group.count
+    for (let i = group.start; i < end; i++) {
+      const vertex = indices[i]
+      const previous = assigned[vertex]
+      if (previous === -1) {
+        assigned[vertex] = packed
+        colors[vertex * 4] = r
+        colors[vertex * 4 + 1] = g
+        colors[vertex * 4 + 2] = b
+      }
+      else if (previous !== packed) {
+        return false
+      }
+    }
+    nextGroups.push({ ...group, signature })
+  }
+
+  const { array: mergedArray, indexBySignature } = getMergedMaterials(materials, mergeSignatures)
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4, true))
+  geometry.clearGroups()
+  for (const group of nextGroups) {
+    geometry.addGroup(
+      group.start,
+      group.count,
+      group.signature ? indexBySignature.get(group.signature) : group.materialIndex,
+    )
+  }
+  mesh.material = mergedArray
+  return true
 }
 
 function createBoundsFromSchematic(schematicObject = null, offset = {}) {
@@ -413,6 +554,9 @@ export default class SchematicRendererRuntimeBridge {
     this.runtimeOffset = { x: 0, y: 0, z: 0 }
     this._runtimePatchQueue = Promise.resolve()
     this._collisionProfileCache = new Map()
+    // 合并着色材质：签名 -> vertexColors 材质；源材质数组 -> 追加了合并材质的副本
+    this._tintMergedMaterials = new Map()
+    this._tintMergedArrays = new WeakMap()
     this._chunkBounds = null
     this._chunkStates = new Map()
     this._chunkQueue = []
@@ -953,8 +1097,9 @@ export default class SchematicRendererRuntimeBridge {
         child.frustumCulled = true
         child.castShadow = false
         child.receiveShadow = false
-        consolidateIndexedGeometryGroups(child.geometry)
         forEachMaterial(child.material, normalizeRuntimeMaterial)
+        mergeTintedMaterialGroups(child, this._getTintMergedMaterials)
+        consolidateIndexedGeometryGroups(child.geometry)
         if (!this._meshEntrySet.has(child)) {
           this._meshEntrySet.add(child)
           this.meshEntries.push(child)
@@ -1203,11 +1348,44 @@ export default class SchematicRendererRuntimeBridge {
   }
 
   _getSharedRuntimeMaterials(schematic = null) {
-    const sharedMaterials = new Set()
+    const sharedMaterials = new Set(this._tintMergedMaterials.values())
     forEachMaterial(schematic?.worldMeshBuilder?.paletteCache?.globalMaterials, (material) => {
       sharedMaterials.add(material)
     })
     return sharedMaterials
+  }
+
+  // 箭头函数：作为回调传给 mergeTintedMaterialGroups()
+  _getTintMergedMaterials = (sourceMaterials, signatures) => {
+    let entry = this._tintMergedArrays.get(sourceMaterials)
+    // 源数组被库追加过新材质时重建副本，保证原有下标不变、新材质也能取到
+    if (!entry || entry.sourceLength !== sourceMaterials.length) {
+      entry = {
+        sourceLength: sourceMaterials.length,
+        array: [...sourceMaterials],
+        indexBySignature: new Map(),
+      }
+      this._tintMergedArrays.set(sourceMaterials, entry)
+    }
+
+    for (const signature of signatures) {
+      if (entry.indexBySignature.has(signature)) {
+        continue
+      }
+      let merged = this._tintMergedMaterials.get(signature)
+      if (!merged) {
+        const template = sourceMaterials.find(material => getTintMergeSignature(material) === signature)
+        merged = template.clone()
+        merged.name = 'litemora_tint_merged'
+        merged.color.setRGB(1, 1, 1)
+        merged.vertexColors = true
+        merged.needsUpdate = true
+        this._tintMergedMaterials.set(signature, merged)
+      }
+      entry.indexBySignature.set(signature, entry.array.length)
+      entry.array.push(merged)
+    }
+    return entry
   }
 
   _disposeRuntimeChunkObjects(objects = [], {
@@ -1735,6 +1913,11 @@ export default class SchematicRendererRuntimeBridge {
 
   dispose() {
     this.detachRuntimeGroup()
+    for (const material of this._tintMergedMaterials.values()) {
+      material.dispose?.()
+    }
+    this._tintMergedMaterials.clear()
+    this._tintMergedArrays = new WeakMap()
     this.renderer?.dispose?.()
     this.renderer = null
     this.rendererReadyPromise = null
