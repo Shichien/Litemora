@@ -1,18 +1,24 @@
 <script setup>
-// Isometric voxel scene drawn with CSS 3D (orthographic) and real pack textures.
+// Isometric voxel scene drawn with real pack textures.
+//
+// The projection is a linear orthographic map, so every block face lands on screen
+// as an exact parallelogram. Faces are painted as 2D `matrix()` quads in explicit
+// back-to-front order instead of leaving it to CSS `preserve-3d` depth sorting,
+// which mis-orders coplanar and densely packed quads (that is what used to make
+// repeaters / levers / torches look wrong and buildings appear half drawn).
 //
 // blocks: [{ x, y, z, ...spec }] in block units, y up. Spec fields:
 //   tex            texture basename for every face (e.g. 'deepslate_bricks')
 //   top / side     per-face overrides
 //   kind           'cube' (default) | 'plate' (flat quad on the floor of the cell: dust, repeater)
-//                  | 'sprite' (two crossed quads: torch, flower)
+//                  | 'sprite' (camera-facing billboard: torch, lever, flower)
 //   tint           multiply colour for grayscale textures (dust, grass top, leaves)
 //   rot            plate rotation in degrees (0/90/180/270)
 //   glow           always emits (redstone block, lit torch)
 //   power          reacts to the scene's `powered` prop; then texOn/topOn/sideOn/tintOn are used
 //   glass          translucent cube, does not hide neighbour faces
-import { computed } from 'vue'
 import { resolvePublicAssetUrl } from '@/js/utils/public-asset-url.js'
+import { computed } from 'vue'
 
 const props = defineProps({
   blocks: { type: Array, required: true },
@@ -22,19 +28,30 @@ const props = defineProps({
   pitch: { type: Number, default: -30 },
   yaw: { type: Number, default: 45 },
   powered: { type: Boolean, default: false },
-  // Slow turntable rotation.
+  // Reserved: the 2D painter has no turntable animation.
   spin: { type: Boolean, default: false },
   spinSeconds: { type: Number, default: 40 },
 })
 
 const BLOCK_DIR = 'minecraft-default-pack/assets/minecraft/textures/block/'
 const SHADE = { top: 0, south: 0.22, north: 0.22, east: 0.38, west: 0.38 }
+
+// Where a face sits in block units: (s, t) in [0,1]² walks the texture
+// left-to-right / top-to-bottom, matching the texture's own pixel grid.
+const FACE_CORNERS = {
+  top: (b, s, t) => [b.x + s, b.y + 1, b.z + t],
+  south: (b, s, t) => [b.x + s, b.y + 1 - t, b.z + 1],
+  north: (b, s, t) => [b.x + 1 - s, b.y + 1 - t, b.z],
+  east: (b, s, t) => [b.x + 1, b.y + 1 - t, b.z + 1 - s],
+  west: (b, s, t) => [b.x, b.y + 1 - t, b.z + s],
+}
+
 const FACES = [
-  { name: 'top', normal: [0, 1, 0], transform: 'rotateX(90deg)' },
-  { name: 'south', normal: [0, 0, 1], transform: '' },
-  { name: 'north', normal: [0, 0, -1], transform: 'rotateY(180deg)' },
-  { name: 'east', normal: [1, 0, 0], transform: 'rotateY(90deg)' },
-  { name: 'west', normal: [-1, 0, 0], transform: 'rotateY(-90deg)' },
+  { name: 'top', normal: [0, 1, 0] },
+  { name: 'south', normal: [0, 0, 1] },
+  { name: 'north', normal: [0, 0, -1] },
+  { name: 'east', normal: [1, 0, 0] },
+  { name: 'west', normal: [-1, 0, 0] },
 ]
 
 const texUrlCache = new Map()
@@ -61,6 +78,12 @@ function project(px, py, pz, pitch, yaw) {
   return { x: x1, y: py * cp - z1 * sp }
 }
 
+// Camera-space depth of a CSS-space point: greater means closer to the viewer.
+function depthOf(px, py, pz, pitch, yaw) {
+  const z1 = -px * Math.sin(yaw) + pz * Math.cos(yaw)
+  return py * Math.sin(pitch) + z1 * Math.cos(pitch)
+}
+
 const occupancy = computed(() => {
   const set = new Set()
   for (const b of props.blocks) {
@@ -71,11 +94,8 @@ const occupancy = computed(() => {
   return set
 })
 
-// Faces that can face the camera at the current yaw (all of them while spinning).
+// Faces that can face the camera at the current yaw.
 const cameraFaces = computed(() => {
-  if (props.spin) {
-    return new Set(FACES.map(f => f.name))
-  }
   const yaw = toRad(props.yaw)
   const pitch = toRad(props.pitch)
   const visible = new Set()
@@ -118,23 +138,19 @@ const layout = computed(() => {
   const cz = ((minZ + maxZ) / 2) * u
 
   const pitch = toRad(props.pitch)
-  const yaws = props.spin
-    ? Array.from({ length: 24 }, (_, i) => toRad(props.yaw + i * 15))
-    : [toRad(props.yaw)]
+  const yaw = toRad(props.yaw)
   let sMinX = Infinity
   let sMinY = Infinity
   let sMaxX = -Infinity
   let sMaxY = -Infinity
-  for (const yaw of yaws) {
-    for (const x of [minX, maxX]) {
-      for (const y of [minY, maxY]) {
-        for (const z of [minZ, maxZ]) {
-          const p = project(x * u - cx, -y * u - cy, z * u - cz, pitch, yaw)
-          sMinX = Math.min(sMinX, p.x)
-          sMaxX = Math.max(sMaxX, p.x)
-          sMinY = Math.min(sMinY, p.y)
-          sMaxY = Math.max(sMaxY, p.y)
-        }
+  for (const x of [minX, maxX]) {
+    for (const y of [minY, maxY]) {
+      for (const z of [minZ, maxZ]) {
+        const p = project(x * u - cx, -y * u - cy, z * u - cz, pitch, yaw)
+        sMinX = Math.min(sMinX, p.x)
+        sMaxX = Math.max(sMaxX, p.x)
+        sMinY = Math.min(sMinY, p.y)
+        sMaxY = Math.max(sMaxY, p.y)
       }
     }
   }
@@ -176,21 +192,69 @@ const items = computed(() => {
   const { cx, cy, cz } = layout.value
   const occ = occupancy.value
   const camFaces = cameraFaces.value
+  const pitch = toRad(props.pitch)
+  const yaw = toRad(props.yaw)
+  // Adjacent quads share an edge; growing each by a hair hides antialiasing seams.
+  const grow = 1 + 0.9 / u
   const out = []
+
+  // Project a block-space delta from the cell centre to a screen offset.
+  const screen = (dx, dy, dz) => project(dx * u, -dy * u, dz * u, pitch, yaw)
+
+  // `corner(b, s, t)` returns a block-space point; build the exact parallelogram.
+  const quadMatrix = (b, corner) => {
+    const ccx = b.x + 0.5
+    const ccy = b.y + 0.5
+    const ccz = b.z + 0.5
+    const at = (s, t) => {
+      const [x, y, z] = corner(b, s, t)
+      return screen(x - ccx, y - ccy, z - ccz)
+    }
+    const p0 = at(0, 0)
+    const p1 = at(1, 0)
+    const p2 = at(0, 1)
+    const a = ((p1.x - p0.x) * grow) / u
+    const bb = ((p1.y - p0.y) * grow) / u
+    const c = ((p2.x - p0.x) * grow) / u
+    const d = ((p2.y - p0.y) * grow) / u
+    // Grow about the quad centre (p1+p2)/2, not the top-left corner.
+    const mx = (p1.x + p2.x) / 2
+    const my = (p1.y + p2.y) / 2
+    const e = grow * p0.x + (1 - grow) * mx
+    const f = grow * p0.y + (1 - grow) * my
+    return `matrix(${a}, ${bb}, ${c}, ${d}, ${e}, ${f})`
+  }
+
+  // Flat quad on the floor of the cell, spun by `rot` around the vertical axis.
+  const plateCorner = (rot) => {
+    const th = toRad(Number(rot) || 0)
+    const cos = Math.cos(th)
+    const sin = Math.sin(th)
+    return (b, s, t) => {
+      const a = s - 0.5
+      const d = t - 0.5
+      return [
+        b.x + 0.5 + a * cos + d * sin,
+        b.y + 0.01,
+        b.z + 0.5 - a * sin + d * cos,
+      ]
+    }
+  }
 
   props.blocks.forEach((b, index) => {
     const kind = b.kind || 'cube'
     const lit = !!(b.power && props.powered)
-    const glowing = !!b.glow || lit
     const tx = (b.x + 0.5) * u - cx
     const ty = -(b.y + 0.5) * u - cy
     const tz = (b.z + 0.5) * u - cz
+    const at = project(tx, ty, tz, pitch, yaw)
     const item = {
       key: `${index}:${b.x},${b.y},${b.z}`,
       kind,
-      glowing,
+      glowing: !!b.glow || lit,
       glass: !!b.glass,
-      style: { transform: `translate3d(${tx}px, ${ty}px, ${tz}px)` },
+      depth: depthOf(tx, ty, tz, pitch, yaw),
+      style: { transform: `translate(${at.x}px, ${at.y}px)` },
       faces: [],
     }
 
@@ -206,7 +270,7 @@ const items = computed(() => {
         item.faces.push({
           name: face.name,
           style: {
-            transform: `${face.transform} translateZ(${u / 2}px)`,
+            transform: quadMatrix(b, FACE_CORNERS[face.name]),
             ...faceBackground(b, face.name, lit),
           },
         })
@@ -216,22 +280,28 @@ const items = computed(() => {
       item.faces.push({
         name: 'plate',
         style: {
-          transform: `rotateX(90deg) rotateZ(${Number(b.rot) || 0}deg) translateZ(${-u / 2 + 1}px)`,
+          transform: quadMatrix(b, plateCorner(b.rot)),
           ...faceBackground(b, 'top', lit),
         },
       })
     }
     else if (kind === 'sprite') {
-      for (const angle of [45, -45]) {
-        item.faces.push({
-          name: 'sprite',
-          style: {
-            transform: `rotateY(${angle}deg)`,
-            ...faceBackground(b, 'top', lit),
-            backgroundImage: texUrl((lit && b.texOn) || b.tex),
-          },
-        })
-      }
+      // Billboards always face the camera: a plain upright square in the cell. The
+      // texture's own alpha has to mask the quad, otherwise the transparent padding
+      // around a torch or lever stem paints as an opaque square.
+      const tex = (lit && b.texOn) || b.tex
+      const tint = (lit && b.tintOn) || b.tint
+      item.faces.push({
+        name: 'sprite',
+        style: {
+          transform: `matrix(${grow}, 0, 0, ${grow}, ${(-u / 2) * grow}, ${(-u / 2) * grow})`,
+          backgroundImage: texUrl(tex),
+          backgroundColor: tint || 'transparent',
+          backgroundBlendMode: tint ? 'multiply' : 'normal',
+          maskImage: texUrl(tex),
+          WebkitMaskImage: texUrl(tex),
+        },
+      })
     }
 
     if (item.faces.length) {
@@ -239,6 +309,8 @@ const items = computed(() => {
     }
   })
 
+  // Painter's algorithm: farthest cell first, so nearer cells paint over it.
+  out.sort((p, q) => p.depth - q.depth)
   return out
 })
 
@@ -246,9 +318,6 @@ const rootStyle = computed(() => ({
   'width': `${layout.value.width}px`,
   'height': `${layout.value.height}px`,
   '--iso-unit': `${props.unit}px`,
-  '--iso-pitch': `${props.pitch}deg`,
-  '--iso-yaw': `${props.yaw}deg`,
-  '--iso-spin': `${props.spinSeconds}s`,
 }))
 
 const worldStyle = computed(() => ({
@@ -258,7 +327,7 @@ const worldStyle = computed(() => ({
 </script>
 
 <template>
-  <div class="iso-scene" :class="{ 'is-spinning': spin, 'is-powered': powered }" :style="rootStyle" aria-hidden="true">
+  <div class="iso-scene" :class="{ 'is-powered': powered }" :style="rootStyle" aria-hidden="true">
     <div class="iso-world" :style="worldStyle">
       <div
         v-for="item in items"
@@ -269,7 +338,7 @@ const worldStyle = computed(() => ({
       >
         <div
           v-for="face in item.faces"
-          :key="face.name + face.style.transform"
+          :key="face.name"
           class="iso-face"
           :class="`iso-face--${face.name}`"
           :style="face.style"
@@ -291,21 +360,6 @@ const worldStyle = computed(() => ({
   position: absolute;
   width: 0;
   height: 0;
-  transform-style: preserve-3d;
-  transform: rotateX(var(--iso-pitch)) rotateY(var(--iso-yaw));
-}
-
-.iso-scene.is-spinning .iso-world {
-  animation: iso-spin var(--iso-spin) linear infinite;
-}
-
-@keyframes iso-spin {
-  from {
-    transform: rotateX(var(--iso-pitch)) rotateY(var(--iso-yaw));
-  }
-  to {
-    transform: rotateX(var(--iso-pitch)) rotateY(calc(var(--iso-yaw) + 360deg));
-  }
 }
 
 .iso-cell {
@@ -314,15 +368,15 @@ const worldStyle = computed(() => ({
   top: 0;
   width: 0;
   height: 0;
-  transform-style: preserve-3d;
 }
 
 .iso-face {
   position: absolute;
-  left: calc(var(--iso-unit) / -2);
-  top: calc(var(--iso-unit) / -2);
+  left: 0;
+  top: 0;
   width: var(--iso-unit);
   height: var(--iso-unit);
+  transform-origin: 0 0;
   background-size: 100% 100%;
   background-repeat: no-repeat;
   mask-size: 100% 100%;
@@ -330,19 +384,7 @@ const worldStyle = computed(() => ({
   mask-repeat: no-repeat;
   -webkit-mask-repeat: no-repeat;
   image-rendering: pixelated;
-  backface-visibility: hidden;
   transition: background-color 0.25s;
-}
-
-/* Cover 1px seams between neighbouring faces. */
-.is-cube .iso-face {
-  outline: 0.5px solid rgba(0, 0, 0, 0.18);
-  outline-offset: -0.5px;
-}
-
-.is-sprite .iso-face,
-.is-plate .iso-face {
-  backface-visibility: visible;
 }
 
 .is-glass .iso-face {
@@ -350,12 +392,6 @@ const worldStyle = computed(() => ({
 }
 
 .is-glowing .iso-face {
-  box-shadow: 0 0 calc(var(--iso-unit) * 0.45) rgba(255, 60, 30, 0.38);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .iso-scene.is-spinning .iso-world {
-    animation: none;
-  }
+  filter: drop-shadow(0 0 calc(var(--iso-unit) * 0.3) rgba(255, 60, 30, 0.5));
 }
 </style>
