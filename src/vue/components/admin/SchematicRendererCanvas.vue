@@ -10,6 +10,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 let schematicRendererModulePromise = null
 
 const RENDERER_READY_TIMEOUT_MS = 20000
+const THUMBNAIL_FRAME_TIMEOUT_MS = 1500
 const SCHEMATIC_ID = 'litemora-preview'
 const SCHEMATIC_RENDERER_CDN_URLS = [
   'https://esm.sh/schematic-renderer@1.1.23?bundle&target=es2022',
@@ -829,7 +830,18 @@ async function capturePreviewThumbnail(options = {}) {
   const quality = Math.min(0.95, Math.max(0.5, Number(options.quality || 0.82)))
 
   rendererInstance?.renderManager?.requestRender?.()
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  // Hidden or occluded tabs never fire rAF; give up on the fresh frame after a
+  // short wait so projection creation does not hang on the thumbnail.
+  const framePainted = await new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(false), THUMBNAIL_FRAME_TIMEOUT_MS)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.clearTimeout(timer)
+      resolve(true)
+    }))
+  })
+  if (!framePainted) {
+    return ''
+  }
 
   const sourceWidth = Number(sourceCanvas.width || sourceCanvas.clientWidth || 0)
   const sourceHeight = Number(sourceCanvas.height || sourceCanvas.clientHeight || 0)
