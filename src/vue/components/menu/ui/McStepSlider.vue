@@ -43,6 +43,15 @@ const progressPercent = computed(() =>
   ((localValue.value - props.min) / (props.max - props.min)) * 100,
 )
 
+// Redstone power cells: one per step (capped at 16), lit up to the current value.
+const stepCount = computed(() => Math.max(1, Math.round((props.max - props.min) / props.step)))
+const cellCount = computed(() => Math.min(16, stepCount.value))
+const litCells = computed(() => Math.max(0, Math.min(cellCount.value, Math.round((progressPercent.value / 100) * cellCount.value))))
+const trackStyle = computed(() => ({
+  '--cells': cellCount.value,
+  '--lit': `${(litCells.value / cellCount.value) * 100}%`,
+}))
+
 // Format display value
 const displayValue = computed(() => {
   if (props.marks.length > 0 && props.marks[currentStepIndex.value]) {
@@ -96,10 +105,11 @@ function handleKeyDown(event) {
 <template>
   <div class="mc-step-slider">
     <span v-if="label" class="slider-label">{{ label }}</span>
-    <div class="slider-track-container">
-      <div class="slider-track">
-        <div class="slider-fill" :style="{ width: `${progressPercent}%` }" />
+    <div class="slider-track-container" :class="{ 'is-off': litCells === 0 }" :style="trackStyle">
+      <div class="slider-track" aria-hidden="true">
+        <div class="slider-fill" />
       </div>
+      <span class="slider-knob" aria-hidden="true" />
       <input
         type="range"
         class="slider-input"
@@ -107,6 +117,7 @@ function handleKeyDown(event) {
         :min="min"
         :max="max"
         :step="step"
+        :aria-label="label || undefined"
         @input="handleInput"
         @change="handleChange"
         @keydown="handleKeyDown"
@@ -117,41 +128,91 @@ function handleKeyDown(event) {
 </template>
 
 <style scoped>
+/* Value shown as a row of redstone power cells: unpowered cells are dark, powered ones glow. */
 .mc-step-slider {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-height: 32px;
 }
 
 .slider-label {
-  color: #ddd;
-  font-size: 12px;
-  min-width: 100px;
   flex-shrink: 0;
+  min-width: 96px;
+  color: var(--rs-text);
+  font-size: 14px;
 }
 
 .slider-track-container {
   position: relative;
   flex: 1;
-  height: 20px;
+  height: 24px;
+  min-width: 96px;
 }
 
 .slider-track {
   position: absolute;
-  top: 50%;
+  top: 6px;
   left: 0;
   right: 0;
-  transform: translateY(-50%);
-  height: 8px;
-  background: #333;
-  border: 1px solid #555;
+  height: 12px;
+  padding: 2px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: 2px;
+  background: var(--rs-bg-0);
+  box-sizing: border-box;
+}
+
+.slider-track::before,
+.slider-fill {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--cell) 0,
+    var(--cell) calc(100% / var(--cells) - 2px),
+    transparent calc(100% / var(--cells) - 2px),
+    transparent calc(100% / var(--cells))
+  );
+  /* The last cell has no trailing gap: widen the pattern by one gap. */
+  right: 0;
+}
+
+.slider-track::before {
+  --cell: var(--rs-red-off);
 }
 
 .slider-fill {
-  height: 100%;
-  background: linear-gradient(to right, #4a7c4d, #6ab04c);
-  transition: width 0.05s ease-out;
+  --cell: var(--rs-red-hot);
+  clip-path: inset(0 calc(100% - var(--lit)) 0 0);
+  filter: drop-shadow(0 0 3px rgba(255, 60, 30, 0.7));
+  transition: clip-path 0.12s ease-out;
+}
+
+/* Lever-style knob sitting on the last powered cell boundary */
+.slider-knob {
+  position: absolute;
+  top: 2px;
+  left: clamp(0px, calc(var(--lit) - 5px), calc(100% - 10px));
+  width: 10px;
+  height: 20px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #8a8f96, #4b5057);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  transition: left 0.12s ease-out;
+}
+
+.slider-track-container:hover .slider-knob {
+  background: linear-gradient(180deg, #a3a8ae, #5c6168);
+}
+
+.slider-track-container:has(.slider-input:focus-visible) .slider-track {
+  outline: 2px solid var(--rs-red-hot);
+  outline-offset: 2px;
 }
 
 .slider-input {
@@ -165,35 +226,36 @@ function handleKeyDown(event) {
   cursor: pointer;
 }
 
-/* Custom thumb styling (for browsers that support it) */
 .slider-input::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 16px;
-  height: 20px;
-  background: #888;
-  border: 2px solid #aaa;
+  height: 24px;
   cursor: pointer;
 }
 
 .slider-input::-moz-range-thumb {
   width: 16px;
-  height: 20px;
-  background: #888;
-  border: 2px solid #aaa;
+  height: 24px;
   cursor: pointer;
 }
 
 .slider-value {
-  color: #fff;
-  font-size: 12px;
-  min-width: 60px;
-  text-align: right;
   flex-shrink: 0;
+  min-width: 48px;
+  color: var(--rs-text);
+  font: 500 13px/1 var(--rs-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-/* Focus state */
-.slider-input:focus + .slider-track,
-.slider-track-container:focus-within .slider-track {
-  border-color: #7af;
+.is-off + .slider-value {
+  color: var(--rs-text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slider-fill,
+  .slider-knob {
+    transition: none;
+  }
 }
 </style>

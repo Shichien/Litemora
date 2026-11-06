@@ -81,178 +81,166 @@ onUnmounted(() => {
 })
 </script>
 
-<template>
-  <div class="key-feedback mc-text">
-    <div class="movement-layout">
-      <div class="movement-left">
-        <div class="key-row key-row-center">
-          <div class="key-cap" :class="{ pressed: keys.w }">
-            W
-          </div>
-        </div>
-        <div class="key-row">
-          <div class="key-cap" :class="{ pressed: keys.a }">
-            A
-          </div>
-          <div class="key-cap" :class="{ pressed: keys.s }">
-            S
-          </div>
-          <div class="key-cap" :class="{ pressed: keys.d }">
-            D
-          </div>
-        </div>
-      </div>
 
-      <div class="movement-right">
-        <div class="key-cap wide" :class="{ pressed: keys.control }">
-          CTRL
-        </div>
-        <div class="key-cap wide" :class="{ pressed: keys.shift }">
-          SHIFT
-        </div>
-        <div class="key-cap wide" :class="{ pressed: keys.space }">
-          SPACE
-        </div>
-      </div>
+<template>
+  <div class="key-feedback">
+    <!-- Movement cluster -->
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: w" :class="{ pressed: keys.w }">
+      W
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: a" :class="{ pressed: keys.a }">
+      A
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: s" :class="{ pressed: keys.s }">
+      S
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: d" :class="{ pressed: keys.d }">
+      D
     </div>
 
-    <div class="lower-rows">
-      <div class="key-row key-row-right">
-        <div
-          class="key-cap camera-mode"
-          :class="{
-            'pressed': keys.y,
-            'camera-mode-first': keys.cameraMode === 'first-person',
-            'camera-mode-back': keys.cameraMode === 'third-person-back',
-            'camera-mode-front': keys.cameraMode === 'third-person-front',
-          }"
-        >
-          Y
-        </div>
-        <div class="key-cap" :class="{ pressed: keys.q }">
-          Q
-        </div>
-        <div class="key-cap" :class="{ pressed: keys.r }">
-          R
-        </div>
-        <div class="key-cap" :class="{ pressed: keys.f, disabled: !ui.controlPermissions.allowFlightToggle }">
-          F
-        </div>
-      </div>
+    <!-- Modifiers -->
+    <div class="kf-cell rs-kbd key-cap wide" style="grid-area: ctrl" :class="{ pressed: keys.control }">
+      CTRL
+    </div>
+    <div class="kf-cell rs-kbd key-cap wide" style="grid-area: shift" :class="{ pressed: keys.shift }">
+      SHIFT
+    </div>
+    <div class="kf-cell rs-kbd key-cap wide" style="grid-area: space" :class="{ pressed: keys.space }">
+      SPACE
+    </div>
 
-      <div class="key-row key-row-right">
-        <div class="key-cap" :class="{ pressed: keys.z, disabled: !ui.controlPermissions.allowPerspectiveToggle }">
-          Z
-        </div>
-        <div class="key-cap" :class="{ pressed: keys.x }">
-          X
-        </div>
-        <div class="key-cap" :class="{ pressed: keys.c }">
-          C
-        </div>
-        <div class="key-cap" :class="{ pressed: keys.v }">
-          V
-        </div>
-      </div>
+    <div class="kf-divider" aria-hidden="true" />
+
+    <!-- Actions -->
+    <div
+      class="kf-cell rs-kbd key-cap camera-mode"
+      style="grid-area: y"
+      :class="{
+        'pressed': keys.y,
+        'camera-mode-first': keys.cameraMode === 'first-person',
+        'camera-mode-back': keys.cameraMode === 'third-person-back',
+        'camera-mode-front': keys.cameraMode === 'third-person-front',
+      }"
+    >
+      Y
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: q" :class="{ pressed: keys.q }">
+      Q
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: r" :class="{ pressed: keys.r }">
+      R
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: f" :class="{ pressed: keys.f, disabled: !ui.controlPermissions.allowFlightToggle }">
+      F
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: z" :class="{ pressed: keys.z, disabled: !ui.controlPermissions.allowPerspectiveToggle }">
+      Z
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: x" :class="{ pressed: keys.x }">
+      X
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: c" :class="{ pressed: keys.c }">
+      C
+    </div>
+    <div class="kf-cell rs-kbd key-cap" style="grid-area: v" :class="{ pressed: keys.v }">
+      V
     </div>
   </div>
 </template>
 
 <style scoped>
 .key-feedback {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: calc(2px * var(--hud-scale));
-  padding-top: calc(4px * var(--hud-scale));
+  --kf-cell: 22px;
+  --kf-gap: 3px;
+  display: grid;
+  /* A tiny keyboard: movement + modifiers on top, the 4×2 action block below */
+  grid-template-columns: repeat(5, var(--kf-cell));
+  grid-template-rows: repeat(3, var(--kf-cell)) 1px repeat(2, var(--kf-cell));
+  grid-template-areas:
+    '.     w     .     ctrl  ctrl'
+    'a     s     d     shift shift'
+    'space space space space space'
+    'div   div   div   div   div'
+    '.     y     q     r     f'
+    '.     z     x     c     v';
+  gap: var(--kf-gap);
+  padding: 6px;
+  border: 1px solid var(--hud-edge);
+  border-radius: var(--rs-radius-lg);
+  background: var(--hud-surface);
   pointer-events: none;
-  transform: scale(0.6);
-  transform-origin: top right;
 }
 
-.movement-layout {
-  display: flex;
-  align-items: flex-start;
-  gap: calc(6px * var(--hud-scale));
-}
-
-.movement-left,
-.movement-right {
-  display: flex;
-  flex-direction: column;
-  gap: calc(2px * var(--hud-scale));
-}
-
-.key-row {
-  display: flex;
-  gap: calc(2px * var(--hud-scale));
-}
-
-.key-row-center {
-  justify-content: center;
-}
-
-.key-row-right {
-  justify-content: flex-end;
-}
-
-.lower-rows {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: calc(2px * var(--hud-scale));
+.kf-divider {
+  grid-area: div;
+  align-self: center;
+  height: 1px;
+  background: var(--rs-line);
 }
 
 .key-cap {
-  width: calc(16px * var(--hud-scale));
-  height: calc(16px * var(--hud-scale));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  border: calc(1px * var(--hud-scale)) solid rgba(255, 255, 255, 0.1);
-  color: #e0e0e0;
-  font-size: calc(8px * var(--hud-scale));
-  text-shadow: 1px 1px 0 #3f3f3f;
-  transition: all 0.05s ease;
-  border-radius: calc(1px * var(--hud-scale));
+  min-width: 0;
+  width: 100%;
+  height: var(--kf-cell);
+  padding: 0;
+  border-color: rgba(255, 255, 255, 0.14);
+  border-bottom-width: 2px;
+  border-bottom-color: rgba(0, 0, 0, 0.55);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--rs-bg-4), var(--rs-bg-3));
+  color: var(--rs-text-2);
+  font: 700 10px/1 var(--rs-font-mono);
+  letter-spacing: 0.02em;
+  transition: background 0.06s, color 0.06s, border-color 0.06s, box-shadow 0.06s, transform 0.06s;
 }
 
 .key-cap.wide {
-  width: calc(40px * var(--hud-scale));
+  font-size: 9px;
+  letter-spacing: 0.06em;
 }
 
+/* Pressed: the key powers on */
 .key-cap.pressed {
-  background: rgba(255, 255, 255, 0.8);
-  color: #000;
-  text-shadow: none;
-  transform: translateY(calc(1px * var(--hud-scale)));
-  border-color: #fff;
+  border-color: #ff6a4c;
+  border-bottom-color: #7a140c;
+  background: linear-gradient(180deg, #ff4a2e, #b81d12);
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(60, 0, 0, 0.6);
+  box-shadow: 0 0 8px rgba(255, 70, 40, 0.7);
+  transform: translateY(1px);
 }
 
 .key-cap.disabled {
-  opacity: 0.35;
-  filter: grayscale(1);
+  opacity: 0.32;
 }
 
+/* Camera mode: a signal-coloured base strip on the Y key */
 .key-cap.camera-mode-first {
-  background: rgba(88, 174, 102, 0.88);
-  border-color: rgba(192, 255, 203, 0.95);
-  color: #08120c;
-  text-shadow: none;
+  border-bottom-color: var(--rs-emerald);
+  color: var(--rs-text);
 }
 
 .key-cap.camera-mode-back {
-  background: rgba(232, 179, 64, 0.9);
-  border-color: rgba(255, 236, 181, 0.95);
-  color: #1f1300;
-  text-shadow: none;
+  border-bottom-color: var(--rs-lamp);
+  color: var(--rs-text);
 }
 
 .key-cap.camera-mode-front {
-  background: rgba(103, 184, 255, 0.9);
-  border-color: rgba(204, 235, 255, 0.95);
-  color: #03111d;
-  text-shadow: none;
+  border-bottom-color: #6cb8ff;
+  color: var(--rs-text);
+}
+
+.key-cap.camera-mode.pressed {
+  border-bottom-color: #7a140c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key-cap {
+    transition: none;
+  }
+
+  .key-cap.pressed {
+    transform: none;
+  }
 }
 </style>

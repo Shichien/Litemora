@@ -152,24 +152,31 @@ watch(
 </script>
 
 <template>
-  <div class="skin-selector">
-    <h2 class="skin-title mc-text">
-      {{ $t('menu.selectSkin') }}
-    </h2>
+  <div class="skin-selector mc-panel" role="dialog" aria-labelledby="skin-selector-title">
+    <header class="mc-panel__head">
+      <div class="mc-panel__heading">
+        <span class="mc-panel__eyebrow" aria-hidden="true">Skins</span>
+        <h2 id="skin-selector-title" class="skin-title mc-panel__title">
+          {{ $t('menu.selectSkin') }}
+        </h2>
+      </div>
+      <span class="mc-hint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
+    </header>
 
-    <!-- 预览区域（上方） -->
-    <div class="skin-preview-section">
+    <div class="skin-body">
       <!-- 左侧动画按钮组 -->
-      <div class="anim-buttons">
+      <div class="anim-buttons" role="toolbar">
         <button
           v-for="(btn, index) in ANIMATION_BUTTONS"
           :key="btn.id"
-          class="anim-btn mc-button-pixel"
+          class="anim-btn"
           :class="{ active: currentAnim === btn.id }"
           :title="$t(btn.labelKey)"
+          :aria-label="$t(btn.labelKey)"
+          :aria-pressed="currentAnim === btn.id"
           @click="playAnimation(btn.id)"
         >
-          <div
+          <span
             class="anim-icon"
             :style="{
               backgroundPositionX: `calc(${index} * 100% / 7)`,
@@ -185,131 +192,103 @@ watch(
 
         <!-- 旋转控制 -->
         <div class="rotate-controls">
-          <button class="rotate-btn mc-button-pixel" @click="rotateLeft">
-            ◀
+          <button class="rotate-btn" :aria-label="$t('skin.rotateLeft')" :title="$t('skin.rotateLeft')" @click="rotateLeft">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
           </button>
-          <button
-            class="rotate-btn mc-button-pixel reset"
-            @click="resetRotation"
-          >
-            🔄
+          <button class="rotate-btn reset" :aria-label="$t('skin.resetView')" :title="$t('skin.resetView')" @click="resetRotation">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3M4.5 2v3h3" /></svg>
           </button>
-          <button class="rotate-btn mc-button-pixel" @click="rotateRight">
-            ▶
+          <button class="rotate-btn" :aria-label="$t('skin.rotateRight')" :title="$t('skin.rotateRight')" @click="rotateRight">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
           </button>
         </div>
       </div>
+
+      <!-- 皮肤选择区域 -->
+      <div class="skin-list">
+        <button
+          v-for="skin in SKIN_LIST"
+          :key="skin.id"
+          class="skin-card"
+          :class="{
+            selected: skin.id === skinStore.previewSkinId,
+            equipped: skin.id === skinStore.currentSkinId,
+          }"
+          :aria-pressed="skin.id === skinStore.previewSkinId"
+          @click="selectSkin(skin.id)"
+        >
+          <span class="skin-thumb">
+            <img
+              :src="skin.thumbnail"
+              alt=""
+              class="skin-thumbnail"
+            >
+          </span>
+          <span class="skin-meta">
+            <span class="skin-name">{{ $t(skin.nameKey) }}</span>
+            <span
+              v-if="skin.id === skinStore.currentSkinId"
+              class="equipped-badge"
+            >
+              {{ $t('skin.equipped') }}
+            </span>
+          </span>
+        </button>
+      </div>
     </div>
 
-    <!-- 皮肤选择区域（下方） -->
-    <div class="skin-list">
-      <div
-        v-for="skin in SKIN_LIST"
-        :key="skin.id"
-        class="skin-card"
-        :class="{
-          selected: skin.id === skinStore.previewSkinId,
-          equipped: skin.id === skinStore.currentSkinId,
-        }"
-        @click="selectSkin(skin.id)"
-      >
-        <div class="skin-thumb">
-          <img
-            :src="skin.thumbnail"
-            :alt="$t(skin.nameKey)"
-            class="skin-thumbnail"
-          >
-        </div>
-        <span class="skin-name mc-text">{{ $t(skin.nameKey) }}</span>
-        <span
-          v-if="skin.id === skinStore.currentSkinId"
-          class="equipped-badge mc-text"
-        >
-          ✓ {{ $t('skin.equipped') }}
+    <footer class="mc-panel__foot">
+      <!-- 皮肤作者致谢 -->
+      <div class="skin-credits">
+        <span class="credits-text">{{ $t('skin.credits') }}</span>
+        <span class="credits-links">
+          <a
+            href="https://www.planetminecraft.com/member/hibiki_ekko/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="credit-link"
+          >hibiki_ekko</a>
+          <span class="credits-separator">&amp;</span>
+          <a
+            href="https://www.minecraftskins.com/profile/5521971/holland0519"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="credit-link"
+          >holland0519</a>
         </span>
       </div>
-    </div>
 
-    <!-- 操作按钮（最下方） -->
-    <div class="mc-menu double skin-actions">
-      <button class="mc-button half mc-button-large" @click="cancel">
-        <span class="title">{{ $t('common.cancel') }}</span>
-      </button>
-      <button
-        class="mc-button half mc-button-large"
-        :disabled="skinStore.previewSkinId === skinStore.currentSkinId"
-        @click="apply"
-      >
-        <span class="title">{{ $t('common.apply') }}</span>
-      </button>
-    </div>
-
-    <!-- 皮肤作者致谢 -->
-    <div class="skin-credits">
-      <p class="credits-text mc-text">
-        {{ $t('skin.credits') }}
-      </p>
-      <div class="credits-links">
-        <a
-          href="https://www.planetminecraft.com/member/hibiki_ekko/"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="credit-link mc-text"
+      <!-- 操作按钮 -->
+      <div class="mc-menu double skin-actions">
+        <button class="mc-button mc-button--ghost mc-button--center half" @click="cancel">
+          <span class="title">{{ $t('common.cancel') }}</span>
+        </button>
+        <button
+          class="mc-button mc-button--primary mc-button--center half"
+          :disabled="skinStore.previewSkinId === skinStore.currentSkinId"
+          @click="apply"
         >
-          hibiki_ekko
-        </a>
-        <span class="credits-separator"> & </span>
-        <a
-          href="https://www.minecraftskins.com/profile/5521971/holland0519"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="credit-link mc-text"
-        >
-          holland0519
-        </a>
+          <span class="title">{{ $t('common.apply') }}</span>
+        </button>
       </div>
-    </div>
+    </footer>
   </div>
 </template>
 
 <style scoped>
-/* Minecraft 像素边框 mixin */
-.mc-border {
-  /* 外层深色边框 */
-  box-shadow:
-    0 -2px 0 0 rgba(0, 0, 0, 0.55),
-    -2px 0 0 0 rgba(0, 0, 0, 0.55),
-    /* 顶部和左侧高光 */ 0 -4px 0 0 rgba(255, 255, 255, 0.25) inset,
-    -4px 0 0 0 rgba(255, 255, 255, 0.25) inset,
-    /* 底部和右侧阴影 */ 0 4px 0 0 rgba(0, 0, 0, 0.4) inset,
-    4px 0 0 0 rgba(0, 0, 0, 0.4) inset;
-}
-
 .skin-selector {
-  width: min(600px, 92vw);
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  font-family: 'MinecraftV2', sans-serif;
+  width: min(900px, calc(100vw - 32px));
 }
 
-.skin-title {
-  color: #fff;
-  font-size: 24px;
-  text-shadow: 3px 3px 0 #3f3f3f;
-  text-align: center;
-  margin: 0;
-  letter-spacing: 2px;
-  font-family: 'MinecraftV2', sans-serif;
+.skin-body {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 232px;
+  gap: 16px;
+  min-height: 0;
+  padding: 18px 24px;
 }
 
-/* 预览区域 */
-.skin-preview-section {
-  display: flex;
-  gap: 8px;
-}
-
-/* 左侧动画按钮组 */
+/* 动画按钮 */
 .anim-buttons {
   display: flex;
   flex-direction: column;
@@ -317,83 +296,60 @@ watch(
 }
 
 .anim-btn {
-  width: 48px;
-  height: 48px;
-  font-size: 1.5rem;
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-
-  /* Minecraft 按钮样式 */
-  background: linear-gradient(180deg, #c6c6c6 0%, #8b8b8b 100%);
-  border: none;
-  box-shadow:
-    0 -2px 0 0 rgba(0, 0, 0, 0.5),
-    -2px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -4px 0 0 rgba(255, 255, 255, 0.3) inset,
-    -4px 0 0 0 rgba(255, 255, 255, 0.3) inset,
-    0 4px 0 0 rgba(0, 0, 0, 0.35) inset,
-    4px 0 0 0 rgba(0, 0, 0, 0.35) inset;
-  image-rendering: pixelated;
-
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: linear-gradient(180deg, var(--rs-bg-4), var(--rs-bg-3));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.anim-btn:hover {
+  border-color: rgba(255, 74, 46, 0.7);
+}
+
+.anim-btn:active {
+  transform: translateY(1px);
+}
+
+.anim-btn.active {
+  border-color: var(--rs-red-hot);
+  background: linear-gradient(180deg, #3a1410, #24100d);
+  box-shadow: inset 0 0 0 1px rgba(255, 74, 46, 0.35), var(--rs-glow-soft);
 }
 
 .anim-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background-image: url('/textures/btns/buttons.webp');
   background-repeat: no-repeat;
   background-size: 900% 100%;
   image-rendering: pixelated;
+  opacity: 0.85;
   pointer-events: none;
 }
 
-.anim-btn:hover {
-  background: linear-gradient(180deg, #d8d8d8 0%, #9d9d9d 100%);
-  filter: brightness(1.15);
+.anim-btn.active .anim-icon,
+.anim-btn:hover .anim-icon {
+  opacity: 1;
 }
 
-.anim-btn:active {
-  background: linear-gradient(180deg, #8b8b8b 0%, #c6c6c6 100%);
-  box-shadow:
-    0 2px 0 0 rgba(255, 255, 255, 0.3) inset,
-    2px 0 0 0 rgba(255, 255, 255, 0.3) inset,
-    0 -2px 0 0 rgba(0, 0, 0, 0.35) inset,
-    -2px 0 0 0 rgba(0, 0, 0, 0.35) inset;
-  transform: translateY(2px);
-}
-
-.anim-btn.active {
-  background: linear-gradient(135deg, #85cb3a 0%, #4c8a22 100%);
-  box-shadow:
-    0 -2px 0 0 rgba(0, 0, 0, 0.5),
-    -2px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -4px 0 0 rgba(139, 195, 74, 0.5) inset,
-    -4px 0 0 0 rgba(139, 195, 74, 0.5) inset,
-    0 4px 0 0 rgba(0, 0, 0, 0.35) inset,
-    4px 0 0 0 rgba(0, 0, 0, 0.35) inset;
-}
-
-/* 3D 预览区域 */
+/* 3D 预览 */
 .skin-preview {
-  flex: 1;
   position: relative;
-  aspect-ratio: 16 / 10;
+  /* Fixed height (not aspect-ratio) so the frame fills its column; the scene re-fits its camera on mount. */
+  height: clamp(300px, calc(100vh - var(--mc-overlay-top) - 16px - 210px), 480px);
   overflow: hidden;
-  background: linear-gradient(180deg, #87ceeb 0%, #3a8c3a 100%);
-
-  /* Minecraft 像素边框 */
-  box-shadow:
-    0 -4px 0 0 rgba(0, 0, 0, 0.5),
-    -4px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -6px 0 0 rgba(255, 255, 255, 0.2) inset,
-    -6px 0 0 0 rgba(255, 255, 255, 0.2) inset,
-    0 6px 0 0 rgba(0, 0, 0, 0.4) inset,
-    6px 0 0 0 rgba(0, 0, 0, 0.4) inset;
-  image-rendering: pixelated;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: var(--rs-bg-1);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
 .skin-preview canvas {
@@ -402,306 +358,276 @@ watch(
   display: block;
 }
 
-/* 旋转控制 */
 .rotate-controls {
   position: absolute;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 8px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: rgba(14, 16, 19, 0.82);
 }
 
 .rotate-btn {
-  font-family: 'MinecraftV2', sans-serif !important;
-  width: 44px;
-  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--rs-text-2);
   cursor: pointer;
-  font-size: 1.25rem;
-  transition: all 0.1s;
-  border: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
 
-  /* Minecraft 按钮样式 */
-  background: linear-gradient(180deg, #c6c6c6 0%, #8b8b8b 100%);
-  box-shadow:
-    0 -2px 0 0 rgba(0, 0, 0, 0.5),
-    -2px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -4px 0 0 rgba(255, 255, 255, 0.3) inset,
-    -4px 0 0 0 rgba(255, 255, 255, 0.3) inset,
-    0 4px 0 0 rgba(0, 0, 0, 0.35) inset,
-    4px 0 0 0 rgba(0, 0, 0, 0.35) inset;
+.rotate-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: square;
 }
 
 .rotate-btn:hover {
-  background: linear-gradient(180deg, #d8d8d8 0%, #9d9d9d 100%);
-  filter: brightness(1.15);
+  border-color: rgba(255, 74, 46, 0.6);
+  background: var(--rs-bg-3);
+  color: #fff;
 }
 
-.rotate-btn:active {
-  background: linear-gradient(180deg, #8b8b8b 0%, #c6c6c6 100%);
-  transform: translateY(2px);
-}
-
-.rotate-btn.reset {
-  background: linear-gradient(180deg, #7cb342 0%, #558b2f 100%);
-}
-
-.rotate-btn.reset:hover {
-  background: linear-gradient(180deg, #8bc34a 0%, #689f38 100%);
-}
-
-/* 皮肤选择卡片列表 */
+/* 皮肤卡片：选中 = 通电 */
 .skin-list {
   display: flex;
-  justify-content: center;
-  gap: 8%;
-  padding: 16px;
-
-  /* Minecraft 方块背景纹理 */
-  background: repeating-linear-gradient(
-      0deg,
-      rgba(0, 0, 0, 0.1) 0px,
-      rgba(0, 0, 0, 0.1) 2px,
-      transparent 2px,
-      transparent 4px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(0, 0, 0, 0.1) 0px,
-      rgba(0, 0, 0, 0.1) 2px,
-      transparent 2px,
-      transparent 4px
-    ),
-    linear-gradient(180deg, #4a4a4a 0%, #2a2a2a 100%);
-
-  /* Minecraft 像素边框 */
-  box-shadow:
-    0 -4px 0 0 rgba(0, 0, 0, 0.5),
-    -4px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -6px 0 0 rgba(255, 255, 255, 0.15) inset,
-    -6px 0 0 0 rgba(255, 255, 255, 0.15) inset,
-    0 6px 0 0 rgba(0, 0, 0, 0.4) inset,
-    6px 0 0 0 rgba(0, 0, 0, 0.4) inset;
-  image-rendering: pixelated;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .skin-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-  min-width: 100px;
-
-  /* Minecraft 按钮样式 */
-  background: linear-gradient(180deg, #c6c6c6 0%, #8b8b8b 100%);
-  border: none;
-  box-shadow:
-    0 -2px 0 0 rgba(0, 0, 0, 0.5),
-    -2px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -4px 0 0 rgba(255, 255, 255, 0.25) inset,
-    -4px 0 0 0 rgba(255, 255, 255, 0.25) inset,
-    0 4px 0 0 rgba(0, 0, 0, 0.35) inset,
-    4px 0 0 0 rgba(0, 0, 0, 0.35) inset;
-  image-rendering: pixelated;
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px 10px 18px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: rgba(22, 25, 29, 0.85);
+  color: var(--rs-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+/* Dust strip on the left edge */
+.skin-card::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  background: var(--rs-red-off);
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
 .skin-card:hover {
-  transform: translateY(-4px) scale(1.02);
-  filter: brightness(1.1);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 74, 46, 0.55);
+  background: rgba(31, 35, 40, 0.92);
 }
 
-.skin-card:active {
-  transform: translateY(0) scale(0.98);
+.skin-card:hover::before {
+  background: var(--rs-red-dim);
 }
 
 .skin-card.selected {
-  background:
-    linear-gradient(135deg, #85cb3a 0%, #4c8a22 100%) padding-box,
-    linear-gradient(135deg, #fcea2c, #fcb40a) border-box;
-  border: 2px solid transparent;
-  box-shadow:
-    0 0 15px rgba(133, 203, 58, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.4);
+  border-color: var(--rs-red-hot);
+  background: linear-gradient(90deg, rgba(255, 74, 46, 0.16), rgba(22, 25, 29, 0.9) 70%);
+  box-shadow: var(--rs-glow-soft);
 }
 
-.skin-card.equipped {
-  /* 金色边框效果 */
-  box-shadow:
-    0 0 0 2px #ffd700,
-    0 -2px 0 0 rgba(0, 0, 0, 0.5),
-    -2px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -4px 0 0 rgba(255, 255, 255, 0.25) inset,
-    -4px 0 0 0 rgba(255, 255, 255, 0.25) inset,
-    0 4px 0 0 rgba(0, 0, 0, 0.35) inset,
-    4px 0 0 0 rgba(0, 0, 0, 0.35) inset;
+.skin-card.selected::before {
+  background: var(--rs-red-hot);
+  box-shadow: var(--rs-glow);
 }
 
 .skin-thumb {
-  width: 64px;
-  height: 64px;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-
-  /* 深色内凹边框 */
-  background: rgba(0, 0, 0, 0.3);
-  box-shadow:
-    0 2px 0 0 rgba(255, 255, 255, 0.2) inset,
-    2px 0 0 0 rgba(255, 255, 255, 0.2) inset,
-    0 -2px 0 0 rgba(0, 0, 0, 0.5) inset,
-    -2px 0 0 0 rgba(0, 0, 0, 0.5) inset;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--rs-line);
+  border-radius: 2px;
+  background: var(--rs-bg-0);
 }
 
 .skin-thumbnail {
-  width: 100%;
-  height: 100%;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
   image-rendering: pixelated;
-  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.3));
+}
+
+.skin-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
 }
 
 .skin-name {
-  font-size: 14px;
-  color: #fff;
-  text-shadow: 2px 2px 0 #3f3f3f;
-  font-weight: bold;
-  letter-spacing: 1px;
-  font-family: 'MinecraftV2', sans-serif;
+  color: var(--rs-text);
+  font-size: 15px;
+  font-weight: 600;
 }
 
+/* Equipped = the lamp is on */
 .equipped-badge {
-  font-size: 11px;
-  color: #fff;
-  background: linear-gradient(180deg, #ffd700 0%, #ffb700 100%);
-  padding: 4px 10px;
-  text-shadow: 1px 1px 0 #000;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  font-family: 'MinecraftV2', sans-serif;
-
-  /* Minecraft 像素边框 */
-  box-shadow:
-    0 -1px 0 0 rgba(0, 0, 0, 0.5),
-    -1px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 -2px 0 0 rgba(255, 255, 255, 0.3) inset,
-    -2px 0 0 0 rgba(255, 255, 255, 0.3) inset,
-    0 2px 0 0 rgba(0, 0, 0, 0.3) inset,
-    2px 0 0 0 rgba(0, 0, 0, 0.3) inset;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 195, 90, 0.45);
+  border-radius: 2px;
+  background: rgba(60, 40, 8, 0.6);
+  color: var(--rs-lamp);
+  font: 500 11px/1 var(--rs-font-body);
 }
 
-/* 操作按钮 */
+.equipped-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--rs-lamp);
+  box-shadow: 0 0 6px rgba(255, 195, 90, 0.8);
+}
+
+.anim-btn:focus-visible,
+.rotate-btn:focus-visible,
+.skin-card:focus-visible,
+.credit-link:focus-visible {
+  outline: 2px solid var(--rs-red-hot);
+  outline-offset: 2px;
+}
+
+/* Footer */
+.skin-credits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  color: var(--rs-text-3);
+  font-size: 12px;
+}
+
+.credits-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.credit-link {
+  color: var(--rs-text-2);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.2);
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.credit-link:hover {
+  color: var(--rs-text);
+  text-decoration-color: var(--rs-red-hot);
+}
+
 .skin-actions {
-  width: 100%;
+  flex: none;
 }
 
-.mc-button-large {
-  height: 48px;
-  font-size: 16px;
-  letter-spacing: 1px;
-}
-
-/* Loading spinner - Minecraft 风格 */
+/* Loading: a pulsing redstone dot */
 .loading-spinner {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  width: 48px;
-  height: 48px;
-
-  /* 方块旋转效果 */
-  background: linear-gradient(
-      45deg,
-      transparent 40%,
-      #fff 40%,
-      #fff 60%,
-      transparent 60%
-    ),
-    linear-gradient(
-      -45deg,
-      transparent 40%,
-      #8b8b8b 40%,
-      #8b8b8b 60%,
-      transparent 60%
-    ),
-    #c6c6c6;
-  box-shadow:
-    0 -2px 0 0 rgba(0, 0, 0, 0.5),
-    -2px 0 0 0 rgba(0, 0, 0, 0.5),
-    0 2px 0 0 rgba(0, 0, 0, 0.3),
-    2px 0 0 0 rgba(0, 0, 0, 0.3);
-  animation: spin 1s steps(8) infinite;
-  image-rendering: pixelated;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background: var(--rs-red-hot);
+  box-shadow: var(--rs-glow);
+  animation: rs-pulse 1s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
+@media (max-height: 720px) {
+  .skin-body {
+    padding: 14px 24px;
+  }
+
+  .anim-buttons {
+    gap: 4px;
+  }
+
+  .anim-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .skin-body {
+    grid-template-columns: 40px minmax(0, 1fr) 232px;
   }
 }
 
-/* 按钮文本字体 */
-.mc-button .title {
-  font-family: 'MinecraftV2', sans-serif;
+@media (max-width: 760px) {
+  .skin-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .anim-buttons {
+    flex-direction: row;
+    flex-wrap: wrap;
+    order: 2;
+  }
+
+  .skin-list {
+    flex-direction: row;
+    order: 3;
+  }
+
+  .skin-card {
+    flex-direction: column;
+    padding: 14px 8px 10px;
+  }
+
+  .skin-card::before {
+    left: 10px;
+    right: 10px;
+    top: 5px;
+    bottom: auto;
+    width: auto;
+    height: 3px;
+  }
+
+  .skin-meta {
+    align-items: center;
+  }
+
+  .mc-panel__foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
-/* 禁用按钮状态 */
-.mc-button:disabled {
-  background: linear-gradient(180deg, #5a5a5a 0%, #3a3a3a 100%);
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.mc-button:disabled:hover {
-  filter: none;
-  transform: none;
-}
-
-/* 皮肤作者致谢区域 */
-.skin-credits {
-  text-align: center;
-  padding: 12px;
-  margin-top: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
-}
-
-.credits-text {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.8);
-  margin: 0 0 6px 0;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
-}
-
-.credits-links {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.credit-link {
-  font-size: 12px;
-  color: #4ade80;
-  text-decoration: none;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
-  transition: color 0.2s;
-}
-
-.credit-link:hover {
-  color: #86efac;
-  text-decoration: underline;
-}
-
-.credits-separator {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+  }
 }
 </style>

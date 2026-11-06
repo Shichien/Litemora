@@ -1,0 +1,401 @@
+@charset "UTF-8";
+
+// ============================================================================
+// Litemora "Deepslate + Redstone" design system
+// ----------------------------------------------------------------------------
+// Dark deepslate surfaces, one accent colour (redstone red) that "powers on"
+// with a glow on hover/active. Body text uses the system stack for CJK
+// readability; Minecraftia is only for short Latin/number display text and is
+// crisp at multiples of 8px (8 / 16 / 24 / 32 / 48 / 64).
+//
+// Vue helpers live in src/vue/components/redstone/:
+//   RedstoneWire  - SVG dust line, dim when off, glowing + signal pulse when powered
+//   RedstoneTorch - pixel torch texture with flickering glow
+//   IsoScene      - CSS-3D isometric voxel scene using real pack textures
+// ============================================================================
+
+:root {
+  // Surfaces (deepest → raised)
+  --rs-bg-0: #08090b;
+  --rs-bg-1: #0f1114;
+  --rs-bg-2: #16191d;
+  --rs-bg-3: #1f2328;
+  --rs-bg-4: #2a2f36;
+
+  // Lines
+  --rs-line: rgba(255, 255, 255, 0.08);
+  --rs-line-strong: rgba(255, 255, 255, 0.16);
+
+  // Text (slightly warm, like lit stone)
+  --rs-text: #ede8e2;
+  --rs-text-2: #b5aea6;
+  --rs-text-3: #7f7971;
+
+  // Redstone
+  --rs-red: #d9241a;
+  --rs-red-hot: #ff4a2e;
+  --rs-red-soft: rgba(255, 74, 46, 0.14);
+  --rs-red-dim: #5c1510;
+  --rs-red-off: #3b0f0c;
+  --rs-glow: 0 0 6px rgba(255, 70, 40, 0.8), 0 0 18px rgba(255, 40, 20, 0.35);
+  --rs-glow-soft: 0 0 12px rgba(255, 60, 30, 0.28);
+
+  // Secondary signal colours (use sparingly)
+  --rs-lamp: #ffc35a;
+  --rs-emerald: #3fd47a;
+  --rs-copper: #d47a4f;
+
+  // Shape
+  --rs-radius: 3px;
+  --rs-radius-lg: 6px;
+  --rs-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  // Type
+  --rs-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --rs-font-pixel: 'Minecraftia', var(--rs-font-body);
+  --rs-font-mono: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace;
+
+  // Pack textures
+  --rs-tex-deepslate: url('/minecraft-default-pack/assets/minecraft/textures/block/deepslate.png');
+  --rs-tex-deepslate-tiles: url('/minecraft-default-pack/assets/minecraft/textures/block/deepslate_tiles.png');
+  --rs-tex-deepslate-bricks: url('/minecraft-default-pack/assets/minecraft/textures/block/deepslate_bricks.png');
+  --rs-tex-polished-deepslate: url('/minecraft-default-pack/assets/minecraft/textures/block/polished_deepslate.png');
+  --rs-tex-redstone-block: url('/minecraft-default-pack/assets/minecraft/textures/block/redstone_block.png');
+}
+
+// ----------------------------------------------------------------------------
+// Backgrounds
+// ----------------------------------------------------------------------------
+
+// Tiled deepslate behind a dark wash. Add to a page root.
+.rs-bg-deepslate {
+  background-color: var(--rs-bg-1);
+  background-image:
+    radial-gradient(120% 80% at 50% 0%, rgba(255, 60, 30, 0.06), transparent 60%),
+    linear-gradient(rgba(10, 11, 14, 0.9), rgba(10, 11, 14, 0.94)),
+    var(--rs-tex-deepslate-tiles);
+  background-size: auto, auto, 64px 64px;
+  image-rendering: pixelated;
+}
+
+// Faint block grid, like a blueprint drawn on stone.
+.rs-bg-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+// ----------------------------------------------------------------------------
+// Panels
+// ----------------------------------------------------------------------------
+
+.rs-panel {
+  position: relative;
+  background: var(--rs-bg-2);
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--rs-shadow);
+  color: var(--rs-text);
+}
+
+// Polished deepslate texture under the panel colour.
+.rs-panel--stone {
+  background-color: var(--rs-bg-2);
+  background-image:
+    linear-gradient(rgba(22, 25, 29, 0.9), rgba(22, 25, 29, 0.94)),
+    var(--rs-tex-polished-deepslate);
+  background-size: auto, 48px 48px;
+  image-rendering: pixelated;
+}
+
+// Translucent panel for overlays on top of the 3D world.
+.rs-panel--glass {
+  background: rgba(14, 16, 19, 0.78);
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+}
+
+// Redstone strip along the top edge; lights up on hover of an .rs-powerable parent or with .is-powered.
+.rs-panel--wired::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: -1px;
+  height: 2px;
+  background: var(--rs-red-dim);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.rs-panel--wired.is-powered::before,
+.rs-powerable:hover .rs-panel--wired::before,
+.rs-panel--wired.rs-powerable:hover::before {
+  background: var(--rs-red-hot);
+  box-shadow: var(--rs-glow);
+}
+
+// ----------------------------------------------------------------------------
+// Buttons
+// ----------------------------------------------------------------------------
+
+.rs-btn {
+  --rs-btn-h: 40px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: var(--rs-btn-h);
+  padding: 0 18px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: linear-gradient(180deg, var(--rs-bg-4), var(--rs-bg-3));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+  color: var(--rs-text);
+  font: 500 14px/1 var(--rs-font-body);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.05s;
+
+  &:hover {
+    border-color: rgba(255, 74, 46, 0.7);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 0 rgba(0, 0, 0, 0.35), var(--rs-glow-soft);
+  }
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.35);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--rs-red-hot);
+    outline-offset: 2px;
+  }
+
+  &:disabled,
+  &.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+// Redstone dust dot on the left that powers on with hover.
+.rs-btn--dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: var(--rs-red-off);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.rs-btn--dot:hover::before,
+.rs-btn--dot.is-active::before {
+  background: var(--rs-red-hot);
+  box-shadow: var(--rs-glow);
+}
+
+// Redstone-block primary button.
+.rs-btn--primary {
+  border-color: #ff5a3c;
+  background:
+    linear-gradient(180deg, rgba(255, 90, 60, 0.35), rgba(120, 10, 0, 0.35)),
+    var(--rs-tex-redstone-block) center / 32px 32px;
+  image-rendering: pixelated;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(60, 0, 0, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 200, 180, 0.35), inset 0 -2px 0 rgba(60, 0, 0, 0.45), var(--rs-glow-soft);
+
+  &:hover {
+    border-color: #ff8a6a;
+    box-shadow: inset 0 1px 0 rgba(255, 200, 180, 0.45), inset 0 -2px 0 rgba(60, 0, 0, 0.45), var(--rs-glow);
+  }
+}
+
+.rs-btn--ghost {
+  background: transparent;
+  border-color: var(--rs-line);
+  box-shadow: none;
+
+  &:hover {
+    background: var(--rs-red-soft);
+    box-shadow: none;
+  }
+}
+
+.rs-btn--sm {
+  --rs-btn-h: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.rs-btn--lg {
+  --rs-btn-h: 48px;
+  padding: 0 24px;
+  font-size: 15px;
+}
+
+.rs-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+.rs-btn--icon {
+  width: var(--rs-btn-h);
+  padding: 0;
+}
+
+// ----------------------------------------------------------------------------
+// Text
+// ----------------------------------------------------------------------------
+
+.rs-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rs-red-hot);
+  font: 400 8px/1.6 var(--rs-font-pixel);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rs-pixel {
+  font-family: var(--rs-font-pixel);
+  font-weight: 400;
+  -webkit-font-smoothing: none;
+}
+
+.rs-mono {
+  font-family: var(--rs-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.rs-muted {
+  color: var(--rs-text-2);
+}
+
+.rs-faint {
+  color: var(--rs-text-3);
+}
+
+// ----------------------------------------------------------------------------
+// Small parts
+// ----------------------------------------------------------------------------
+
+.rs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: 2px;
+  background: rgba(8, 9, 11, 0.6);
+  color: var(--rs-text-2);
+  font: 500 11px/1 var(--rs-font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  &.is-red {
+    border-color: rgba(255, 74, 46, 0.5);
+    color: #ffb3a4;
+    background: rgba(60, 10, 6, 0.6);
+  }
+}
+
+// Keyboard key cap.
+.rs-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--rs-line-strong);
+  border-bottom-width: 3px;
+  border-radius: 3px;
+  background: var(--rs-bg-3);
+  color: var(--rs-text);
+  font: 600 12px/1 var(--rs-font-mono);
+}
+
+// Horizontal redstone line. Add .is-powered (or hover an .rs-powerable parent) to light it.
+.rs-wire-line {
+  height: 2px;
+  background: var(--rs-red-dim);
+  transition: background 0.2s, box-shadow 0.2s;
+
+  &.is-powered,
+  .rs-powerable:hover & {
+    background: var(--rs-red-hot);
+    box-shadow: var(--rs-glow);
+  }
+}
+
+.rs-input {
+  height: 40px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: var(--rs-bg-0);
+  color: var(--rs-text);
+  font: 400 14px/1 var(--rs-font-body);
+  transition: border-color 0.15s, box-shadow 0.15s;
+
+  &::placeholder {
+    color: var(--rs-text-3);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--rs-red-hot);
+    box-shadow: 0 0 0 3px var(--rs-red-soft);
+  }
+}
+
+// Pixelated texture image (block icons etc.).
+.rs-tex {
+  image-rendering: pixelated;
+}
+
+.rs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rs-bg-4) transparent;
+}
+
+// ----------------------------------------------------------------------------
+// Motion
+// ----------------------------------------------------------------------------
+
+@keyframes rs-flicker {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  20% { opacity: 0.75; transform: scale(0.96); }
+  45% { opacity: 1; transform: scale(1.03); }
+  70% { opacity: 0.82; transform: scale(0.98); }
+}
+
+@keyframes rs-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@keyframes rs-signal {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -100; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-torch__glow,
+  .rs-wire__pulse {
+    animation: none !important;
+  }
+}

@@ -14,11 +14,11 @@ const displayPosition = computed(() => ({
 
 <template>
   <div class="top-info-bar">
-    <div class="coordinate-display">
-      <span>X: {{ displayPosition.x }}</span>
-      <span>Y: {{ displayPosition.y }}</span>
-      <span>Z: {{ displayPosition.z }}</span>
-    </div>
     <CompassWheel />
+    <div class="coordinate-display" aria-label="坐标">
+      <span class="coord"><span class="coord-axis">X</span><span class="coord-value">{{ displayPosition.x }}</span></span>
+      <span class="coord"><span class="coord-axis">Y</span><span class="coord-value">{{ displayPosition.y }}</span></span>
+      <span class="coord"><span class="coord-axis">Z</span><span class="coord-value">{{ displayPosition.z }}</span></span>
+    </div>
   </div>
 </template>

@@ -48,14 +48,20 @@
   <body>
     <div id="app"></div>
     <!-- Loading 全屏 进度 -->
-    <div id="loading-screen">
-      <div class="loading-panel">
-        <div class="loading-text">
-          <h2 class="loading-title">Loading Litemora</h2>
-          <p id="loading-percentage" class="loading-percentage">0%</p>
+    <div id="loading-screen" class="ls-root" role="status" aria-label="Loading Litemora">
+      <div class="ls-stage">
+        <h2 class="ls-brand">LITEMORA</h2>
+        <p class="ls-sub">Playable Schematic Worlds</p>
+        <div class="ls-circuit" aria-hidden="true">
+          <span class="ls-torch"></span>
+          <div class="ls-track">
+            <div id="loading-bar" class="ls-fill"><div class="ls-dust"></div></div>
+            <span class="ls-lamp"></span>
+          </div>
         </div>
-        <div class="loading-track">
-          <div id="loading-bar"></div>
+        <div class="ls-status">
+          <span class="ls-label"><span class="ls-tag">LOADING</span></span>
+          <p id="loading-percentage" class="ls-pct">0%</p>
         </div>
       </div>
     </div>

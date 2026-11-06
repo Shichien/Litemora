@@ -1,6 +1,7 @@
 @charset "UTF-8";
 
 @use 'tokens';
+@use 'redstone';
 @use 'hud';
 
 @tailwind base;
@@ -8,12 +9,12 @@
 @tailwind utilities;
 
 :root {
-  --primary: #262626;
-  --secondary: #171717;
-  --tertiary: #404040;
-  --color: #f3f3f3;
-  --accent-primary: #2563eb;
-  --accent-primary-state: #1d4ed8;
+  --primary: #1f2328;
+  --secondary: #0f1114;
+  --tertiary: #2a2f36;
+  --color: #ede8e2;
+  --accent-primary: #d9241a;
+  --accent-primary-state: #ff4a2e;
 }
 
 html,
@@ -23,5 +24,11 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background: #0f1114;
+  color-scheme: dark;
 }
 
+::selection {
+  background: rgba(255, 74, 46, 0.35);
+  color: #fff;
+}

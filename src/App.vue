@@ -286,13 +286,20 @@ onBeforeUnmount(() => {
 
 .world-breadcrumbs {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
+  /* Aligned with the HUD top row; stops short of the centred compass (--hud-compass-w) */
+  top: var(--hud-top, 12px);
+  left: var(--hud-side, 16px);
+  max-width: calc(50vw - var(--hud-compass-w, 320px) / 2 - var(--hud-side, 16px) - 16px);
   z-index: 120;
-  padding: 0.75rem 1rem;
-  border-radius: 999px;
-  background: rgba(6, 13, 18, 0.58);
-  backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  /* Positioning only: SpaceBreadcrumbs (.is-overlay) draws its own panel */
+  display: flex;
+  min-width: 0;
+}
+
+/* Mobile: the HUD compass drops below (top: 72px), so the crumbs can use the full row */
+@media (max-width: 620px) {
+  .world-breadcrumbs {
+    max-width: calc(100vw - 2 * var(--hud-side, 16px));
+  }
 }
 </style>

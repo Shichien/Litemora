@@ -124,18 +124,24 @@ export default class SkinPreviewScene {
     bgCanvas.height = 256
     const ctx = bgCanvas.getContext('2d')
 
-    // 渐变：天空蓝 → 草地绿
+    // Deepslate backdrop to match the menu panel, with a faint redstone glow behind the model.
     const gradient = ctx.createLinearGradient(0, 0, 0, 256)
-    gradient.addColorStop(0, '#ced8df') // 天空蓝
-    gradient.addColorStop(0.5, '#d0ddd9') // 浅草绿
-    gradient.addColorStop(0.7, '#5BA85B') // 草地绿
-    gradient.addColorStop(1, '#3A7A3A') // 深绿
+    gradient.addColorStop(0, '#2a2f36')
+    gradient.addColorStop(0.65, '#1a1d22')
+    gradient.addColorStop(1, '#0f1114')
 
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, 256, 256)
 
+    const glow = ctx.createRadialGradient(128, 120, 0, 128, 120, 120)
+    glow.addColorStop(0, 'rgba(255, 74, 46, 0.16)')
+    glow.addColorStop(1, 'rgba(255, 74, 46, 0)')
+    ctx.fillStyle = glow
+    ctx.fillRect(0, 0, 256, 256)
+
     // 创建纹理并设置为场景背景
     const bgTexture = new THREE.CanvasTexture(bgCanvas)
+    bgTexture.colorSpace = THREE.SRGBColorSpace
     this.scene.background = bgTexture
   }
 

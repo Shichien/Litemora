@@ -89,26 +89,20 @@ onUnmounted(() => {
 })
 </script>
 
+
 <template>
   <Transition name="fade">
     <div v-if="isVisible" class="crosshair" :class="{ 'is-pressed': isPressed }">
-      <!-- 中央十字 - 四个短划线 -->
+      <!-- 中央十字: 四条短臂 + 中心点, 白芯黑边, 在亮/暗方块上都清晰 -->
       <div class="center-dashes">
         <div class="dash top" />
         <div class="dash bottom" />
         <div class="dash left" />
         <div class="dash right" />
+        <div class="dash dot" />
       </div>
 
-      <!-- 四个角上的 L 型边框 -->
-      <div class="corners">
-        <div class="corner top-left" />
-        <div class="corner top-right" />
-        <div class="corner bottom-left" />
-        <div class="corner bottom-right" />
-      </div>
-
-      <!-- 挖掘进度条 -->
+      <!-- 挖掘进度条: 一段红石线 -->
       <Transition name="progress-fade">
         <div v-if="isMining" class="mining-progress-container">
           <div class="mining-progress-bar">
@@ -121,106 +115,59 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 22px box with integer offsets so every edge lands on a whole pixel */
 .crosshair {
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
   pointer-events: none;
   z-index: 9999;
-  width: 40px;
-  height: 40px;
-  transition: transform 0.1s ease;
 }
 
-.crosshair.is-pressed {
-  transform: translate(-50%, -50%) scale(0.85);
-}
-
-/* 像素风格的基础样式 */
-.dash,
-.corner {
+.dash {
   position: absolute;
-  background-color: #eee;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-  transition: all 0.15s ease-out;
-}
-
-/* 中央短划线 */
-.center-dashes .dash {
-  background-color: #eeeeeeb2;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  transition: transform 0.08s ease-out, background-color 0.08s;
 }
 
 .dash.top,
 .dash.bottom {
+  left: 10px;
   width: 2px;
   height: 6px;
-  left: 50%;
-  transform: translateX(-50%);
 }
 
-.dash.top { top: 12px; }
-.dash.bottom { bottom: 12px; }
+.dash.top { top: 1px; }
+.dash.bottom { bottom: 1px; }
 
 .dash.left,
 .dash.right {
+  top: 10px;
   width: 6px;
   height: 2px;
-  top: 50%;
-  transform: translateY(-50%);
 }
 
-.dash.left { left: 12px; }
-.dash.right { right: 12px; }
+.dash.left { left: 1px; }
+.dash.right { right: 1px; }
 
-/* 边角 L 型 */
-.corner {
-  width: 6px;
-  height: 6px;
-  background: transparent;
-  border: 2px solid rgba(255, 255, 255, 0.699);
-  box-shadow: none; /* 移除阴影以保持锐利 */
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
+.dash.dot {
+  top: 10px;
+  left: 10px;
+  width: 2px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.85);
 }
 
-.top-left {
-  top: 0;
-  left: 0;
-  border-right: none;
-  border-bottom: none;
-}
-
-.top-right {
-  top: 0;
-  right: 0;
-  border-left: none;
-  border-bottom: none;
-}
-
-.bottom-left {
-  bottom: 0;
-  left: 0;
-  border-right: none;
-  border-top: none;
-}
-
-.bottom-right {
-  bottom: 0;
-  right: 0;
-  border-left: none;
-  border-top: none;
-}
-
-/* 按下时的位移效果 */
-.is-pressed .dash.top { transform: translate(-50%, 2px); }
-.is-pressed .dash.bottom { transform: translate(-50%, -2px); }
-.is-pressed .dash.left { transform: translate(2px, -50%); }
-.is-pressed .dash.right { transform: translate(-2px, -50%); }
-
-.is-pressed .top-left { transform: translate(3px, 3px); }
-.is-pressed .top-right { transform: translate(-3px, 3px); }
-.is-pressed .bottom-left { transform: translate(3px, -3px); }
-.is-pressed .bottom-right { transform: translate(-3px, -3px); }
+/* Pressed: arms close in by 2px and the cross powers on */
+.is-pressed .dash { background: var(--rs-red-hot, #ff4a2e); }
+.is-pressed .dash.top { transform: translateY(2px); }
+.is-pressed .dash.bottom { transform: translateY(-2px); }
+.is-pressed .dash.left { transform: translateX(2px); }
+.is-pressed .dash.right { transform: translateX(-2px); }
 
 /* 淡入淡出动画 */
 .fade-enter-active,
@@ -236,28 +183,26 @@ onUnmounted(() => {
 /* 挖掘进度条 */
 .mining-progress-container {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 10px);
   left: 50%;
-  transform: translateX(-50%);
-  width: 120px;
+  width: 72px;
+  margin-left: -36px;
   pointer-events: none;
 }
 
 .mining-progress-bar {
   width: 100%;
-  height: 6px;
-  background-color: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 3px;
+  height: 4px;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  background: var(--rs-red-off, #3b0f0c);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
 }
 
 .mining-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
+  background: var(--rs-red-hot, #ff4a2e);
+  box-shadow: 0 0 6px rgba(255, 70, 40, 0.8);
   transition: width 0.05s linear;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
 }
 
 /* 进度条淡入淡出动画 */
@@ -269,5 +214,11 @@ onUnmounted(() => {
 .progress-fade-enter-from,
 .progress-fade-leave-to {
   opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash {
+    transition: none;
+  }
 }
 </style>

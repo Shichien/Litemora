@@ -9,7 +9,7 @@ import { computed } from 'vue'
 const hud = useHudStore()
 
 // Visual Configuration
-const PIXELS_PER_DEG = 4 // Scale factor (density)
+const PIXELS_PER_DEG = 3 // Scale factor (density)
 const TICK_SPACING = 5 // Degrees between ticks
 
 // Direction definitions (Rad -> Deg)
@@ -82,60 +82,63 @@ const compassItems = computed(() => {
 })
 </script>
 
+
 <template>
   <div class="compass-container">
-    <div class="compass-pointer" />
-    <div
-      class="compass-track"
-      :style="{ transform: `translateX(calc(50% - ${trackOffset}px))` }"
-    >
-      <template v-for="(item, index) in compassItems" :key="index">
-        <!-- Direction Label -->
-        <span
-          v-if="item.type === 'direction'"
-          class="compass-direction absolute-item "
-          :class="{ north: item.isNorth, minor: item.minor }"
-          :style="{ left: `${item.left}px` }"
-        >
-          {{ item.label }}
-        </span>
-        <!-- Tick Mark -->
-        <div
-          v-else
-          class="compass-tick absolute-item"
-          :class="{ major: item.major }"
-          :style="{ left: `${item.left}px` }"
-        />
-      </template>
+    <div class="compass-window">
+      <div
+        class="compass-track"
+        :style="{ transform: `translateX(calc(50% - ${trackOffset}px))` }"
+      >
+        <template v-for="(item, index) in compassItems" :key="index">
+          <!-- Direction Label -->
+          <span
+            v-if="item.type === 'direction'"
+            class="compass-direction absolute-item"
+            :class="{ north: item.isNorth, minor: item.minor }"
+            :style="{ left: `${item.left}px` }"
+          >
+            {{ item.label }}
+          </span>
+          <!-- Tick Mark -->
+          <div
+            v-else
+            class="compass-tick absolute-item"
+            :class="{ major: item.major }"
+            :style="{ left: `${item.left}px` }"
+          />
+        </template>
+      </div>
     </div>
+    <div class="compass-pointer" />
   </div>
 </template>
 
 <style scoped>
 .compass-track {
-  position: relative;
-  height: 100%;
   width: 100%;
   will-change: transform;
 }
 
 .absolute-item {
   position: absolute;
-  font-family: 'MinecraftV2', sans-serif;
   top: 50%;
   transform: translate(-50%, -50%); /* Center on the 'left' coordinate */
 }
 
-/* Tick specific vertical alignment */
+/* Ticks hang from the bottom edge like a ruler */
 .compass-tick.absolute-item {
-  top: 50%;
-  font-family: 'MinecraftV2', sans-serif;
-  transform: translate(-50%, -50%);
+  top: auto;
+  bottom: 0;
+  transform: translateX(-50%);
 }
 
-.compass-direction.minor {
-  font-size: calc(7px * var(--hud-scale));
-  font-family: 'MinecraftV2', sans-serif;
-  opacity: 0.6;
+.compass-direction.absolute-item {
+  /* Minecraftia ink sits above its line box centre: 6px at 16px, 3px at 8px */
+  margin-top: 6px;
+}
+
+.compass-direction.minor.absolute-item {
+  margin-top: 3px;
 }
 </style>

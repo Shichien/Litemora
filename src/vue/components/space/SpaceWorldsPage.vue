@@ -13,9 +13,15 @@ import {
 } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
 import { buildSpaceProjectionUrl, buildSpaceWorldsAdminUrl, buildSpaceWorldsUrl } from '@three/utils/space-context.js'
+import { getStaticThumbnailUrl, loadThumbnailManifest } from '@/js/gallery/world-thumbnails.js'
+import IsoScene from '@ui-components/redstone/IsoScene.vue'
+import { redstoneCircuitScene } from '@ui-components/redstone/iso-presets.js'
+import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
 import SpaceNotFoundPage from '@ui-components/space/SpaceNotFoundPage.vue'
 import SpaceProfileSettingsPage from '@ui-components/space/SpaceProfileSettingsPage.vue'
+import SpaceWorldCard from '@ui-components/space/SpaceWorldCard.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
   spaceName: {
@@ -48,6 +54,11 @@ const pendingDeleteItemId = ref('')
 const authMenuOpen = ref(false)
 const authMenuRef = ref(null)
 const isSavingProfile = ref(false)
+const thumbnailManifest = ref({})
+
+const { t, locale } = useI18n()
+const heroScene = redstoneCircuitScene()
+const SKELETON_CARDS = 4
 
 let activeRssFeedUrl = ''
 
@@ -142,6 +153,15 @@ const isMissingSpace = computed(() => {
   return !galleryProfile.value && galleryItems.value.length === 0 && !canManageProjections.value
 })
 
+const totalBlockCount = computed(() => {
+  return galleryItems.value.reduce((sum, item) => sum + getProjectionBlockCount(item), 0)
+})
+const numberFormatter = computed(() => new Intl.NumberFormat(locale.value === 'zh' ? 'zh-CN' : 'en-US'))
+const isArchivePowered = computed(() => !isLoading.value && galleryItems.value.length > 0)
+
+function formatNumber(value) {
+  return numberFormatter.value.format(Number(value) || 0)
+}
 function resolveProjectionPreview(item) {
   if (!item || typeof item !== 'object') {
     return null
@@ -170,76 +190,15 @@ function openProjectionSettings(item) {
   navigateToUrl(buildSpaceWorldsAdminUrl(props.spaceName, routeId))
 }
 
-function resolveProjectionThumbnailAsset(item) {
-  const imageUrl = String(item?.thumbnailDataUrl || '').trim()
-  if (imageUrl) {
-    return {
-      imageUrl,
-      generated: null,
-    }
+function resolveCardImageUrl(item) {
+  // Admin-uploaded image first, then the static capture; '' means generated art.
+  const uploaded = String(item?.thumbnailDataUrl || '').trim()
+  if (uploaded) {
+    return uploaded
   }
 
-  return {
-    imageUrl: '',
-    generated: generateProjectionThumbnailSvg(item),
-  }
+  return getStaticThumbnailUrl(thumbnailManifest.value, props.spaceName, getProjectionRouteId(item))
 }
-
-function generateProjectionThumbnailSvg(item) {
-  const preview = resolveProjectionPreview(item)
-  const bounds = preview?.bounds
-  if (!bounds) {
-    return null
-  }
-
-  const minX = bounds.minX ?? 0
-  const maxX = bounds.maxX ?? 16
-  const minY = bounds.minY ?? 0
-  const maxY = bounds.maxY ?? 32
-  const minZ = bounds.minZ ?? 0
-  const maxZ = bounds.maxZ ?? 16
-
-  const width = maxX - minX || 16
-  const height = maxY - minY || 32
-  const depth = maxZ - minZ || 16
-
-  const maxDim = Math.max(width, height, depth)
-  const scale = 20 / maxDim
-
-  const displayWidth = width * scale
-  const displayHeight = height * scale
-  const safeGradientId = String(item?.id || 'projection')
-    .replace(/[^a-z0-9_-]/giu, '')
-    .slice(0, 48) || 'projection'
-
-  const centerX = 12
-  const centerY = 12
-  const baseColor = '#7ebcd3'
-  const highlightColor = '#a8d8ea'
-
-  return {
-    svg: `
-      <svg width="100%" height="100%" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="grad-${safeGradientId}" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:${highlightColor};stop-opacity:0.8" />
-            <stop offset="100%" style="stop-color:${baseColor};stop-opacity:0.6" />
-          </linearGradient>
-        </defs>
-        <g transform="translate(${centerX - displayWidth / 2}, ${centerY - displayHeight / 2})">
-          <path d="M0,${displayHeight * 0.2} L${displayWidth * 0.3},0 L${displayWidth},${displayHeight * 0.2} L${displayWidth * 0.7},${displayHeight * 0.4} Z"
-                fill="${highlightColor}" fill-opacity="0.7" />
-          <rect x="0" y="${displayHeight * 0.2}" width="${displayWidth}" height="${displayHeight * 0.6}"
-                fill="url(#grad-${safeGradientId})" />
-          <path d="M${displayWidth},${displayHeight * 0.2} L${displayWidth * 0.7},${displayHeight * 0.4} L${displayWidth * 0.7},${displayHeight} L${displayWidth},${displayHeight * 0.8} Z"
-                fill="${baseColor}" fill-opacity="0.5" />
-        </g>
-      </svg>
-    `,
-    bounds: { width, height, depth },
-  }
-}
-
 function setActionMessage(message, tone = 'neutral') {
   actionMessage.value = message
   actionTone.value = tone
@@ -473,10 +432,6 @@ async function handleProviderAuth(provider) {
   }
 }
 
-function getProjectionAuthor(item) {
-  return item?.schematic?.author || 'Unknown'
-}
-
 function getProjectionBlockCount(item) {
   const preview = resolveProjectionPreview(item)
   return Number(preview?.totalSolidBlocks || item?.schematic?.blockCount || 0)
@@ -557,6 +512,9 @@ onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
   syncCurrentView()
   void loadWorlds()
+  void loadThumbnailManifest().then((manifest) => {
+    thumbnailManifest.value = manifest
+  })
 })
 
 onBeforeUnmount(() => {
@@ -583,38 +541,20 @@ watch(
     :space-name="spaceName"
   />
 
-  <main v-else class="worlds-shell">
+  <main v-else class="worlds-shell rs-bg-deepslate">
     <header class="worlds-topbar">
       <div class="worlds-topbar-inner">
-        <div class="worlds-brand">
-          <button
-            type="button"
-            class="brand-avatar-button"
-            :class="{ disabled: !canEditProfileSettings }"
-            :disabled="!canEditProfileSettings"
-            @click="openProfileSettings"
-          >
-            <span class="brand-avatar">
-              <img v-if="brandAvatar" :src="brandAvatar" :alt="brandTitle">
-              <span v-else>{{ brandAvatarInitial }}</span>
-            </span>
-          </button>
+        <SpaceBreadcrumbs
+          class="topbar-crumbs"
+          variant="inline"
+          :space-name="spaceName"
+          :current-label="isProfileSettingsView ? 'Profile Settings' : ''"
+        />
 
-          <div class="brand-copy">
-            <button
-              type="button"
-              class="brand-title-button"
-              :disabled="!isProfileSettingsView && !canEditProfileSettings"
-              @click="isProfileSettingsView ? closeProfileSettings() : openProfileSettings()"
-            >
-              <span class="title-text">{{ brandTitle }}</span>
-              <span class="subtitle-text">{{ brandSubtitle }}</span>
-            </button>
-          </div>
-
+        <div class="worlds-topbar-actions">
           <div class="brand-icon-row">
             <a
-              class="brand-icon-button"
+              class="brand-icon-button rs-btn rs-btn--ghost rs-btn--sm rs-btn--icon"
               :href="LITEMORA_REPOSITORY_URL"
               target="_blank"
               rel="noreferrer"
@@ -622,28 +562,33 @@ watch(
               aria-label="Open GitHub repository"
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-                <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
+                <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z" />
               </svg>
             </a>
             <button
               type="button"
-              class="brand-icon-button"
+              class="brand-icon-button rs-btn rs-btn--ghost rs-btn--sm rs-btn--icon"
               title="Open RSS feed"
               aria-label="Open RSS feed"
               @click="openRssFeed"
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M4 11a9 9 0 0 1 9 9"></path>
-                <path d="M4 4a16 16 0 0 1 16 16"></path>
-                <circle cx="5" cy="19" r="1"></circle>
+                <path d="M4 11a9 9 0 0 1 9 9" />
+                <path d="M4 4a16 16 0 0 1 16 16" />
+                <circle cx="5" cy="19" r="1" />
               </svg>
             </button>
           </div>
-        </div>
 
-        <div ref="authMenuRef" class="worlds-topbar-actions">
-          <div class="auth-popover">
-            <button type="button" class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
+          <div ref="authMenuRef" class="auth-popover">
+            <button
+              type="button"
+              class="auth-trigger rs-btn rs-btn--sm"
+              :class="{ 'active': authMenuOpen, 'has-account': !!authSession }"
+              :aria-expanded="authMenuOpen ? 'true' : 'false'"
+              aria-haspopup="true"
+              @click.stop="toggleAuthMenu"
+            >
               <span class="auth-trigger-label">{{ authSession ? 'Account' : 'Login' }}</span>
               <template v-if="authSession">
                 <span class="auth-account compact">
@@ -655,14 +600,14 @@ watch(
               </template>
               <template v-else>
                 <span class="auth-trigger-arrow">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                    <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z" />
                   </svg>
                 </span>
               </template>
             </button>
 
-            <div v-if="authMenuOpen" class="auth-menu">
+            <div v-if="authMenuOpen" class="auth-menu rs-panel rs-panel--stone">
               <template v-if="authSession">
                 <div class="auth-menu-header">
                   <div class="menu-account-copy">
@@ -674,8 +619,8 @@ watch(
                 <button type="button" class="auth-menu-item" @click="openProfileSettingsFromMenu">
                   <span class="menu-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"></path>
-                      <path d="M4 20a8 8 0 0 1 16 0"></path>
+                      <path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+                      <path d="M4 20a8 8 0 0 1 16 0" />
                     </svg>
                   </span>
                   <span>Profile Settings</span>
@@ -684,9 +629,9 @@ watch(
                 <button type="button" class="auth-menu-item danger" @click="logout">
                   <span class="menu-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                      <path d="m16 17 5-5-5-5"></path>
-                      <path d="M21 12H9"></path>
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <path d="m16 17 5-5-5-5" />
+                      <path d="M21 12H9" />
                     </svg>
                   </span>
                   <span>Log out</span>
@@ -694,7 +639,9 @@ watch(
               </template>
 
               <template v-else>
-                <div class="auth-menu-title">选择登录方式</div>
+                <div class="auth-menu-title">
+                  选择登录方式
+                </div>
                 <button
                   v-for="provider in authProviders"
                   :key="provider.id"
@@ -705,7 +652,7 @@ watch(
                 >
                   <span class="menu-icon" aria-hidden="true">
                     <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z"></path>
+                      <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z" />
                     </svg>
                   </span>
                   <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
@@ -718,13 +665,13 @@ watch(
     </header>
 
     <section class="worlds-main">
-      <div v-if="actionMessage" class="banner" :class="actionTone">
+      <div v-if="actionMessage" class="banner" :class="actionTone" role="status">
         {{ actionMessage }}
       </div>
-      <div v-if="loadError" class="banner warning">
+      <div v-if="loadError" class="banner warning" role="alert">
         {{ loadError }}
       </div>
-      <div v-if="authError" class="banner warning">
+      <div v-if="authError" class="banner warning" role="alert">
         {{ authError }}
       </div>
 
@@ -745,153 +692,154 @@ watch(
         @open-rss="openRssFeed"
       />
 
-      <div v-else class="worlds-gallery">
+      <template v-else>
+        <section
+          class="worlds-hero rs-panel rs-panel--stone rs-panel--wired"
+          :class="{ 'is-powered': isArchivePowered }"
+        >
+          <div class="hero-copy">
+            <span class="rs-eyebrow hero-eyebrow">Space / {{ spaceName }}</span>
+
+            <div class="worlds-brand">
+              <button
+                type="button"
+                class="brand-avatar-button"
+                :class="{ disabled: !canEditProfileSettings }"
+                :disabled="!canEditProfileSettings"
+                :aria-label="canEditProfileSettings ? 'Profile Settings' : brandTitle"
+                @click="openProfileSettings"
+              >
+                <span class="brand-avatar">
+                  <img v-if="brandAvatar" :src="brandAvatar" :alt="brandTitle">
+                  <span v-else class="brand-avatar-initial">{{ brandAvatarInitial }}</span>
+                </span>
+              </button>
+
+              <div class="brand-copy">
+                <h1 class="brand-heading">
+                  <button
+                    type="button"
+                    class="brand-title-button"
+                    :disabled="!isProfileSettingsView && !canEditProfileSettings"
+                    @click="isProfileSettingsView ? closeProfileSettings() : openProfileSettings()"
+                  >
+                    <span class="title-text">{{ brandTitle }}</span>
+                  </button>
+                </h1>
+                <p class="subtitle-text">
+                  {{ brandSubtitle }}
+                </p>
+              </div>
+            </div>
+
+            <dl class="hero-stats">
+              <div class="hero-stat">
+                <dt>{{ t('space.hero.worlds') }}</dt>
+                <dd class="rs-pixel stat-number">
+                  <span v-if="isLoading" class="stat-pending">···</span>
+                  <template v-else>{{ formatNumber(galleryItems.length) }}</template>
+                </dd>
+              </div>
+              <div class="hero-stat">
+                <dt>{{ t('space.hero.blocks') }}</dt>
+                <dd class="rs-pixel stat-number">
+                  <span v-if="isLoading" class="stat-pending">···</span>
+                  <template v-else>{{ formatNumber(totalBlockCount) }}</template>
+                </dd>
+              </div>
+              <div class="hero-stat">
+                <dt>{{ t('space.hero.curator') }}</dt>
+                <dd class="stat-text">
+                  {{ brandOwnerName }}
+                </dd>
+              </div>
+            </dl>
+
+            <div v-if="canManageProjections || canEditProfileSettings" class="hero-actions">
+              <button
+                v-if="canManageProjections"
+                type="button"
+                class="rs-btn rs-btn--primary"
+                @click="openAdminConfigPage"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                <span>创建新的投影</span>
+              </button>
+              <button
+                v-if="canEditProfileSettings"
+                type="button"
+                class="rs-btn rs-btn--dot"
+                @click="openProfileSettings"
+              >
+                Profile Settings
+              </button>
+            </div>
+          </div>
+
+          <div v-if="isLoading || galleryItems.length" class="hero-art" aria-hidden="true">
+            <IsoScene :blocks="heroScene" :unit="30" :powered="isArchivePowered" />
+          </div>
+        </section>
+
+        <div class="worlds-gallery">
           <div class="gallery-head">
             <h2>所有投影</h2>
-            <span class="count-badge">{{ galleryItems.length }} Worlds</span>
+            <span v-if="isLoading" class="loading-text">正在同步世界目录...</span>
+            <span v-else class="rs-chip count-badge">{{ galleryItems.length }} Worlds</span>
+            <span class="gallery-head-wire rs-wire-line" aria-hidden="true" />
           </div>
 
-          <div v-if="isLoading" class="empty-state">
-            <span class="loading-text">正在同步世界目录...</span>
+          <div v-if="isLoading" class="card-grid" aria-busy="true">
+            <div v-for="n in SKELETON_CARDS" :key="n" class="skeleton-card" aria-hidden="true">
+              <div class="skeleton-thumb" />
+              <div class="skeleton-body">
+                <span class="skeleton-line is-title" />
+                <span class="skeleton-line" />
+                <span class="skeleton-line is-short" />
+              </div>
+            </div>
           </div>
 
-          <div v-else-if="galleryItems.length === 0 && !canManageProjections" class="empty-state">
+          <div
+            v-else-if="galleryItems.length === 0 && !canManageProjections"
+            class="empty-state rs-panel rs-panel--stone"
+          >
+            <div class="empty-art" aria-hidden="true">
+              <IsoScene :blocks="heroScene" :unit="22" :powered="false" />
+            </div>
+            <span class="rs-eyebrow empty-eyebrow">No signal</span>
             <span class="empty-title">还没有任何世界</span>
             <span class="empty-desc">当前 Space 尚未公开任何投影。</span>
-          </div>
-
-          <div v-else-if="galleryItems.length === 0 && canManageProjections" class="card-grid">
-            <article
-              class="world-card placeholder-card"
-              @click="openAdminConfigPage"
-            >
-              <div class="world-card-thumb placeholder-thumb">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="add-icon">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="16"></line>
-                  <line x1="8" y1="12" x2="16" y2="12"></line>
-                </svg>
-              </div>
-              <div class="world-card-content">
-                <h3 class="world-title">创建新的投影</h3>
-                <p class="world-desc">点击开始上传 .litematic 或 .schem，并创建这个 Space 的第一个投影</p>
-              </div>
-            </article>
+            <span class="empty-hint">{{ t('space.empty.hint') }}</span>
           </div>
 
           <div v-else class="card-grid">
-            <article
+            <SpaceWorldCard
               v-if="canManageProjections"
-              class="world-card placeholder-card"
-              @click="openAdminConfigPage"
-            >
-              <div class="world-card-thumb placeholder-thumb">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="add-icon">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="16"></line>
-                  <line x1="8" y1="12" x2="16" y2="12"></line>
-                </svg>
-              </div>
-              <div class="world-card-content">
-                <h3 class="world-title">创建新的投影</h3>
-                <p class="world-desc">点击上传新的原理图投影，并为它配置公开性与世界参数</p>
-              </div>
-            </article>
+              create
+              create-title="创建新的投影"
+              :create-description="galleryItems.length
+                ? '点击上传新的原理图投影，并为它配置公开性与世界参数'
+                : '点击开始上传 .litematic 或 .schem，并创建这个 Space 的第一个投影'"
+              @create="openAdminConfigPage"
+            />
 
-            <article
+            <SpaceWorldCard
               v-for="item in galleryItems"
               :key="item.id"
-              class="world-card"
-              @click="enterProjection(item.projectionSlug || item.id)"
-            >
-              <div class="world-card-thumb">
-                <div
-                  class="thumb-placeholder"
-                  :class="{
-                    'has-custom-thumb': !!resolveProjectionThumbnailAsset(item).generated,
-                    'has-image-thumb': !!resolveProjectionThumbnailAsset(item).imageUrl,
-                  }"
-                >
-                  <template v-if="resolveProjectionThumbnailAsset(item).imageUrl">
-                    <img
-                      class="thumb-image"
-                      :src="resolveProjectionThumbnailAsset(item).imageUrl"
-                      :alt="`${item.title} preview`"
-                    >
-                  </template>
-                  <template v-else-if="resolveProjectionThumbnailAsset(item).generated">
-                    <div class="custom-thumb" v-html="resolveProjectionThumbnailAsset(item).generated.svg" />
-                  </template>
-                  <template v-else>
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" class="thumb-icon">
-                      <path fill-rule="evenodd" clip-rule="evenodd" d="M12 21.05L2.8 15.35V8.65L12 2.95L21.2 8.65V15.35L12 21.05ZM12 18.2917L18.8 14.075V9.925L12 5.70834L5.2 9.925V14.075L12 18.2917Z" fill="white" fill-opacity="0.1" />
-                      <path d="M12 11V18" stroke="white" stroke-opacity="0.2" stroke-width="1.5" stroke-linecap="round" />
-                      <path d="M5.5 8L12 11" stroke="white" stroke-opacity="0.2" stroke-width="1.5" stroke-linecap="round" />
-                      <path d="M18.5 8L12 11" stroke="white" stroke-opacity="0.2" stroke-width="1.5" stroke-linecap="round" />
-                    </svg>
-                  </template>
-                </div>
-                <div class="thumb-overlay">
-                  <div class="thumb-badges">
-                    <span class="tag-badge version-tag">.LITEMATIC</span>
-                    <span
-                      v-if="canManageProjections"
-                      class="tag-badge visibility-tag"
-                      :class="{ private: item.visibility === 'private' }"
-                    >
-                      {{ item.visibility === 'private' ? '私有' : '公开' }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="world-card-content">
-                <h3 class="world-title">{{ item.title }}</h3>
-                <p class="world-desc">{{ item.description || '点击此卡片可直接进入这个 3D 投影世界，并在浏览器中进行游览。' }}</p>
-
-                <div class="world-meta">
-                  <div class="meta-item">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                    <span>{{ getProjectionAuthor(item) }}</span>
-                  </div>
-                  <div class="meta-item">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                    <span>{{ getProjectionBlockCount(item) }} Blocks</span>
-                  </div>
-                </div>
-
-                <div v-if="canManageProjections" class="world-actions" @click.stop>
-                  <button
-                    type="button"
-                    class="btn-settings"
-                    title="世界设置"
-                    @click.stop.prevent="openProjectionSettings(item)"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82 2 2 0 1 1-2.83 2.83 1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51 2 2 0 1 1-4 0 1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33 2 2 0 1 1-2.83-2.83 1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1 2 2 0 1 1 0-4 1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82 2 2 0 1 1 2.83-2.83 1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 2.6a2 2 0 1 1 4 0 1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33 2 2 0 1 1 2.83 2.83 1.65 1.65 0 0 0-.33 1.82v.01A1.65 1.65 0 0 0 21.4 10a2 2 0 1 1 0 4 1.65 1.65 0 0 0-1.51 1Z"></path></svg>
-                    <span>设置</span>
-                  </button>
-                  <button
-                    v-if="pendingDeleteItemId !== item.id"
-                    type="button"
-                    class="btn-delete"
-                    title="删除"
-                    @click.stop.prevent="pendingDeleteItemId = item.id"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                  </button>
-                  <button
-                    v-else
-                    type="button"
-                    class="btn-delete-confirm"
-                    @click.stop.prevent="handleDeleteProjection(item)"
-                  >
-                    确认删除
-                  </button>
-                </div>
-              </div>
-            </article>
+              :item="item"
+              :space-name="spaceName"
+              :image-url="resolveCardImageUrl(item)"
+              :can-manage="canManageProjections"
+              :is-pending-delete="pendingDeleteItemId === item.id"
+              @enter="enterProjection"
+              @settings="openProjectionSettings"
+              @request-delete="pendingDeleteItemId = $event"
+              @confirm-delete="handleDeleteProjection"
+            />
           </div>
-      </div>
+        </div>
+      </template>
     </section>
   </main>
 </template>
@@ -899,163 +847,52 @@ watch(
 <style scoped>
 .worlds-shell {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(136, 194, 248, 0.16), transparent 34%),
-    radial-gradient(circle at 85% 15%, rgba(126, 231, 191, 0.12), transparent 26%),
-    linear-gradient(180deg, #081018 0%, #0d1419 48%, #10161d 100%);
-  color: #edf4f7;
+  color: var(--rs-text);
+  font-family: var(--rs-font-body);
 }
 
-/* 顶部导航通栏化，去除顶部留白和粗重感 */
+/* ---------------------------------------------------------------- topbar */
+
 .worlds-topbar {
-  width: 100%;
-  position: relative;
-  background: rgba(17, 19, 22, 0.96);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(112, 159, 197, 0.15);
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-}
-
-.worlds-topbar::before {
-  content: '';
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, rgba(90, 171, 255, 0.9) 0%, rgba(111, 210, 255, 0.7) 55%, rgba(90, 171, 255, 0.4) 100%);
+  z-index: 50;
+  border-bottom: 1px solid var(--rs-line);
+  background: rgba(10, 11, 14, 0.84);
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
 }
 
 .worlds-topbar-inner {
-  width: min(1280px, calc(100% - 2rem));
-  margin: 0 auto;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.6rem 0;
-}
-
-.worlds-main {
-  width: min(1280px, calc(100% - 2rem));
+  gap: 16px;
+  max-width: 1280px;
+  height: 60px;
   margin: 0 auto;
-  display: grid;
-  gap: 1rem;
-  padding-bottom: 3rem;
+  padding: 0 32px;
 }
 
-.worlds-brand {
+.topbar-crumbs {
   min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.brand-avatar-button {
-  padding: 0;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  display: flex;
-}
-
-.brand-avatar-button.disabled {
-  cursor: default;
-}
-
-.brand-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  overflow: hidden;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: linear-gradient(135deg, #213241 0%, #6a8da7 100%);
-  border: 1px solid rgba(116, 181, 236, 0.25);
-  color: #f4f8ff;
-  font-weight: 600;
-  font-size: 1.1rem;
-}
-
-.brand-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.brand-copy {
-  min-width: 0;
-}
-
-.brand-title-button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 0.1rem;
-  padding: 0;
-  border: none;
-  background: transparent;
-  text-align: left;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.brand-title-button:disabled {
-  cursor: default;
-}
-
-.title-text {
-  max-width: min(48vw, 400px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 1.05rem;
-  letter-spacing: -0.02em;
-  font-weight: 600;
-}
-
-.subtitle-text {
-  color: #8da8b8;
-  font-size: 0.75rem;
-}
-
-.brand-icon-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-left: 0.5rem;
-}
-
-.brand-icon-button {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  background: transparent;
-  color: #a4b9c7;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.brand-icon-button:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(116, 181, 236, 0.24);
-  color: #f4fbff;
 }
 
 .worlds-topbar-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  margin-left: auto;
+  gap: 12px;
+  flex: none;
+}
+
+.brand-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.brand-icon-button {
+  color: var(--rs-text-2);
 }
 
 .auth-popover {
@@ -1063,56 +900,41 @@ watch(
 }
 
 .auth-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.35rem 0.3rem 0.7rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  color: #edf4f7;
-  cursor: pointer;
-  height: 36px;
-  transition: background 0.2s ease;
+  gap: 8px;
 }
 
-.auth-trigger:hover,
+.auth-trigger.has-account {
+  padding-right: 5px;
+}
+
 .auth-trigger.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(126, 188, 211, 0.2);
-}
-
-.auth-account {
-  display: inline-flex;
-  align-items: center;
+  border-color: rgba(255, 74, 46, 0.7);
 }
 
 .auth-trigger-label {
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .auth-trigger-arrow {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #a5b9c7;
-  margin-right: 0.25rem;
+  color: var(--rs-text-2);
 }
 
 .auth-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   overflow: hidden;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: linear-gradient(135deg, #233445 0%, #5f8191 100%);
-  color: #f4f7fb;
-  font-size: 0.85rem;
-  font-weight: 600;
+  border-radius: 2px;
+  background: var(--rs-red-dim);
+  color: #fff;
+  font: 400 8px/1 var(--rs-font-pixel);
+  -webkit-font-smoothing: none;
+}
+
+.auth-avatar > span {
+  translate: 0 2px;
 }
 
 .auth-avatar img {
@@ -1123,463 +945,576 @@ watch(
 
 .auth-menu {
   position: absolute;
-  top: calc(100% + 0.5rem);
+  top: calc(100% + 8px);
   right: 0;
-  width: 240px;
-  padding: 0.5rem;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(22, 28, 33, 0.98);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
-  z-index: 20;
+  z-index: 60;
+  width: 264px;
+  padding: 6px;
+  border-color: var(--rs-line-strong);
 }
 
 .auth-menu-header {
-  padding: 0.5rem 0.5rem 0.8rem;
-  margin-bottom: 0.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+  padding: 10px 10px 12px;
+  border-bottom: 1px solid var(--rs-line);
 }
 
 .menu-account-copy {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.15rem;
+  gap: 4px;
+  min-width: 0;
 }
 
 .account-name {
-  width: 100%;
   overflow: hidden;
+  color: var(--rs-text);
+  font-size: 14px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #edf4f7;
 }
 
 .account-email {
-  width: 100%;
   overflow: hidden;
+  color: var(--rs-text-2);
+  font: 12px/1.3 var(--rs-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #728b9c;
-  font-size: 0.75rem;
 }
 
 .auth-menu-title {
-  padding: 0.5rem 0.5rem 0.4rem;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 0.8rem;
+  padding: 8px 10px 6px;
+  color: var(--rs-text-2);
+  font-size: 12px;
 }
 
 .auth-menu-item {
-  width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #edf4f7;
-  font: inherit;
-  font-size: 0.85rem;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--rs-radius);
+  background: none;
+  color: var(--rs-text);
+  font: 500 14px/1 var(--rs-font-body);
+  text-align: left;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.15s, color 0.15s;
 }
 
-.auth-menu-item:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
+.auth-menu-item:hover {
+  background: var(--rs-red-soft);
+}
+
+.auth-menu-item:focus-visible {
+  outline: 2px solid var(--rs-red-hot);
+  outline-offset: -2px;
 }
 
 .auth-menu-item:disabled {
-  opacity: 0.6;
-  cursor: wait;
+  opacity: 0.5;
+  cursor: progress;
 }
 
 .auth-menu-item.danger {
-  color: #ff695f;
-  margin-top: 0.25rem;
-}
-
-.auth-menu-item.danger:hover:not(:disabled) {
-  background: rgba(255, 105, 95, 0.1);
+  color: #ffb3a4;
 }
 
 .menu-icon {
-  width: 20px;
-  height: 20px;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: currentColor;
-  flex-shrink: 0;
+  color: var(--rs-text-2);
+}
+
+/* ------------------------------------------------------------------ main */
+
+.worlds-main {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 32px 80px;
 }
 
 .banner {
-  padding: 0.8rem 1rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 0.9rem;
+  padding: 12px 16px;
+  border: 1px solid var(--rs-line);
+  border-left: 3px solid var(--rs-text-3);
+  border-radius: var(--rs-radius);
+  background: var(--rs-bg-2);
+  color: var(--rs-text);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .banner.success {
-  background: rgba(68, 180, 119, 0.12);
-  color: #a4f2c5;
+  border-left-color: var(--rs-emerald);
 }
 
 .banner.warning {
-  background: rgba(227, 172, 83, 0.12);
-  color: #ffe3b1;
+  border-left-color: var(--rs-red-hot);
+  background: linear-gradient(90deg, rgba(92, 21, 16, 0.35), var(--rs-bg-2) 60%);
 }
 
-.worlds-gallery {
+/* ------------------------------------------------------------------ hero */
+
+.worlds-hero {
   display: grid;
-  gap: 1.25rem;
-  align-content: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 32px;
+  min-height: 300px;
+  padding: 36px 40px;
+  overflow: hidden;
+}
+
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 22px;
+  min-width: 0;
+}
+
+.worlds-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.brand-avatar-button {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--rs-radius);
+  background: none;
+  cursor: pointer;
+}
+
+.brand-avatar-button.disabled {
+  cursor: default;
+}
+
+.brand-avatar-button:focus-visible,
+.brand-title-button:focus-visible {
+  outline: 2px solid var(--rs-red-hot);
+  outline-offset: 3px;
+}
+
+.brand-avatar {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background:
+    linear-gradient(180deg, rgba(255, 90, 60, 0.28), rgba(80, 8, 0, 0.5)),
+    var(--rs-tex-redstone-block) center / 36px 36px;
+  image-rendering: pixelated;
+  box-shadow: inset 0 1px 0 rgba(255, 200, 180, 0.25), 0 8px 18px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.brand-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: auto;
+}
+
+.brand-avatar-initial {
+  color: #fff;
+  font: 400 32px/1 var(--rs-font-pixel);
+  text-shadow: 0 2px 0 rgba(60, 0, 0, 0.7);
+  -webkit-font-smoothing: none;
+  translate: 0 4px;
+}
+
+.brand-avatar-button:not(:disabled):hover .brand-avatar {
+  border-color: #ff8a6a;
+  box-shadow: inset 0 1px 0 rgba(255, 200, 180, 0.35), var(--rs-glow-soft);
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.brand-heading {
+  margin: 0;
+  min-width: 0;
+}
+
+.brand-title-button {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--rs-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.brand-title-button:disabled {
+  cursor: default;
+}
+
+.title-text {
+  display: block;
+  overflow: hidden;
+  font: 700 36px/1.15 var(--rs-font-body);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration-color: transparent;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
+  transition: text-decoration-color 0.15s;
+}
+
+.brand-title-button:not(:disabled):hover .title-text {
+  text-decoration-color: var(--rs-red-hot);
+}
+
+.subtitle-text {
+  margin: 0;
+  color: var(--rs-text-2);
+  font: 13px/1.4 var(--rs-font-mono);
+}
+
+.hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 0;
+  margin: 0;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 28px;
+  border-left: 1px solid var(--rs-line-strong);
+}
+
+.hero-stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.hero-stat dt {
+  color: var(--rs-text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hero-stat dd {
+  margin: 0;
+}
+
+.stat-number {
+  color: var(--rs-text);
+  font-size: 24px;
+  line-height: 32px;
+  height: 32px;
+}
+
+.stat-pending {
+  color: var(--rs-text-3);
+  font: 700 22px/32px var(--rs-font-body);
+  letter-spacing: 0.1em;
+}
+
+.stat-text {
+  max-width: 20ch;
+  overflow: hidden;
+  color: var(--rs-text);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hero-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 400px;
+  height: 260px;
+  margin: -12px -8px -12px 0;
+}
+
+.hero-art::before {
+  content: '';
+  position: absolute;
+  inset: 10% 6%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 60, 30, 0.14), transparent);
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+.worlds-hero.is-powered .hero-art::before {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------- gallery */
+
+.worlds-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .gallery-head {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 12px;
+  min-width: 0;
 }
 
 .gallery-head h2 {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  flex: none;
+  color: var(--rs-text);
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .count-badge {
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0.25rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  color: #8da4b4;
+  flex: none;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 3.5rem 2rem;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px dashed rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+.loading-text {
+  flex: none;
+  color: var(--rs-text-2);
+  font-size: 13px;
 }
 
-.loading-text, .empty-title {
-  color: #edf4f7;
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.empty-desc {
-  color: #728b9c;
-  font-size: 0.85rem;
+.gallery-head-wire {
+  flex: 1;
+  min-width: 24px;
 }
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap: 20px;
 }
 
-.world-card {
+/* Loading skeleton with the same footprint as a card. */
+.skeleton-card {
+  overflow: hidden;
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius-lg);
+  background: var(--rs-bg-2);
+}
+
+.skeleton-thumb {
+  aspect-ratio: 16 / 10;
+  background: #0b0c0f;
+  border-bottom: 2px solid var(--rs-red-off);
+}
+
+.skeleton-body {
   display: flex;
   flex-direction: column;
-  background: rgba(15, 21, 27, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.3s ease;
+  gap: 10px;
+  padding: 16px;
+  min-height: 150px;
 }
 
-.world-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
-}
-
-.world-card-thumb {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  background: radial-gradient(circle at top right, #1f2a35, #0a1118);
-  overflow: hidden;
-}
-
-.thumb-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.4s ease;
-}
-
-.thumb-placeholder.has-custom-thumb {
-  background: radial-gradient(circle at 30% 30%, #2a3f50, #0d1419);
-}
-
-.thumb-placeholder.has-image-thumb {
-  background:
-    radial-gradient(circle at 20% 20%, rgba(126, 189, 228, 0.2), transparent 40%),
-    linear-gradient(180deg, #091018 0%, #0c1620 100%);
-}
-
-.thumb-image {
+.skeleton-line {
+  height: 10px;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--rs-bg-3) 0%, var(--rs-bg-4) 50%, var(--rs-bg-3) 100%);
+  background-size: 200% 100%;
+  animation: worlds-shimmer 1.4s linear infinite;
 }
 
-.custom-thumb {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.skeleton-line.is-title {
+  height: 16px;
+  width: 60%;
+  margin-bottom: 4px;
 }
 
-.custom-thumb svg {
-  max-width: 75%;
-  max-height: 75%;
+.skeleton-line.is-short {
+  width: 40%;
 }
 
-.world-card:hover .thumb-placeholder {
-  transform: scale(1.03);
+@keyframes worlds-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
 }
 
-.thumb-icon {
-  width: 54px;
-  height: 54px;
-}
-
-.thumb-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(0deg, rgba(8, 16, 24, 0.7) 0%, transparent 50%);
-  padding: 0.8rem;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-}
-
-.thumb-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.tag-badge {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(4px);
-  color: #fff;
-  font-size: 0.6rem;
-  font-weight: 600;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-}
-
-.version-tag {
-  background: rgba(121, 203, 167, 0.15);
-  color: #bbf4d9;
-}
-
-.visibility-tag {
-  background: rgba(119, 175, 255, 0.12);
-  color: #cfe0ff;
-}
-
-.visibility-tag.private {
-  background: rgba(255, 159, 67, 0.12);
-  color: #ffd7a8;
-}
-
-.world-card-content {
-  position: relative;
-  padding: 1rem;
+/* Visitor empty state: the circuit is built but nothing powers it yet. */
+.empty-state {
   display: flex;
   flex-direction: column;
-  flex: 1;
-}
-
-.world-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 500;
-  color: #fff;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.world-desc {
-  margin: 0.5rem 0 0;
-  font-size: 0.8rem;
-  color: #728b9c;
-  line-height: 1.5;
-  flex: 1;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.world-meta {
-  margin-top: 1rem;
-  display: flex;
-  gap: 0.8rem;
-  color: #5c7485;
-  font-size: 0.75rem;
-}
-
-.meta-item {
-  display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 10px;
+  padding: 40px 24px 48px;
+  text-align: center;
 }
 
-.world-actions {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  display: flex;
-  gap: 0.4rem;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+.empty-art {
+  display: grid;
+  place-items: center;
+  height: 190px;
+  margin-bottom: 8px;
+  opacity: 0.92;
 }
 
-.world-card:hover .world-actions {
-  opacity: 1;
+.empty-eyebrow {
+  color: var(--rs-text-2);
 }
 
-.btn-settings,
-.btn-delete {
-  background: rgba(22, 33, 43, 0.9);
-  color: #c4d9e6;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  height: 28px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  backdrop-filter: blur(8px);
+.empty-title {
+  color: var(--rs-text);
+  font-size: 20px;
+  font-weight: 700;
 }
 
-.btn-settings {
-  gap: 0.3rem;
-  padding: 0 0.6rem;
-  font-size: 0.75rem;
+.empty-desc,
+.empty-hint {
+  max-width: 44ch;
+  color: var(--rs-text-2);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-.btn-settings:hover {
-  background: rgba(32, 48, 62, 0.95);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.15);
-}
+/* ------------------------------------------------------------ responsive */
 
-.btn-delete {
-  background: rgba(220, 53, 69, 0.1);
-  color: #ff6b7b;
-  border: 1px solid rgba(220, 53, 69, 0.15);
-  width: 28px;
-  padding: 0;
-}
-
-.btn-delete:hover {
-  background: rgba(220, 53, 69, 0.2);
-  color: #ff8e9b;
-}
-
-.btn-delete-confirm {
-  background: #dc3545;
-  color: #fff;
-  border: none;
-  height: 28px;
-  padding: 0 0.6rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-
-.placeholder-card {
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.placeholder-card:hover {
-  border-color: rgba(126, 189, 228, 0.3);
-  background: rgba(126, 189, 228, 0.04);
-}
-
-.placeholder-thumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-}
-
-.add-icon {
-  color: rgba(255, 255, 255, 0.15);
-  transition: transform 0.2s ease, color 0.2s ease;
-}
-
-.placeholder-card:hover .add-icon {
-  transform: scale(1.05);
-  color: rgba(126, 189, 228, 0.6);
-}
-
-@media (max-width: 960px) {
-  .card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+@media (max-width: 1080px) {
+  .hero-art {
+    width: 300px;
+    height: 220px;
+    transform: scale(0.8);
+    transform-origin: center right;
   }
 }
 
-@media (max-width: 760px) {
-  .worlds-topbar {
-    margin-bottom: 1.5rem;
+@media (max-width: 860px) {
+  .worlds-hero {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
   }
 
+  .hero-art {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
   .worlds-topbar-inner {
-    padding: 0.5rem 0;
+    height: 56px;
+    padding: 0 16px;
+    gap: 10px;
   }
 
-  .title-text {
-    max-width: 100%;
-    white-space: normal;
+  .worlds-topbar-actions {
+    gap: 6px;
   }
 
   .brand-icon-row {
-    margin-left: 0;
+    gap: 0;
   }
 
-  .auth-trigger {
-    padding: 0.25rem 0.3rem 0.25rem 0.6rem;
-    height: 32px;
+  .worlds-main {
+    gap: 22px;
+    padding: 18px 16px 56px;
   }
 
-  .auth-avatar {
-    width: 24px;
+  .worlds-hero {
+    padding: 26px 20px 24px;
+  }
+
+  .hero-copy {
+    gap: 18px;
+  }
+
+  .worlds-brand {
+    gap: 14px;
+  }
+
+  .brand-avatar {
+    width: 56px;
+    height: 56px;
+  }
+
+  .brand-avatar-initial {
+    font-size: 24px;
+    translate: 0 3px;
+  }
+
+  .title-text {
+    font-size: 24px;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .subtitle-text {
+    font-size: 12px;
+  }
+
+  .hero-stat {
+    padding: 0 16px;
+  }
+
+  .stat-number {
+    font-size: 16px;
+    line-height: 24px;
     height: 24px;
   }
 
-  .auth-menu {
-    width: min(280px, calc(100vw - 1rem));
+  .stat-text {
+    max-width: 12ch;
+    font-size: 15px;
+    line-height: 24px;
   }
 
-  .world-actions {
-    opacity: 1;
+  .hero-actions,
+  .hero-actions .rs-btn {
+    width: 100%;
+  }
+
+  .card-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
+  }
+
+  .hero-art::before {
+    transition: none;
   }
 }
 </style>

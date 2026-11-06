@@ -5,7 +5,12 @@
     "skins": "Skins",
     "paused": "Game Paused",
     "resume": "Resume",
-    "exitWorld": "Exit World"
+    "exitWorld": "Exit World",
+    "back": "Back"
+  },
+  "loading": {
+    "resources": "Loading resources",
+    "building": "Building world"
   },
   "loadError": {
     "title": "Failed to load world",
@@ -42,7 +47,10 @@
     "alex": "Alex",
     "player": "Classic",
     "equipped": "Equipped",
-    "credits": "Special thanks to skin creators:"
+    "credits": "Special thanks to skin creators:",
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right",
+    "resetView": "Reset view"
   },
   "anim": {
     "idle": "Idle",
@@ -63,7 +71,12 @@
       "loginGithub": "Login with GitHub"
     },
     "hero": {
-      "subtitle": "Where schematics become playable worlds."
+      "subtitle": "Where schematics become playable worlds.",
+      "eyebrow": "Redstone · Architecture · Web worlds",
+      "ctaCreate": "Create your space",
+      "lever": "Lever",
+      "leverOn": "ON",
+      "leverOff": "OFF"
     },
     "quote": {
       "line1": "Every schematic carries a memory.",
@@ -97,6 +110,10 @@
       "title2": "World Space.",
       "desc": "A Litemora space is a permanent, shareable gallery for your Minecraft schematic, running purely in the browser with real geometry and collision.",
       "placeholder": "your-space-name",
+      "blockTitle": "Command block",
+      "submit": "Create space",
+      "statusReady": "ready",
+      "statusIdle": "idle",
       "error": {
         "invalid": "Name must be 3-63 chars, lowercase letters, numbers, and hyphens only.",
         "duplicate": "This space name already exists. Please choose another one.",
@@ -117,5 +134,24 @@
       "desc": "Explore curated schematic worlds created by the community."
     },
     "footer": "Litemora - Open Source Schematic Viewer. Powered by Cubane & Three.js."
+  },
+  "space": {
+    "hero": {
+      "worlds": "Worlds",
+      "blocks": "Total blocks",
+      "curator": "Curator"
+    },
+    "card": {
+      "enter": "Enter world",
+      "blocks": "{count} blocks",
+      "size": "Size (X × Y × Z)",
+      "previewAlt": "Preview of {title}"
+    },
+    "empty": {
+      "hint": "The circuit is wired up and waiting for its first world."
+    },
+    "notFound": {
+      "hint": "Check the address, or head back home to explore other Spaces."
+    }
   }
 }

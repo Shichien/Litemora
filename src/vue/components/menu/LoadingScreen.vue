@@ -1,11 +1,15 @@
 <script setup>
 import { useUiStore } from '@pinia/uiStore.js'
+import { loadAdminAuthSession } from '@three/auth/admin-auth.js'
+import { fetchGalleryItem } from '@three/gallery/gallery-api.js'
 import emitter from '@three/utils/event/event-bus.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
-import { buildSpaceWorldsUrl, getActiveSpaceName } from '@three/utils/space-context.js'
+import { buildSpaceWorldsUrl, getActiveProjectionId, getActiveSpaceName } from '@three/utils/space-context.js'
 /**
  * LoadingScreen - Initial loading screen
- * Shows loading progress, or the load error with retry/back actions
+ * Shows loading progress, or the load error with retry/back actions.
+ * Layout and look come from the shared .ls-* classes in public/loading-screen.css, the same ones the
+ * static boot screen in index.html uses, so the hand-off between the two is seamless.
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -13,8 +17,12 @@ import { useI18n } from 'vue-i18n'
 const ui = useUiStore()
 const { t, te } = useI18n()
 
-const progress = ref(0)
-const loadingText = ref('Loading...')
+// UiRoot mounts asynchronously, after the resources may already have started loading.
+const progress = ref(Math.round((window.Experience?.resources?.loadProgress ?? 0) * 100))
+const worldTitle = ref('')
+
+const isDone = computed(() => progress.value >= 100)
+const loadingText = computed(() => (isDone.value ? t('loading.building') : t('loading.resources')))
 
 const errorMessage = computed(() => {
   const code = ui.loadError?.code
@@ -26,6 +34,7 @@ const errorMessage = computed(() => {
 // Listen for loading progress events
 onMounted(() => {
   emitter.on('core:loading-progress', handleProgress)
+  void loadWorldTitle()
 })
 
 onUnmounted(() => {
@@ -41,9 +50,23 @@ watch(() => ui.loadError, (error) => {
   }
 }, { immediate: true })
 
-function handleProgress({ loaded, total }) {
-  progress.value = Math.round((loaded / total) * 100)
-  loadingText.value = `Loading... ${progress.value}%`
+function handleProgress({ loaded, failed = 0, total }) {
+  progress.value = total ? Math.round(((loaded + failed) / total) * 100) : 100
+}
+
+async function loadWorldTitle() {
+  const spaceName = getActiveSpaceName()
+  const projectionId = getActiveProjectionId()
+  if (!spaceName || !projectionId)
+    return
+  try {
+    const payload = await fetchGalleryItem(spaceName, projectionId, loadAdminAuthSession())
+    const item = payload?.item
+    worldTitle.value = item?.title || item?.schematic?.name || projectionId
+  }
+  catch {
+    worldTitle.value = projectionId
+  }
 }
 
 function retry() {
@@ -57,106 +80,130 @@ function backToWorlds() {
 </script>
 
 <template>
-  <div class="loading-screen">
-    <div v-if="ui.loadError" class="load-error" role="alert">
-      <h2 class="load-error-title">
-        {{ t('loadError.title') }}
+  <div class="loading-screen ls-root" :class="{ 'is-error': ui.loadError }">
+    <div class="ls-stage">
+      <h2 class="ls-brand">
+        LITEMORA
       </h2>
-      <p class="load-error-message">
-        {{ errorMessage }}
+      <p class="ls-sub" :class="{ 'is-world': worldTitle }">
+        {{ worldTitle || 'Playable Schematic Worlds' }}
       </p>
-      <p class="load-error-code">
-        {{ ui.loadError.code }}
-      </p>
-      <div class="load-error-actions">
-        <button class="mc-button" @click="retry">
-          <span class="title">{{ t('loadError.retry') }}</span>
-        </button>
-        <button class="mc-button" @click="backToWorlds">
-          <span class="title">{{ t('loadError.back') }}</span>
-        </button>
-        <button v-if="ui.loadError.sceneReady" class="mc-button" @click="ui.continueDespiteLoadError()">
-          <span class="title">{{ t('loadError.continue') }}</span>
-        </button>
-      </div>
-    </div>
 
-    <!-- Loading bar container -->
-    <div v-else class="loading-bar-container">
-      <div class="loading-bar-bg">
-        <div
-          class="loading-bar-fill"
-          :style="{ width: `${progress}%` }"
-        />
+      <div class="ls-circuit" aria-hidden="true">
+        <span class="ls-torch" />
+        <div class="ls-track">
+          <div class="ls-fill" :style="{ width: ui.loadError ? '40%' : `${progress}%` }">
+            <div class="ls-dust" />
+          </div>
+          <span v-if="ui.loadError" class="ls-break" />
+          <span v-else-if="isDone" class="ls-signal" />
+          <span class="ls-lamp" :class="{ 'is-lit': isDone && !ui.loadError }" />
+        </div>
       </div>
-      <p class="loading-text">
-        {{ loadingText }}
-      </p>
+
+      <div v-if="ui.loadError" class="load-error" role="alert">
+        <span class="load-error-tag" aria-hidden="true">SIGNAL LOST</span>
+        <h2 class="load-error-title">
+          {{ t('loadError.title') }}
+        </h2>
+        <p class="load-error-message">
+          {{ errorMessage }}
+        </p>
+        <p class="load-error-code">
+          {{ ui.loadError.code }}
+        </p>
+        <div class="load-error-actions">
+          <button class="rs-btn rs-btn--primary" @click="retry">
+            {{ t('loadError.retry') }}
+          </button>
+          <button class="rs-btn rs-btn--dot" @click="backToWorlds">
+            {{ t('loadError.back') }}
+          </button>
+          <button v-if="ui.loadError.sceneReady" class="rs-btn rs-btn--ghost" @click="ui.continueDespiteLoadError()">
+            {{ t('loadError.continue') }}
+          </button>
+        </div>
+      </div>
+
+      <div v-else class="ls-status">
+        <p class="ls-label loading-text">
+          <span class="ls-tag">{{ isDone ? 'BUILDING' : 'LOADING' }}</span>
+          <span class="ls-label-text">{{ loadingText }}</span>
+        </p>
+        <p class="ls-pct">
+          {{ progress }}%
+        </p>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .loading-screen {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
+  position: absolute;
+  inset: 0;
 }
 
-.loading-bar-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+.ls-sub.is-world {
+  color: var(--rs-text);
+  font-weight: 600;
+  font-size: 17px;
 }
 
-.loading-bar-bg {
-  width: 300px;
-  height: 8px;
-  background: #222;
-  border: 2px solid #555;
+.ls-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.loading-bar-fill {
-  height: 100%;
-  background: linear-gradient(to right, #3a3, #5c5);
-  transition: width 0.2s ease;
-}
-
-.loading-text {
-  color: #aaa;
-  font-size: 14px;
-  text-shadow: 2px 2px #000;
-}
-
+/* Load error: the torch is lit but the dust is broken, so the lamp stays dark. */
 .load-error {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  max-width: min(520px, calc(100vw - 32px));
+  gap: 8px;
+  width: min(480px, calc(100vw - 32px));
+  margin-top: 28px;
+  padding: 22px 24px 24px;
+  box-sizing: border-box;
+  border: 1px solid var(--rs-line-strong);
+  border-top: 2px solid var(--rs-red-dim);
+  border-radius: var(--rs-radius-lg);
+  background: rgba(14, 16, 19, 0.86);
+  box-shadow: var(--rs-shadow);
   text-align: center;
   pointer-events: auto;
 }
 
-.load-error-title {
+.load-error-tag {
   color: #ff8a73;
+  font: 400 8px/16px var(--rs-font-pixel);
+  letter-spacing: 0.14em;
+}
+
+.load-error-title {
+  margin: 0;
+  color: var(--rs-text);
   font-size: 22px;
-  text-shadow: 2px 2px #000;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .load-error-message {
-  color: #ddd;
+  margin: 0;
+  color: var(--rs-text-2);
   font-size: 15px;
-  text-shadow: 2px 2px #000;
+  line-height: 1.55;
 }
 
 .load-error-code {
-  color: #777;
-  font-size: 12px;
-  font-family: monospace;
+  margin: 4px 0 0;
+  padding: 3px 8px;
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius);
+  background: var(--rs-bg-0);
+  color: var(--rs-text-3);
+  font: 400 12px/1.4 var(--rs-font-mono);
 }
 
 .load-error-actions {
@@ -164,6 +211,6 @@ function backToWorlds() {
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
-  margin-top: 8px;
+  margin-top: 14px;
 }
 </style>

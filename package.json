@@ -16,6 +16,7 @@
     "redstone:registry": "node ./scripts/prepare-redstone-registry.mjs",
     "redstone:replay": "node ./scripts/generate-redstone-archive-replay.mjs",
     "kv:seed": "node ./scripts/build-kv-seed.mjs",
+    "thumbnails:capture": "node ./scripts/capture-world-thumbnails.mjs",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "dev": "vite --host localhost",

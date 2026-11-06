@@ -37,12 +37,20 @@ function adjustSensitivity(delta) {
 </script>
 
 <template>
-  <div class="settings-menu">
-    <h2 class="menu-title">{{ $t('settings.title') }}</h2>
+  <div class="settings-menu mc-panel" role="dialog" aria-labelledby="settings-menu-title">
+    <header class="mc-panel__head">
+      <div class="mc-panel__heading">
+        <span class="mc-panel__eyebrow" aria-hidden="true">Settings</span>
+        <h2 id="settings-menu-title" class="menu-title mc-panel__title">
+          {{ $t('settings.title') }}
+        </h2>
+      </div>
+      <span class="mc-hint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
+    </header>
 
-    <div class="settings-content">
+    <div class="settings-content rs-scroll">
       <!-- Camera Section -->
-      <div class="settings-section">
+      <section class="settings-section">
         <h3 class="section-title">
           {{ $t('settings.camera') }}
         </h3>
@@ -50,22 +58,23 @@ function adjustSensitivity(delta) {
         <!-- Camera Preset -->
         <div class="setting-row">
           <span class="setting-label">{{ $t('settings.cameraStyle') }}</span>
-          <div class="setting-control">
+          <div class="setting-control option-group">
             <button
               v-for="opt in presetOptions"
               :key="opt.value"
               class="option-btn"
               :class="{ active: settings.cameraPreset === opt.value }"
+              :aria-pressed="settings.cameraPreset === opt.value"
               @click="settings.applyCameraPreset(opt.value)"
             >
               {{ opt.label }}
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       <!-- World Section -->
-      <div class="settings-section">
+      <section class="settings-section">
         <h3 class="section-title">
           {{ $t('settings.world') }}
         </h3>
@@ -91,10 +100,10 @@ function adjustSensitivity(delta) {
           :label="$t('settings.unloadPadding')"
           @change="settings.setChunkUnloadPadding($event)"
         />
-      </div>
+      </section>
 
       <!-- Visual Section -->
-      <div class="settings-section">
+      <section class="settings-section">
         <h3 class="section-title">
           {{ $t('settings.visual') }}
         </h3>
@@ -102,22 +111,23 @@ function adjustSensitivity(delta) {
         <!-- SpeedLines Preset -->
         <div class="setting-row">
           <span class="setting-label">{{ $t('settings.speedLines') }}</span>
-          <div class="setting-control">
+          <div class="setting-control option-group">
             <button
               v-for="opt in presetOptions"
               :key="opt.value"
               class="option-btn"
               :class="{ active: settings.visualPreset === opt.value }"
+              :aria-pressed="settings.visualPreset === opt.value"
               @click="settings.applyVisualPreset(opt.value)"
             >
               {{ opt.label }}
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       <!-- Environment Section -->
-      <div class="settings-section">
+      <section class="settings-section">
         <h3 class="section-title">
           {{ $t('settings.environment') }}
         </h3>
@@ -154,10 +164,10 @@ function adjustSensitivity(delta) {
           :label="$t('settings.fog')"
           @change="settings.setEnvFogDensity($event)"
         />
-      </div>
+      </section>
 
       <!-- Graphics Section -->
-      <div class="settings-section">
+      <section class="settings-section">
         <h3 class="section-title">
           {{ $t('settings.graphics') }}
         </h3>
@@ -165,22 +175,23 @@ function adjustSensitivity(delta) {
         <!-- Shadow Quality -->
         <div class="setting-row">
           <span class="setting-label">{{ $t('settings.shadowQuality') }}</span>
-          <div class="setting-control">
+          <div class="setting-control option-group">
             <button
               v-for="opt in shadowOptions"
               :key="opt.value"
               class="option-btn"
               :class="{ active: settings.shadowQuality === opt.value }"
+              :aria-pressed="settings.shadowQuality === opt.value"
               @click="settings.setShadowQuality(opt.value)"
             >
               {{ opt.label }}
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       <!-- Controls Section -->
-      <div class="settings-section">
+      <section class="settings-section">
         <h3 class="section-title">
           {{ $t('settings.controls') }}
         </h3>
@@ -189,97 +200,90 @@ function adjustSensitivity(delta) {
         <div class="setting-row">
           <span class="setting-label">{{ $t('settings.sensitivity') }}</span>
           <div class="setting-control slider-control">
-            <button class="adjust-btn" @click="adjustSensitivity(-0.005)">
+            <button class="adjust-btn" aria-label="-" @click="adjustSensitivity(-0.005)">
               -
             </button>
             <span class="value-display">{{ sensitivityPercent }}%</span>
-            <button class="adjust-btn" @click="adjustSensitivity(0.005)">
+            <button class="adjust-btn" aria-label="+" @click="adjustSensitivity(0.005)">
               +
             </button>
           </div>
         </div>
-      </div>
+      </section>
     </div>
 
     <!-- Buttons -->
-    <div class="mc-menu">
-      <button class="mc-button" @click="settings.resetToDefaults()">
-        <span class="title">{{ $t('settings.reset') }}</span>
-      </button>
-      <button class="mc-button" @click="ui.exitSettings()">
-        <span class="title">{{ $t('settings.done') }}</span>
-      </button>
-    </div>
+    <footer class="mc-panel__foot">
+      <div class="mc-menu double settings-actions">
+        <button class="mc-button mc-button--ghost mc-button--center half" @click="settings.resetToDefaults()">
+          <span class="title">{{ $t('settings.reset') }}</span>
+        </button>
+        <button class="mc-button mc-button--primary mc-button--center half" @click="ui.exitSettings()">
+          <span class="title">{{ $t('settings.done') }}</span>
+        </button>
+      </div>
+    </footer>
   </div>
 </template>
 
 <style scoped>
 .settings-menu {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  width: min(560px, 92vw);
-}
-
-.menu-title {
-  color: #fff;
-  font-size: 28px;
-  text-shadow: 2px 2px #000;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.lang-switch-btn {
-  background: none;
-  border: 2px solid #aaa;
-  color: #aaa;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.lang-switch-btn:hover {
-  border-color: #fff;
-  color: #fff;
+  width: min(880px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
 }
 
 .settings-content {
-  background: rgba(0, 0, 0, 0.6);
-  border: 2px solid #555;
-  padding: 20px;
-  width: 100%;
-  max-height: 450px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  padding: 18px 24px;
+  columns: 2 360px;
+  column-gap: 16px;
 }
 
 .settings-section {
-  margin-bottom: 20px;
-}
-
-.settings-section:last-child {
-  margin-bottom: 0;
+  break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius);
+  background: rgba(8, 9, 11, 0.42);
 }
 
 .section-title {
-  color: #aaa;
-  font-size: 16px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #444;
-  padding-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  color: var(--rs-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Dust dot: the group label is a powered line on the circuit */
+.section-title::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--rs-red-hot);
+  box-shadow: 0 0 4px rgba(255, 70, 40, 0.6);
 }
 
 .setting-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  gap: 12px;
+  min-height: 32px;
 }
 
 .setting-label {
-  color: #ddd;
+  color: var(--rs-text);
   font-size: 14px;
 }
 
@@ -288,28 +292,58 @@ function adjustSensitivity(delta) {
   gap: 4px;
 }
 
+/* Segmented preset switch */
+.option-group {
+  gap: 0;
+  padding: 2px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: var(--rs-bg-0);
+}
+
 .option-btn {
-  padding: 6px 10px;
-  background: #444;
-  border: 1px solid #666;
-  color: #aaa;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--rs-text-2);
   cursor: pointer;
   font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .option-btn:hover {
-  background: #555;
-  color: #fff;
+  background: var(--rs-bg-3);
+  color: var(--rs-text);
+}
+
+.option-btn:focus-visible,
+.adjust-btn:focus-visible {
+  outline: 2px solid var(--rs-red-hot);
+  outline-offset: 1px;
 }
 
 .option-btn.active {
-  background: #4a7;
-  border-color: #6c9;
+  border-color: rgba(255, 74, 46, 0.55);
+  background: linear-gradient(180deg, #3a1410, #2a0e0b);
   color: #fff;
 }
 
+.option-btn.active::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--rs-red-hot);
+  box-shadow: 0 0 4px rgba(255, 70, 40, 0.8);
+}
+
 .slider-control {
-  display: flex;
   align-items: center;
   gap: 8px;
 }
@@ -317,31 +351,56 @@ function adjustSensitivity(delta) {
 .adjust-btn {
   width: 32px;
   height: 32px;
-  background: #444;
-  border: 1px solid #666;
-  color: #fff;
-  font-size: 18px;
+  border: 1px solid var(--rs-line-strong);
+  border-radius: var(--rs-radius);
+  background: linear-gradient(180deg, var(--rs-bg-4), var(--rs-bg-3));
+  color: var(--rs-text);
+  font: 600 16px/1 var(--rs-font-mono);
   cursor: pointer;
+  transition: border-color 0.15s;
 }
 
 .adjust-btn:hover {
-  background: #555;
+  border-color: rgba(255, 74, 46, 0.7);
 }
 
 .adjust-btn:active {
-  background: #333;
+  transform: translateY(1px);
 }
 
 .value-display {
-  color: #fff;
-  font-size: var(--mc-btn-font-size);
-  min-width: 50px;
+  min-width: 56px;
+  color: var(--rs-text);
+  font: 500 13px/1 var(--rs-font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
+.settings-actions {
+  width: 100%;
+}
+
 .placeholder-text {
-  color: #666;
+  color: var(--rs-text-3);
   font-size: 12px;
   font-style: italic;
+}
+
+@media (max-width: 860px) {
+  .settings-content {
+    columns: 1;
+  }
+}
+
+@media (max-height: 720px) {
+  .settings-content {
+    padding: 14px 24px;
+  }
+
+  .settings-section {
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+  }
 }
 </style>

@@ -5,7 +5,12 @@
     "skins": "皮肤",
     "paused": "游戏暂停",
     "resume": "继续游戏",
-    "exitWorld": "退出世界"
+    "exitWorld": "退出世界",
+    "back": "返回"
+  },
+  "loading": {
+    "resources": "正在加载资源",
+    "building": "正在构建世界"
   },
   "loadError": {
     "title": "世界加载失败",
@@ -42,7 +47,10 @@
     "alex": "艾莉克斯",
     "player": "经典角色",
     "equipped": "已装备",
-    "credits": "特别感谢皮肤作者："
+    "credits": "特别感谢皮肤作者：",
+    "rotateLeft": "向左旋转",
+    "rotateRight": "向右旋转",
+    "resetView": "重置视角"
   },
   "anim": {
     "idle": "待机",
@@ -63,7 +71,12 @@
       "loginGithub": "使用 GitHub 登录"
     },
     "hero": {
-      "subtitle": "把 Minecraft 原理图变成可以走进去的世界。"
+      "subtitle": "把 Minecraft 原理图变成可以走进去的世界。",
+      "eyebrow": "红石 · 建筑 · 网页世界",
+      "ctaCreate": "创建你的空间",
+      "lever": "拉杆",
+      "leverOn": "ON",
+      "leverOff": "OFF"
     },
     "quote": {
       "line1": "每个原理图都承载着一个回忆。",
@@ -97,6 +110,10 @@
       "title2": "世界空间",
       "desc": "Litemora 空间不仅是一个只读预览，它是你 Minecraft 原理图的永久在线画廊，完全在浏览器中依靠真实几何和碰撞运行。",
       "placeholder": "你的空间名称或标识",
+      "blockTitle": "命令方块",
+      "submit": "创建空间",
+      "statusReady": "就绪",
+      "statusIdle": "等待输入",
       "error": {
         "invalid": "名称需为 3-63 位，仅支持小写字母、数字和连字符 (-)。",
         "duplicate": "该空间名已被创建，请选择另一个名字。",
@@ -117,5 +134,24 @@
       "desc": "浏览社区中精选的建筑世界与原理图画廊。"
     },
     "footer": "Litemora - 开源的原理图查看器。由 Cubane 与 Three.js 提供支持。"
+  },
+  "space": {
+    "hero": {
+      "worlds": "世界",
+      "blocks": "方块总数",
+      "curator": "策展人"
+    },
+    "card": {
+      "enter": "进入世界",
+      "blocks": "{count} 方块",
+      "size": "尺寸（X × Y × Z）",
+      "previewAlt": "{title} 的世界预览"
+    },
+    "empty": {
+      "hint": "电路已经接好，等第一个世界通电。"
+    },
+    "notFound": {
+      "hint": "检查一下地址拼写，或回到首页探索其他 Space。"
+    }
   }
 }
