@@ -1,0 +1,61 @@
+{
+  "id": "seed-redstone-pull-door-2x2",
+  "space": "redstonearchive",
+  "title": "2x2 回拉式活塞门",
+  "projectionSlug": "pistonpulldoor2x2",
+  "description": "通电时两块门板封住门口，拨动拉杆后左右两台粘性活塞同时把门板拉进侧墙暗格，门口整片让开。",
+  "visibility": "public",
+  "fileName": "piston-pull-door-2x2.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "piston-pull-door-2x2.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 669
+  },
+  "schematic": {
+    "name": "piston-pull-door-2x2",
+    "author": "Litemora",
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 7,
+      "maxY": 3,
+      "maxZ": 6
+    },
+    "size": {
+      "x": 8,
+      "y": 4,
+      "z": 7
+    },
+    "regionCount": 1,
+    "blockCount": 78
+  },
+  "previewModel": {
+    "name": "piston-pull-door-2x2",
+    "sampled": false,
+    "totalSolidBlocks": 78,
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 7,
+      "maxY": 3,
+      "maxZ": 6
+    }
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1793957957128,
+  "updatedAt": 1793957957128
+}

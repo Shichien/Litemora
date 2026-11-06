@@ -1,0 +1,61 @@
+{
+  "id": "seed-redstone-lift-gate-5",
+  "space": "redstonearchive",
+  "title": "5 格宽地面闸门",
+  "projectionSlug": "pistonliftgate5",
+  "description": "五台朝下的粘性活塞同时提起整排门板，开口很宽，适合当作庭院大门。",
+  "visibility": "public",
+  "fileName": "piston-lift-gate-5.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "piston-lift-gate-5.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 611
+  },
+  "schematic": {
+    "name": "piston-lift-gate-5",
+    "author": "Litemora",
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 7,
+      "maxY": 3,
+      "maxZ": 4
+    },
+    "size": {
+      "x": 8,
+      "y": 4,
+      "z": 5
+    },
+    "regionCount": 1,
+    "blockCount": 61
+  },
+  "previewModel": {
+    "name": "piston-lift-gate-5",
+    "sampled": false,
+    "totalSolidBlocks": 61,
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 7,
+      "maxY": 3,
+      "maxZ": 4
+    }
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1793957957128,
+  "updatedAt": 1793957957128
+}

@@ -1,0 +1,61 @@
+{
+  "id": "seed-redstone-lift-gate-3",
+  "space": "redstonearchive",
+  "title": "3 格地面闸门",
+  "projectionSlug": "pistonliftgate3",
+  "description": "三台朝下的粘性活塞把门板压在地面上，拨动拉杆后活塞收回，门板被提起让出通道。",
+  "visibility": "public",
+  "fileName": "piston-lift-gate-3.litematic",
+  "mimeType": "application/octet-stream",
+  "sourceFile": {
+    "fileName": "piston-lift-gate-3.litematic",
+    "mimeType": "application/octet-stream",
+    "size": 649
+  },
+  "schematic": {
+    "name": "piston-lift-gate-3",
+    "author": "Litemora",
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 5,
+      "maxY": 3,
+      "maxZ": 4
+    },
+    "size": {
+      "x": 6,
+      "y": 4,
+      "z": 5
+    },
+    "regionCount": 1,
+    "blockCount": 45
+  },
+  "previewModel": {
+    "name": "piston-lift-gate-3",
+    "sampled": false,
+    "totalSolidBlocks": 45,
+    "bounds": {
+      "minX": 0,
+      "minY": 0,
+      "minZ": 0,
+      "maxX": 5,
+      "maxY": 3,
+      "maxZ": 4
+    }
+  },
+  "placement": {
+    "offset": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  },
+  "owner": {
+    "id": "local-dev",
+    "name": "Local Dev",
+    "avatar": ""
+  },
+  "createdAt": 1793957957128,
+  "updatedAt": 1793957957128
+}

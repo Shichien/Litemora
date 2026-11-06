@@ -59,3 +59,20 @@ pnpm redstone:replay -- `
 `player.view` 使用角度制。`yaw` 控制水平朝向，`pitch` 控制上下视角，负值向下看。这样每个馆藏可以把初始画面稳定对准结构，同时仍允许访客进入后自由转动和漫游。
 
 进入投影后，底部时间线支持播放、暂停、逐刻前后移动、倍速和拖动跳转。右键点击回放场景中登记过的按钮或拉杆，会从初始状态播放完整流程。
+
+## 红石门
+
+`scripts/generate-redstone-door-litematics.mjs` 一次生成一批可点击开合的红石门，包含结构和场景；`scripts/verify-redstone-doors.mjs` 在回放上逐刻重放，校验门洞确实打开再封上；`scripts/verify-door-click-targets.mjs` 确认每个可点目标都落在真实的拉杆方块上；`scripts/install-redstone-doors.mjs` 把结果装进 `public/redstone-archive`、dev gallery 和投影世界配置。
+
+```powershell
+pnpm redstone:doors           # 生成结构与场景
+pnpm redstone:doors:verify    # 逐刻校验门洞开合
+pnpm redstone:doors:install   # 装进站点
+```
+
+目前提供两种结构：
+
+- **回拉式活塞门**（`piston-pull-door-2x2` / `2x3` / `2x4`）：门口左右各一台粘性活塞，初始伸出顶着门板。拨动拉杆断电后活塞收回，把门板拉进侧墙暗格，门口整片让开。
+- **地面闸门**（`piston-lift-gate-3` / `piston-lift-gate-5`）：门洞正上方一排朝下的粘性活塞，把门板压在地面那格。拨动拉杆后活塞收回，门板被提上去一格，通道让开。
+
+单台活塞只能带动一格，所以闸门高度固定为 1 格；要更高的门口需要用回拉式活塞门。拉杆直接贴在活塞背面，这也是经过验证的供电方式——红石粉指向活塞、或中继器对准活塞都不会给活塞供电。

@@ -1,0 +1,50 @@
+{
+  "ui": {
+    "pauseMenu": {
+      "showSettings": false,
+      "showSkins": true
+    },
+    "controls": {
+      "allowFlightToggle": true,
+      "allowPerspectiveToggle": true
+    }
+  },
+  "settings": {
+    "portalLinks": {
+      "endPortalUrl": "",
+      "netherPortalUrl": ""
+    },
+    "environment": {
+      "ambientIntensity": 0.9,
+      "sunIntensity": 3,
+      "timeAutoPlay": false,
+      "timeOfDay": 0.38,
+      "skyMode": "DayCycle",
+      "fogDensity": 0.006
+    },
+    "redstoneArchive": {
+      "replayUrl": "/redstone-archive/piston-pull-door-2x2.replay.json.gz"
+    },
+    "visualPreset": "default",
+    "cameraPreset": "default",
+    "chunk": {
+      "unloadPadding": 1,
+      "height": 256,
+      "viewDistance": 2
+    }
+  },
+  "player": {
+    "spawnPoint": {
+      "x": 4,
+      "y": 2,
+      "z": -6
+    },
+    "view": {
+      "yaw": 180,
+      "pitch": -10
+    },
+    "flight": {
+      "groundWalkAnimationWhenMoving": true
+    }
+  }
+}
