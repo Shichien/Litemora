@@ -133,7 +133,9 @@
       "title": "Discover Spaces",
       "desc": "Explore curated schematic worlds created by the community."
     },
-    "footer": "Litemora - Open Source Schematic Viewer. Powered by Cubane & Three.js."
+    "footer": "Litemora - Open Source Schematic Viewer. Powered by Cubane & Three.js.",
+    "creditsLead": "Special thanks to",
+    "creditsBody": "for the deterministic redstone simulation behind every replay in the Redstone Archive."
   },
   "space": {
     "hero": {

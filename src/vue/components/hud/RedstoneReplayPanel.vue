@@ -100,7 +100,16 @@ onUnmounted(() => {
   >
     <header class="replay-heading">
       <div class="replay-title-block">
-        <span class="replay-kicker rs-eyebrow">REDSTONE ARCHIVE</span>
+        <span class="replay-kicker rs-eyebrow">
+          REDSTONE ARCHIVE
+          <a
+            class="replay-credit"
+            href="https://github.com/azazo1/redstone-rs"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="红石模拟由 azazo1/redstone-rs 提供，感谢！"
+          >· SIM BY REDSTONE-RS</a>
+        </span>
         <strong class="replay-title">{{ replay.title }}</strong>
       </div>
       <div class="replay-meta">
@@ -246,6 +255,24 @@ onUnmounted(() => {
 
 .replay-kicker {
   line-height: 1;
+}
+
+.replay-credit {
+  color: var(--rs-text-3);
+  font: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.replay-credit:hover,
+.replay-credit:focus-visible {
+  color: var(--rs-red-hot);
+  text-shadow: 0 0 6px var(--rs-glow-soft);
+}
+
+.replay-credit:focus-visible {
+  outline: 1px solid var(--rs-red-hot);
+  outline-offset: 2px;
 }
 
 .replay-title {

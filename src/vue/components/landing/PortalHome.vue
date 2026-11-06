@@ -769,6 +769,17 @@ onBeforeUnmount(() => {
       end
       :powered="sectionPowered('footer')"
     >
+      <p class="home-credits">
+        <span class="home-credits__dot" aria-hidden="true" />
+        {{ t('home.creditsLead') }}
+        <a
+          class="home-credits__link"
+          href="https://github.com/azazo1/redstone-rs"
+          target="_blank"
+          rel="noopener noreferrer"
+        >azazo1/redstone-rs</a>
+        {{ t('home.creditsBody') }}
+      </p>
       <p>{{ t('home.footer') }}</p>
     </PortalSignalSection>
   </main>
@@ -1738,6 +1749,49 @@ onBeforeUnmount(() => {
   color: var(--rs-text-2);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.home-footer .home-credits {
+  display: block;
+  max-width: 44em;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--rs-line);
+  border-left: 2px solid var(--rs-red);
+  border-radius: var(--rs-radius);
+  background: rgba(15, 17, 20, 0.6);
+  color: var(--rs-text-2);
+}
+
+.home-credits__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 2px;
+  background: var(--rs-red-hot);
+  box-shadow: 0 0 6px var(--rs-glow);
+}
+
+.home-credits__link {
+  color: var(--rs-text);
+  font-family: var(--rs-font-mono);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--rs-red);
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.home-credits__link:hover,
+.home-credits__link:focus-visible {
+  color: var(--rs-red-hot);
+  text-shadow: 0 0 8px var(--rs-glow-soft);
+}
+
+.home-credits__link:focus-visible {
+  outline: 2px solid var(--rs-red-hot);
+  outline-offset: 2px;
 }
 
 /* ---------------------------------------------------------------- Responsive */
