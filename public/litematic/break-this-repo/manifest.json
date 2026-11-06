@@ -1,0 +1,520 @@
+{
+  "format": "litemora-litematic-collection-v1",
+  "source": "https://github.com/KrisTHL181/Break-This-Repo",
+  "commit": "ec4cc8793ee1e9b841f977b6fa6180c2726abf07",
+  "note": "Community schematics collected from the repository root. Authors are taken from each file's Litematica metadata; no license was stated upstream.",
+  "items": [
+    {
+      "file": "TNT Laser Cannon.litematic",
+      "name": "TNT Laser Cannon",
+      "author": "FarCoolHat",
+      "size": [
+        33,
+        64,
+        46
+      ],
+      "totalBlocks": 7208,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 4671,
+      "compressed": true,
+      "bytes": 13193,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/TNT%20Laser%20Cannon.litematic"
+    },
+    {
+      "file": "主世界端——收集【自动打包（需要加载）】.litematic",
+      "name": "主世界端——收集【自动打包（需要加载）】",
+      "author": "Cheng_Rann",
+      "size": [
+        36,
+        31,
+        35
+      ],
+      "totalBlocks": 14134,
+      "litematicVersion": 6,
+      "minecraftDataVersion": 3465,
+      "compressed": true,
+      "bytes": 30426,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E4%B8%BB%E4%B8%96%E7%95%8C%E7%AB%AF%E2%80%94%E2%80%94%E6%94%B6%E9%9B%86%E3%80%90%E8%87%AA%E5%8A%A8%E6%89%93%E5%8C%85%EF%BC%88%E9%9C%80%E8%A6%81%E5%8A%A0%E8%BD%BD%EF%BC%89%E3%80%91.litematic"
+    },
+    {
+      "file": "只分离火药.litematic",
+      "name": "只分离火药",
+      "author": "YJL_SAMA",
+      "size": [
+        17,
+        18,
+        12
+      ],
+      "totalBlocks": 479,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 4903,
+      "compressed": true,
+      "bytes": 1896,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E5%8F%AA%E5%88%86%E7%A6%BB%E7%81%AB%E8%8D%AF.litematic"
+    },
+    {
+      "file": "子区块320.litematic",
+      "name": "子区块320",
+      "author": "BusyPacket",
+      "size": [
+        16,
+        16,
+        16
+      ],
+      "totalBlocks": 3408,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 16650,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E5%AD%90%E5%8C%BA%E5%9D%97320.litematic"
+    },
+    {
+      "file": "最小单区块320.litematic",
+      "name": "最小单区块320",
+      "author": "Meo_LoBSter",
+      "size": [
+        16,
+        22,
+        16
+      ],
+      "totalBlocks": 4706,
+      "litematicVersion": 6,
+      "minecraftDataVersion": 3465,
+      "compressed": true,
+      "bytes": 10838,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E6%9C%80%E5%B0%8F%E5%8D%95%E5%8C%BA%E5%9D%97320.litematic"
+    },
+    {
+      "file": "最小的弱加载盾构.litematic",
+      "name": "最小的弱加载盾构",
+      "author": "YJL_SAMA",
+      "size": [
+        16,
+        20,
+        16
+      ],
+      "totalBlocks": 56,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 1290,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E6%9C%80%E5%B0%8F%E7%9A%84%E5%BC%B1%E5%8A%A0%E8%BD%BD%E7%9B%BE%E6%9E%84.litematic"
+    },
+    {
+      "file": "最小的弱加载盾构1.litematic",
+      "name": "最小的弱加载盾构1",
+      "author": "YJL_SAMA",
+      "size": [
+        7,
+        17,
+        5
+      ],
+      "totalBlocks": 55,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 1309,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E6%9C%80%E5%B0%8F%E7%9A%84%E5%BC%B1%E5%8A%A0%E8%BD%BD%E7%9B%BE%E6%9E%841.litematic"
+    },
+    {
+      "file": "沼泽刷怪合成收集.litematic",
+      "name": "沼泽刷怪合成收集",
+      "author": "chapwp",
+      "size": [
+        10,
+        8,
+        10
+      ],
+      "totalBlocks": 329,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 2751,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E6%B2%BC%E6%B3%BD%E5%88%B7%E6%80%AA%E5%90%88%E6%88%90%E6%94%B6%E9%9B%86.litematic"
+    },
+    {
+      "file": "沼泽炸怪塔（cha）1.litematic",
+      "name": "沼泽炸怪塔（cha）1",
+      "author": "chapwp",
+      "size": [
+        39,
+        20,
+        30
+      ],
+      "totalBlocks": 4767,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 10568,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E6%B2%BC%E6%B3%BD%E7%82%B8%E6%80%AA%E5%A1%94%EF%BC%88cha%EF%BC%891.litematic"
+    },
+    {
+      "file": "炸沟机.litematic",
+      "name": "炸沟机",
+      "author": "YJL_SAMA",
+      "size": [
+        163,
+        76,
+        69
+      ],
+      "totalBlocks": 6125,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 12279,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%82%B8%E6%B2%9F%E6%9C%BA.litematic"
+    },
+    {
+      "file": "猪人塔尾流处理.litematic",
+      "name": "猪人塔尾流处理",
+      "author": "mcmcer",
+      "size": [
+        8,
+        25,
+        26
+      ],
+      "totalBlocks": 2166,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 4189,
+      "compressed": true,
+      "bytes": 7598,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E4%BA%BA%E5%A1%94%E5%B0%BE%E6%B5%81%E5%A4%84%E7%90%86.litematic"
+    },
+    {
+      "file": "猪人塔收集.litematic",
+      "name": "猪人塔收集",
+      "author": "Liebessprache",
+      "size": [
+        24,
+        13,
+        11
+      ],
+      "totalBlocks": 1319,
+      "litematicVersion": 6,
+      "minecraftDataVersion": 3700,
+      "compressed": true,
+      "bytes": 5148,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E4%BA%BA%E5%A1%94%E6%94%B6%E9%9B%86.litematic"
+    },
+    {
+      "file": "猪人塔收集promax.litematic",
+      "name": "猪人塔收集promax",
+      "author": "mc_kulu",
+      "size": [
+        26,
+        54,
+        23
+      ],
+      "totalBlocks": 1816,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 4435,
+      "compressed": true,
+      "bytes": 7353,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E4%BA%BA%E5%A1%94%E6%94%B6%E9%9B%86promax.litematic"
+    },
+    {
+      "file": "猪人处死.litematic",
+      "name": "猪人处死",
+      "author": "YJL_SAMA",
+      "size": [
+        2,
+        3,
+        9
+      ],
+      "totalBlocks": 54,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 4903,
+      "compressed": true,
+      "bytes": 521,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E4%BA%BA%E5%A4%84%E6%AD%BB.litematic"
+    },
+    {
+      "file": "猪灵交易所 by 9月 加铁粒收集.litematic",
+      "name": "猪灵交易所 by 9月 加铁粒收集",
+      "author": "Cup_Sorcerer",
+      "size": [
+        44,
+        67,
+        58
+      ],
+      "totalBlocks": 20116,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 78938,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E7%81%B5%E4%BA%A4%E6%98%93%E6%89%80%20by%209%E6%9C%88%20%E5%8A%A0%E9%93%81%E7%B2%92%E6%94%B6%E9%9B%86.litematic"
+    },
+    {
+      "file": "猪灵捕捉.litematic",
+      "name": "猪灵捕捉",
+      "author": "fengzheng346",
+      "size": [
+        29,
+        6,
+        15
+      ],
+      "totalBlocks": 467,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 1588,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E7%81%B5%E6%8D%95%E6%8D%89.litematic"
+    },
+    {
+      "file": "猪炮四角主世界.litematic",
+      "name": "猪炮四角主世界",
+      "author": "Liuyue_awa",
+      "size": [
+        17,
+        8,
+        11
+      ],
+      "totalBlocks": 1080,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 17250,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E7%82%AE%E5%9B%9B%E8%A7%92%E4%B8%BB%E4%B8%96%E7%95%8C.litematic"
+    },
+    {
+      "file": "猪炮四角地狱端.litematic",
+      "name": "猪炮四角地狱端",
+      "author": "Liuyue_awa",
+      "size": [
+        10,
+        12,
+        5
+      ],
+      "totalBlocks": 174,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 1430,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E7%82%AE%E5%9B%9B%E8%A7%92%E5%9C%B0%E7%8B%B1%E7%AB%AF.litematic"
+    },
+    {
+      "file": "猪炮第二代（主世界.litematic",
+      "name": "猪炮第二代（主世界",
+      "author": "Liuyue_awa",
+      "size": [
+        9,
+        8,
+        10
+      ],
+      "totalBlocks": 613,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 16115,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E7%82%AE%E7%AC%AC%E4%BA%8C%E4%BB%A3%EF%BC%88%E4%B8%BB%E4%B8%96%E7%95%8C.litematic"
+    },
+    {
+      "file": "猪炮第二代（地狱端.litematic",
+      "name": "猪炮第二代（地狱端",
+      "author": "Liuyue_awa",
+      "size": [
+        10,
+        11,
+        5
+      ],
+      "totalBlocks": 107,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 1176,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8C%AA%E7%82%AE%E7%AC%AC%E4%BA%8C%E4%BB%A3%EF%BC%88%E5%9C%B0%E7%8B%B1%E7%AB%AF.litematic"
+    },
+    {
+      "file": "珍珠传送带.litematic",
+      "name": "珍珠传送带",
+      "author": "YJL_SAMA",
+      "size": [
+        128,
+        36,
+        32
+      ],
+      "totalBlocks": 5000,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 3488,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8F%8D%E7%8F%A0%E4%BC%A0%E9%80%81%E5%B8%A6.litematic"
+    },
+    {
+      "file": "珍珠传送带1单元.litematic",
+      "name": "珍珠传送带1单元",
+      "author": "YJL_SAMA",
+      "size": [
+        27,
+        4,
+        2
+      ],
+      "totalBlocks": 136,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 553,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8F%8D%E7%8F%A0%E4%BC%A0%E9%80%81%E5%B8%A61%E5%8D%95%E5%85%83.litematic"
+    },
+    {
+      "file": "珍珠矫正.litematic",
+      "name": "珍珠矫正",
+      "author": "PrettyBird31419",
+      "size": [
+        12,
+        43,
+        8
+      ],
+      "totalBlocks": 328,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 4082,
+      "compressed": false,
+      "bytes": 11420,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%8F%8D%E7%8F%A0%E7%9F%AB%E6%AD%A3.litematic"
+    },
+    {
+      "file": "紫颂果农场二改（最终版）.litematic",
+      "name": "紫菘果农场二改（最终版）",
+      "author": "Wi_Nm_W",
+      "size": [
+        111,
+        46,
+        114
+      ],
+      "totalBlocks": 32906,
+      "litematicVersion": 6,
+      "minecraftDataVersion": 3465,
+      "compressed": true,
+      "bytes": 22433,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%B4%AB%E9%A2%82%E6%9E%9C%E5%86%9C%E5%9C%BA%E4%BA%8C%E6%94%B9%EF%BC%88%E6%9C%80%E7%BB%88%E7%89%88%EF%BC%89.litematic"
+    },
+    {
+      "file": "终极收集.litematic",
+      "name": "终极收集",
+      "author": "YJL_SAMA",
+      "size": [
+        49,
+        51,
+        43
+      ],
+      "totalBlocks": 9795,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 37163,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E7%BB%88%E6%9E%81%E6%94%B6%E9%9B%86.litematic"
+    },
+    {
+      "file": "自动蜜块农场.litematic",
+      "name": "自动蜜块农场",
+      "author": "mythology306",
+      "size": [
+        74,
+        20,
+        37
+      ],
+      "totalBlocks": 8084,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3953,
+      "compressed": true,
+      "bytes": 36749,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E8%87%AA%E5%8A%A8%E8%9C%9C%E5%9D%97%E5%86%9C%E5%9C%BA.litematic"
+    },
+    {
+      "file": "自定义珍珠炮-2563.生成导出-31x101x23.litematic",
+      "name": "自定义珍珠炮 (RedenMC, 31 x 101 x 23)",
+      "author": "Yisibite",
+      "size": [
+        31,
+        101,
+        23
+      ],
+      "totalBlocks": 114514,
+      "litematicVersion": 6,
+      "minecraftDataVersion": 20060210,
+      "compressed": true,
+      "bytes": 5973,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E8%87%AA%E5%AE%9A%E4%B9%89%E7%8F%8D%E7%8F%A0%E7%82%AE-2563.%E7%94%9F%E6%88%90%E5%AF%BC%E5%87%BA-31x101x23.litematic"
+    },
+    {
+      "file": "自定义珍珠炮-2563.生成导出-41x101x29.litematic",
+      "name": "自定义珍珠炮 (RedenMC, 41 x 101 x 29)",
+      "author": "Yisibite",
+      "size": [
+        41,
+        101,
+        29
+      ],
+      "totalBlocks": 114514,
+      "litematicVersion": 6,
+      "minecraftDataVersion": 20060210,
+      "compressed": true,
+      "bytes": 6848,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E8%87%AA%E5%AE%9A%E4%B9%89%E7%8F%8D%E7%8F%A0%E7%82%AE-2563.%E7%94%9F%E6%88%90%E5%AF%BC%E5%87%BA-41x101x29.litematic"
+    },
+    {
+      "file": "铸铁塔 - 4核15K刷铁机 跑马灯版.litematic",
+      "name": "铸铁塔 - 4核15K刷铁机 跑马灯版",
+      "author": "AR_fish",
+      "size": [
+        29,
+        49,
+        31
+      ],
+      "totalBlocks": 6816,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 16999,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E9%93%B8%E9%93%81%E5%A1%94%20-%204%E6%A0%B815K%E5%88%B7%E9%93%81%E6%9C%BA%20%E8%B7%91%E9%A9%AC%E7%81%AF%E7%89%88.litematic"
+    },
+    {
+      "file": "铸铁塔 - 4核15K刷铁机.litematic",
+      "name": "铸铁塔 - 4核15K刷铁机",
+      "author": "AR_fish",
+      "size": [
+        29,
+        49,
+        31
+      ],
+      "totalBlocks": 6768,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 15683,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E9%93%B8%E9%93%81%E5%A1%94%20-%204%E6%A0%B815K%E5%88%B7%E9%93%81%E6%9C%BA.litematic"
+    },
+    {
+      "file": "铸铁塔 - 8核28K刷铁机 .litematic",
+      "name": "铸铁塔 - 8核28K刷铁机 ",
+      "author": "AR_fish",
+      "size": [
+        29,
+        61,
+        31
+      ],
+      "totalBlocks": 8173,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 3955,
+      "compressed": true,
+      "bytes": 19771,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E9%93%B8%E9%93%81%E5%A1%94%20-%208%E6%A0%B828K%E5%88%B7%E9%93%81%E6%9C%BA%20.litematic"
+    },
+    {
+      "file": "阵列归中.litematic",
+      "name": "阵列归中",
+      "author": "YJL_SAMA",
+      "size": [
+        14,
+        9,
+        14
+      ],
+      "totalBlocks": 132,
+      "litematicVersion": 7,
+      "minecraftDataVersion": 4903,
+      "compressed": true,
+      "bytes": 1106,
+      "sourceUrl": "https://github.com/KrisTHL181/Break-This-Repo/blob/ec4cc8793ee1e9b841f977b6fa6180c2726abf07/%E9%98%B5%E5%88%97%E5%BD%92%E4%B8%AD.litematic"
+    }
+  ]
+}

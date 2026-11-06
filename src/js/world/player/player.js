@@ -303,8 +303,7 @@ export default class Player {
   }
 
   getHorizontalSpeed() {
-    const velocity = this.movement.worldVelocity
-    return Math.hypot(velocity.x, velocity.z)
+    return this.movement.horizontalMoveSpeed
   }
 
   isSprinting() {
@@ -332,6 +331,16 @@ export default class Player {
 
   setupInputListeners() {
     this.allowFlightToggle = true
+    this.movement.allowFlightToggle = true
+
+    // Jumping and double-tap-Space flight run per tick inside the movement
+    // controller (held Space re-jumps on landing, as in Minecraft).
+    this.movement.onJump = () => {
+      this.animation?.triggerJump()
+    }
+    this.movement.onFlightToggled = (enabled) => {
+      emitter.emit('hud:flight-mode-changed', { enabled })
+    }
 
     emitter.on('input:update', (keys) => {
       this.inputState = keys
@@ -340,17 +349,7 @@ export default class Player {
     emitter.on('ui:control-permissions-changed', (payload = {}) => {
       if (payload.allowFlightToggle !== undefined) {
         this.allowFlightToggle = !!payload.allowFlightToggle
-      }
-    })
-
-    emitter.on('input:jump', () => {
-      if (this.movement.isFlying) {
-        return
-      }
-      if (this.movement.isGrounded && this.animation.stateMachine.currentState.name !== AnimationStates.COMBAT) {
-        const { resolvedInput } = resolveDirectionInput(this.inputState)
-        this.movement.jump(resolvedInput)
-        this.animation.triggerJump()
+        this.movement.allowFlightToggle = this.allowFlightToggle
       }
     })
 
@@ -549,9 +548,9 @@ export default class Player {
    * @param {object} inputState - 输入状态
    */
   updateSpeedLines(inputState) {
-    // 检查是否处于冲刺状态：Minecraft 风格的冲刺输入
+    // Follows the latched sprint state, like the sprint FOV.
     const isMoving = inputState.forward || inputState.backward || inputState.left || inputState.right
-    const isSprinting = !!inputState.sprint && isMoving
+    const isSprinting = !!this.movement.isSprinting && isMoving
 
     // 计算时间增量（秒）
     const deltaTime = this.time.delta * 0.001

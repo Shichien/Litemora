@@ -35,27 +35,34 @@ export const PLAYER_CONFIG = {
       backward: 1.0,
     },
   },
-  jumpForce: 10.2,
+  // m/s at the start of the jump tick (MC jump strength 0.42 b/t * 20).
+  // Gravity is applied after the move, as in LivingEntity.travelInAir.
+  jumpForce: 8.4,
   physics: {
     tickRate: 20,
     maxTickDelta: 0.25,
     jumpCoyoteTime: 0.1,
+    // MC LivingEntity: noJumpDelay after a jump while Space stays held
+    jumpDelayTicks: 10,
+    // MC LocalPlayer: double-tap Space window that toggles creative flight
+    flightToggleWindowTicks: 7,
     verticalDrag: 0.98,
     gravityPerTick: 1.6,
+    // MC block friction (0.6) * air drag (0.91)
     groundFriction: 0.546,
     airDrag: 0.91,
-    response: {
-      crouch: 0.28,
-      walk: 0.34,
-      run: 0.4,
-      air: 0.08,
-    },
+    // MC input friction: move input is scaled by 0.98 before it is applied
+    inputFriction: 0.98,
+    // Velocity components below this (m/s) are zeroed (MC 0.003 b/t)
+    minVelocity: 0.06,
     sneakSupportDrop: 0.55,
     snapToGroundDistance: 0.14,
     autoStepHeight: 0.6,
     jumpClimbHeight: 0.35,
     sprintJumpBoost: 4.0,
     minWorldY: 0,
+    // Per-tick easing of eye height and FOV modifier (MC Camera)
+    eyeHeightEase: 0.5,
   },
   pose: {
     standing: {
@@ -66,11 +73,12 @@ export const PLAYER_CONFIG = {
     crouching: {
       radius: 0.3,
       height: 1.5,
-      eyeHeight: 1.445,
+      eyeHeight: 1.27,
     },
   },
   facingAngle: Math.PI,
-  mouseSensitivity: 0.002,
+  // rad per mouse pixel at the default settings value (MC default 0.15 deg/px)
+  mouseSensitivity: 0.15 * Math.PI / 180,
   turnSmoothing: 0.10,
   respawn: {
     thresholdY: -2,

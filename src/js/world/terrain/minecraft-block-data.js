@@ -281,21 +281,23 @@ export function getMinecraftBlockCollisionProfile(blockName = '', properties = {
   return profile
 }
 
+// Minecraft BlockBehaviour.Properties: friction, speedFactor, jumpFactor.
+// speedFactor scales horizontal velocity after the move (Entity.move);
+// slime's stepOn slowdown (0.4 + |dy|*0.2) is approximated as 0.4 at rest.
 const DEFAULT_MOVEMENT_PROFILE = Object.freeze({
   slipperiness: 0.6,
-  speedMultiplier: 1,
+  speedFactor: 1,
+  jumpFactor: 1,
 })
-
-const NORMAL_WALK_SPEED = 4.317
-const WIKI_SPEED = speed => Number(speed) / NORMAL_WALK_SPEED
 
 const MOVEMENT_PROFILE_OVERRIDES = new Map([
   ['ice', { slipperiness: 0.98 }],
   ['packed_ice', { slipperiness: 0.98 }],
+  ['frosted_ice', { slipperiness: 0.98 }],
   ['blue_ice', { slipperiness: 0.989 }],
-  ['slime_block', { slipperiness: 0.8, speedMultiplier: WIKI_SPEED(1.359) }],
-  ['honey_block', { speedMultiplier: WIKI_SPEED(2.508) }],
-  ['soul_sand', { speedMultiplier: WIKI_SPEED(2.508) }],
+  ['slime_block', { slipperiness: 0.8, speedFactor: 0.4 }],
+  ['honey_block', { speedFactor: 0.4, jumpFactor: 0.5 }],
+  ['soul_sand', { speedFactor: 0.4 }],
 ])
 
 export function getMinecraftBlockMovementProfile(blockName = '', properties = {}) {

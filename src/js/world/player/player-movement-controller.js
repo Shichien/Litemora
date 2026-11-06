@@ -10,6 +10,11 @@ function clamp01(value) {
   return THREE.MathUtils.clamp(value, 0, 1)
 }
 
+// MC creative flight reaches 10.89 m/s; speedMultiplier is relative to run speed.
+const DEFAULT_FLIGHT_SPEED_MULTIPLIER = 10.89 / 5.612
+// MC Entity.isHorizontalCollisionMinor: deflection under 8 degrees keeps sprinting.
+const MINOR_COLLISION_ANGLE = THREE.MathUtils.degToRad(8)
+
 /**
  * 玩家移动控制器
  * - 采用固定 20 TPS 的近 Minecraft 运动更新
@@ -26,10 +31,35 @@ export class PlayerMovementController {
     this.isInWater = false
     this.isClimbing = false
     this.isSneaking = false
+    // Latched like MC LocalPlayer: starts on a sprint request with forward
+    // impulse, stops when forward impulse ends or on a head-on collision.
     this.isSprinting = false
     this.groundedGraceTimer = 0
+    // Tick-based input state (MC LivingEntity.noJumpDelay / LocalPlayer.jumpTriggerTime)
+    this.jumpDelayTicks = 0
+    this.flightToggleTicks = 0
+    this._wasJumpHeld = false
+    this.allowFlightToggle = true
+    this.onJump = null
+    this.onFlightToggled = null
+    this.horizontalCollision = false
+    this.minorHorizontalCollision = false
+    // Last tick's horizontal displacement (m/s), for HUD / camera consumers
+    this.horizontalMoveSpeed = 0
+    // View bobbing (MC ClientAvatarState): walked distance and bob amplitude
+    this.walkDist = 0
+    this.walkDistO = 0
+    this.bob = 0
+    this.bobO = 0
+    // Eased eye height and FOV modifier (MC Camera.tick)
+    this.eyeHeight = null
+    this.eyeHeightO = null
+    this.fovModifier = 1
+    this.fovModifierO = 1
+    this.partialTick = 0
+    this.tickCount = 0
     this.flightConfig = {
-      speedMultiplier: 10.79 / (this.config.speed?.run || 5.612),
+      speedMultiplier: DEFAULT_FLIGHT_SPEED_MULTIPLIER,
       groundWalkAnimationWhenMoving: true,
     }
 
@@ -74,7 +104,8 @@ export class PlayerMovementController {
     this._tmpBoxPoint = new THREE.Vector3()
     this._tmpMovementProfile = {
       slipperiness: 0.6,
-      speedMultiplier: 1,
+      speedFactor: 1,
+      jumpFactor: 1,
     }
 
     this._respawnSetupTimer = setTimeout(() => {
@@ -105,18 +136,47 @@ export class PlayerMovementController {
   }
 
   getEyeHeight() {
-    return this.poses[this.currentPoseKey]?.eyeHeight ?? 1.62
+    const target = this.poses[this.currentPoseKey]?.eyeHeight ?? 1.62
+    if (this.eyeHeight === null || this.eyeHeightO === null) {
+      return target
+    }
+    return THREE.MathUtils.lerp(this.eyeHeightO, this.eyeHeight, this.partialTick)
+  }
+
+  /**
+   * Interpolated view-bob inputs (MC ClientAvatarState).
+   * @param {{walkDistance:number, bob:number}} [target]
+   * @returns {{walkDistance:number, bob:number}} walkDistance is MC's
+   *   "backwards interpolated" value, -(wd + (wd - wdO) * pt)
+   */
+  getViewBobState(target = { walkDistance: 0, bob: 0 }) {
+    const pt = this.partialTick
+    target.walkDistance = -(this.walkDist + (this.walkDist - this.walkDistO) * pt)
+    target.bob = THREE.MathUtils.lerp(this.bobO, this.bob, pt)
+    return target
+  }
+
+  /**
+   * Interpolated raw FOV modifier (flight x1.1, sprint speed attribute),
+   * before the settings effect scale is applied.
+   * @returns {number} raw FOV modifier (1 = no change)
+   */
+  getFovModifier() {
+    return THREE.MathUtils.lerp(this.fovModifierO, this.fovModifier, this.partialTick)
   }
 
   update(inputState, isCombatActive) {
     if (this.isFlying) {
       this.isInWater = false
       this.isClimbing = false
-      this._updateFlightPhysics(inputState, isCombatActive)
-      return
+      // MC never crouches while flying; stand up when there is room.
+      if (this.currentPoseKey !== 'standing' && this._canOccupyPose(this.position, 'standing')) {
+        this._applyPose('standing')
+      }
     }
-
-    this._updatePose(inputState)
+    else {
+      this._updatePose(inputState)
+    }
 
     const rawDt = this.experience.time.delta * 0.001
     const clampedDt = Math.min(Math.max(rawDt, 0), this.maxPhysicsDelta)
@@ -126,23 +186,163 @@ export class PlayerMovementController {
     let iterations = 0
     while (this.tickAccumulator >= this.physicsTick && iterations < 8) {
       this.previousPosition.copy(this.position)
-      this._stepCustomPhysics(inputState, isCombatActive)
+      this._beginTick()
+      this._tickControls(inputState, isCombatActive)
+      if (this.isFlying) {
+        this._stepFlightPhysics(inputState, isCombatActive)
+      }
+      else {
+        this._stepCustomPhysics(inputState, isCombatActive)
+      }
+      this._endTick()
       this.tickAccumulator -= this.physicsTick
       iterations++
     }
 
     const alpha = clamp01(this.tickAccumulator / this.physicsTick)
+    this.partialTick = alpha
     this.renderPosition.lerpVectors(this.previousPosition, this.position, alpha)
 
-    this._checkRespawn()
+    if (!this.isFlying) {
+      this._checkRespawn()
+    }
     this._syncMeshCustom()
   }
 
-  toggleFlight() {
-    this.isFlying = !this.isFlying
+  /**
+   * Start-of-tick bookkeeping, in MC order: Camera.tick (eye height) and
+   * AbstractClientPlayer.updateBob both read the previous tick's state.
+   */
+  _beginTick() {
+    const ease = this.config.physics?.eyeHeightEase ?? 0.5
+    const targetEyeHeight = this.poses[this.currentPoseKey]?.eyeHeight ?? 1.62
+    if (this.eyeHeight === null) {
+      this.eyeHeight = targetEyeHeight
+    }
+    this.eyeHeightO = this.eyeHeight
+    this.eyeHeight += (targetEyeHeight - this.eyeHeight) * ease
+
+    this.fovModifierO = this.fovModifier
+    this.fovModifier += (this._getTargetFovModifier() - this.fovModifier) * ease
+    this.fovModifier = THREE.MathUtils.clamp(this.fovModifier, 0.1, 1.5)
+
+    // Bob target uses last tick's post-friction velocity (MC deltaMovement), in b/t.
+    const horizontalBlocksPerTick = Math.hypot(this.worldVelocity.x, this.worldVelocity.z) * this.physicsTick
+    const targetBob = this.isGrounded && !this.isFlying ? Math.min(0.1, horizontalBlocksPerTick) : 0
+    this.bobO = this.bob
+    this.bob += (targetBob - this.bob) * 0.4
+    this.walkDistO = this.walkDist
+  }
+
+  _endTick() {
+    const dx = this.position.x - this.previousPosition.x
+    const dz = this.position.z - this.previousPosition.z
+    const moved = Math.hypot(dx, dz)
+    this.walkDist += moved * 0.6
+    this.horizontalMoveSpeed = moved * this.physicsTickRate
+    this.tickCount++
+  }
+
+  _getTargetFovModifier() {
+    let modifier = 1
+    if (this.isFlying) {
+      modifier *= 1.1
+    }
+    if (this.isSprinting) {
+      // movement-speed attribute / walking speed = 1.3 -> (1.3 + 1) / 2
+      const walk = this.config.speed?.walk || 4.317
+      const run = this.config.speed?.run || 5.612
+      modifier *= ((run / walk) + 1) / 2
+    }
+    return modifier
+  }
+
+  _hasForwardImpulse(inputState) {
+    return !!(inputState.forward && !inputState.backward)
+  }
+
+  /**
+   * Per-tick input handling (MC LocalPlayer.aiStep / LivingEntity.aiStep):
+   * sprint latch, double-tap-Space flight toggle and held-Space jumping.
+   */
+  _tickControls(inputState, isCombatActive) {
+    const jumpHeld = !!inputState.space
+    const jumpPressed = jumpHeld && !this._wasJumpHeld
+    this._wasJumpHeld = jumpHeld
+    const hasForwardImpulse = this._hasForwardImpulse(inputState)
+    const isMovingSlowly = !this.isFlying && this.currentPoseKey === 'crouching'
+
+    // Sprint latch. inputState.sprint is the request (Ctrl held or W double-tap).
+    if (!this.isSprinting && inputState.sprint && hasForwardImpulse && !isMovingSlowly && !isCombatActive) {
+      this.isSprinting = true
+    }
+    if (this.isSprinting && (!hasForwardImpulse || (this.horizontalCollision && !this.minorHorizontalCollision))) {
+      this.isSprinting = false
+    }
+
+    // Double-tap Space toggles creative flight.
+    if (this.flightToggleTicks > 0) {
+      this.flightToggleTicks--
+    }
+    let toggledFlight = false
+    if (this.allowFlightToggle && jumpPressed) {
+      if (this.flightToggleTicks === 0) {
+        this.flightToggleTicks = this.config.physics?.flightToggleWindowTicks ?? 7
+      }
+      else {
+        const wasGrounded = this.isGrounded
+        this._setFlying(!this.isFlying)
+        if (this.isFlying && wasGrounded) {
+          this._jumpFromGround()
+        }
+        this.flightToggleTicks = 0
+        toggledFlight = true
+        this.onFlightToggled?.(this.isFlying)
+      }
+    }
+
+    // Held-Space jumping with MC's 10-tick noJumpDelay.
+    if (this.jumpDelayTicks > 0) {
+      this.jumpDelayTicks--
+    }
+    if (this.isFlying || toggledFlight) {
+      return
+    }
+    if (!jumpHeld) {
+      this.jumpDelayTicks = 0
+      return
+    }
+    // Coyote grace only for a fresh press, so holding Space off a ledge does not jump.
+    const canJumpFromGround = this.isGrounded || (jumpPressed && this.groundedGraceTimer > 0)
+    if (canJumpFromGround && this.jumpDelayTicks === 0 && !isCombatActive && !this.isInWater && !this.isClimbing) {
+      this._jumpFromGround()
+      this.jumpDelayTicks = this.config.physics?.jumpDelayTicks ?? 10
+    }
+  }
+
+  _jumpFromGround() {
+    const jumpFactor = this._tmpMovementProfile.jumpFactor ?? 1
+    this.worldVelocity.y = Math.max(this.config.jumpForce * jumpFactor, this.worldVelocity.y)
+
+    if (this.isSprinting) {
+      const boost = this.config.physics?.sprintJumpBoost ?? 4
+      this.worldVelocity.x += -Math.sin(this.facingAngle) * boost
+      this.worldVelocity.z += -Math.cos(this.facingAngle) * boost
+    }
+
+    this.groundedGraceTimer = 0
+    this.onJump?.()
+  }
+
+  _setFlying(isFlying) {
+    this.isFlying = !!isFlying
     this.isGrounded = false
+    this.flightToggleTicks = 0
+  }
+
+  toggleFlight() {
+    this._setFlying(!this.isFlying)
     this.worldVelocity.set(0, 0, 0)
-    this.tickAccumulator = 0
   }
 
   shouldSimulateGroundWalk(inputState) {
@@ -163,71 +363,107 @@ export class PlayerMovementController {
     }
   }
 
-  jump(inputState = {}) {
-    const canUseGroundedGrace = this.groundedGraceTimer > 0
-    if (this.isFlying || (!this.isGrounded && !canUseGroundedGrace)) {
-      return
+  /**
+   * Creative flight, one tick (MC Player.travel with abilities.flying):
+   * horizontal accel flyingSpeed (x2 sprinting), drag 0.91; vertical input
+   * +-3*flyingSpeed per tick and vy = vy_before * 0.6. Noclip, floor clamped.
+   */
+  _stepFlightPhysics(inputState, isCombatActive) {
+    const tickRate = this.physicsTickRate
+    const defaultMultiplier = DEFAULT_FLIGHT_SPEED_MULTIPLIER
+    const scale = (this.flightConfig.speedMultiplier || defaultMultiplier) / defaultMultiplier
+    const abilitySpeed = 0.05 * scale
+    let horizontalAccel = abilitySpeed * (this.isSprinting ? 2 : 1)
+    if (isCombatActive) {
+      horizontalAccel *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
     }
-
-    this.worldVelocity.y = this.config.jumpForce
-
-    if (inputState.sprint && inputState.forward && !inputState.backward && !inputState.sneak) {
-      const boost = this.config.physics?.sprintJumpBoost ?? 4
-      const forwardX = -Math.sin(this.facingAngle)
-      const forwardZ = -Math.cos(this.facingAngle)
-      this.worldVelocity.x += forwardX * boost
-      this.worldVelocity.z += forwardZ * boost
-    }
-
-    this.isGrounded = false
-    this.groundedGraceTimer = 0
-  }
-
-  _updateFlightPhysics(inputState, isCombatActive) {
-    const rawDt = this.experience.time.delta * 0.001
-    const clampedDt = Math.min(rawDt, 0.05)
-    const { worldX, worldZ } = this._computeWorldDirection(inputState)
 
     const ascend = inputState.space ? 1 : 0
     const descend = inputState.sneak || inputState.shift || inputState.v ? 1 : 0
     const verticalInput = ascend - descend
+    let vy = this.worldVelocity.y / tickRate
+    vy += verticalInput * abilitySpeed * 3
 
-    let speed = this.config.speed.run * this.flightConfig.speedMultiplier
-    if (inputState.sprint) {
-      speed *= 2
-    }
-    if (isCombatActive) {
-      speed *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
-    }
+    const { worldX, worldZ, magnitude } = this._computeMoveInput(inputState, false)
+    let vx = this.worldVelocity.x / tickRate + worldX * magnitude * horizontalAccel
+    let vz = this.worldVelocity.z / tickRate + worldZ * magnitude * horizontalAccel
 
-    this.worldVelocity.set(
-      worldX * speed,
-      verticalInput * speed,
-      worldZ * speed,
-    )
-
-    this.position.addScaledVector(this.worldVelocity, clampedDt)
+    this.position.x += vx
+    this.position.y += vy
+    this.position.z += vz
+    this.worldVelocity.set(vx * tickRate, vy * tickRate, vz * tickRate)
     this._applyWorldFloorClampToPosition(this.position, this.worldVelocity)
-    this.previousPosition.copy(this.position)
-    this.renderPosition.copy(this.position)
+
+    vx *= 0.91
+    vz *= 0.91
+    vy = (this.worldVelocity.y / tickRate) * 0.6
+    if (Math.hypot(vx, vz) < 0.003) {
+      vx = 0
+      vz = 0
+    }
+    if (Math.abs(vy) < 0.003) {
+      vy = 0
+    }
+    this.worldVelocity.set(vx * tickRate, vy * tickRate, vz * tickRate)
+
+    this.horizontalCollision = false
+    this.minorHorizontalCollision = false
+    if (this.isSprinting && !this._hasForwardImpulse(inputState)) {
+      this.isSprinting = false
+    }
     this.isGrounded = this.position.y <= (this.config.physics?.minWorldY ?? Number.NEGATIVE_INFINITY)
-    this._syncMeshCustom()
   }
 
   getCapsuleCenterWorld(target = new THREE.Vector3()) {
     return this.group.localToWorld(target.copy(this.capsule.offset))
   }
 
+  /**
+   * One 20 TPS tick, in MC LivingEntity.travelInAir order:
+   * accelerate -> move/collide -> block speed factor -> gravity -> friction.
+   * worldVelocity therefore holds the post-friction velocity between ticks,
+   * like MC deltaMovement. Units are m/s (= blocks/tick * 20).
+   */
   _stepCustomPhysics(inputState, isCombatActive) {
     this.collision.prepareFrame()
 
     const provider = this.experience.terrainDataManager || this.terrainProvider
-    const movementProfile = this._resolveMovementProfile(inputState)
+    const tickRate = this.physicsTickRate
+    const minVelocity = this.config.physics?.minVelocity ?? 0.06
 
     this.isSneaking = this.currentPoseKey === 'crouching'
-    this.isSprinting = movementProfile === 'run'
     this.isInWater = this._isPositionInWater(this.position)
     this.isClimbing = !this.isInWater && this._isTouchingClimbable(this.position)
+
+    // MC aiStep: drop tiny residual velocity before applying input.
+    if (Math.hypot(this.worldVelocity.x, this.worldVelocity.z) < minVelocity) {
+      this.worldVelocity.x = 0
+      this.worldVelocity.z = 0
+    }
+    if (Math.abs(this.worldVelocity.y) < minVelocity) {
+      this.worldVelocity.y = 0
+    }
+
+    // Friction uses the ground state from before the move.
+    const frictionGrounded = this.isGrounded
+    this._updateGroundMovementProfile(this.position)
+    const groundFriction = this._getGroundFriction()
+    const usesWaterDrag = this.isInWater
+    this._applyMoveAcceleration(inputState, isCombatActive, frictionGrounded)
+
+    if (this.isInWater) {
+      this._updateWaterVerticalVelocity(inputState)
+    }
+    else if (this.isClimbing) {
+      // MC handleOnClimbable: horizontal speed clamped to 0.15 b/t on ladders.
+      const climbClamp = 0.15 * tickRate
+      this.worldVelocity.x = THREE.MathUtils.clamp(this.worldVelocity.x, -climbClamp, climbClamp)
+      this.worldVelocity.z = THREE.MathUtils.clamp(this.worldVelocity.z, -climbClamp, climbClamp)
+      this._updateClimbVerticalVelocity(inputState)
+    }
+    else if (frictionGrounded && this.worldVelocity.y < 0) {
+      this.worldVelocity.y = 0
+    }
 
     const predictedDisplacement = this._tmpDirection.copy(this.worldVelocity).multiplyScalar(this.physicsTick)
     const maxAxisDisplacement = Math.max(
@@ -241,32 +477,19 @@ export class PlayerMovementController {
       8,
     )
     const subTick = this.physicsTick / subStepCount
-    const gravityPerSubStep = (this.config.physics?.gravityPerTick ?? 1.6) / subStepCount
-    const verticalDragPerSubStep = (this.config.physics?.verticalDrag ?? 0.98) ** (1 / subStepCount)
+    const attemptedDx = predictedDisplacement.x
+    const attemptedDz = predictedDisplacement.z
+    const tickStartX = this.position.x
+    const tickStartZ = this.position.z
 
     let workingGrounded = this.isGrounded
+    let edgeClamped = false
 
     for (let stepIndex = 0; stepIndex < subStepCount; stepIndex++) {
       const previousBasePosition = this._tmpPreviousBase.copy(this.position)
 
       const canClimb = !this.isInWater && this._isTouchingClimbable(this.position)
       this.isClimbing = canClimb
-      this._updateGroundMovementProfile(this.position)
-      const groundFriction = this._getGroundFriction()
-      this._updateHorizontalVelocity(inputState, movementProfile, isCombatActive, groundFriction)
-
-      if (this.isInWater) {
-        this._updateWaterVerticalVelocity(inputState)
-      }
-      else if (canClimb) {
-        this._updateClimbVerticalVelocity(inputState)
-      }
-      else if (!workingGrounded) {
-        this.worldVelocity.y = (this.worldVelocity.y - gravityPerSubStep) * verticalDragPerSubStep
-      }
-      else if (this.worldVelocity.y < 0) {
-        this.worldVelocity.y = 0
-      }
 
       this._tmpNextPosition.copy(this.position).addScaledVector(this.worldVelocity, subTick)
       this._tmpAttemptedBase.copy(this._tmpNextPosition)
@@ -286,12 +509,19 @@ export class PlayerMovementController {
 
       this._applyGroundSampler(playerState)
 
-      if (!this.isInWater && !canClimb && !playerState.isGrounded && playerState.worldVelocity.y <= 0) {
+      // Snap only when walking off a small step; a falling or jumping player
+      // lands through normal collision, so jump arcs keep MC's 12-tick cycle.
+      if (frictionGrounded && !this.isInWater && !canClimb && !playerState.isGrounded && playerState.worldVelocity.y <= 0) {
         this._snapToGround(playerState)
       }
 
       if (this._shouldClampSneakMovement(inputState, playerState)) {
+        const beforeX = playerState.basePosition.x
+        const beforeZ = playerState.basePosition.z
         this._applySneakEdgeClamp(previousBasePosition, playerState)
+        if (beforeX !== playerState.basePosition.x || beforeZ !== playerState.basePosition.z) {
+          edgeClamped = true
+        }
       }
 
       if (!this.isInWater && !canClimb && !didStepUp) {
@@ -311,81 +541,165 @@ export class PlayerMovementController {
 
     this.isGrounded = workingGrounded
     this.isClimbing = !this.isInWater && this._isTouchingClimbable(this.position)
+    this._updateHorizontalCollision(inputState, attemptedDx, attemptedDz, tickStartX, tickStartZ, edgeClamped)
+
+    // Block speed factor (soul sand, honey, slime), from the block underfoot.
+    this._updateGroundMovementProfile(this.position)
+    const speedFactor = this.isGrounded ? (this._tmpMovementProfile.speedFactor ?? 1) : 1
+    if (speedFactor !== 1) {
+      this.worldVelocity.x *= speedFactor
+      this.worldVelocity.z *= speedFactor
+    }
+
+    // Gravity after the move, then drag (MC: vy = (vy - 0.08) * 0.98).
+    if (!this.isInWater && !this.isClimbing) {
+      if (this.isGrounded) {
+        if (this.worldVelocity.y < 0) {
+          this.worldVelocity.y = 0
+        }
+      }
+      else {
+        const gravity = this.config.physics?.gravityPerTick ?? 1.6
+        const verticalDrag = this.config.physics?.verticalDrag ?? 0.98
+        this.worldVelocity.y = (this.worldVelocity.y - gravity) * verticalDrag
+      }
+    }
+
+    if (usesWaterDrag) {
+      // Water keeps its legacy drag, applied before the move.
+    }
+    else {
+      const airDrag = this.config.physics?.airDrag ?? 0.91
+      const friction = frictionGrounded ? groundFriction : airDrag
+      this.worldVelocity.x *= friction
+      this.worldVelocity.z *= friction
+    }
+
     if (this.isGrounded) {
       this.groundedGraceTimer = Math.max(
         this.groundedGraceTimer,
         Number(this.config.physics?.jumpCoyoteTime ?? 0.1),
       )
     }
-
-    if (this.isGrounded && this.worldVelocity.y < 0) {
-      this.worldVelocity.y = 0
-    }
   }
 
-  _updateHorizontalVelocity(inputState, movementProfile, isCombatActive, groundFriction = null) {
-    const { worldX, worldZ } = this._computeWorldDirection(inputState)
-    const isMoving = this.isMoving(inputState)
-    const dirScale = this._computeDirectionScale(movementProfile, inputState)
+  /**
+   * MC Entity.move: horizontalCollision when the clipped move differs from the
+   * attempted one; "minor" when the deflection from the input direction is
+   * under 8 degrees (a glancing wall hit keeps the sprint going).
+   */
+  _updateHorizontalCollision(inputState, attemptedDx, attemptedDz, startX, startZ, edgeClamped) {
+    const actualDx = this.position.x - startX
+    const actualDz = this.position.z - startZ
+    const attemptedSq = (attemptedDx * attemptedDx) + (attemptedDz * attemptedDz)
+    const differenceSq = ((attemptedDx - actualDx) ** 2) + ((attemptedDz - actualDz) ** 2)
 
-    let targetSpeed = this._getTargetHorizontalSpeed(movementProfile) * dirScale
-    if (isCombatActive) {
-      targetSpeed *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
+    this.horizontalCollision = !edgeClamped && attemptedSq > 1e-8 && differenceSq > 1e-8
+    this.minorHorizontalCollision = false
+    if (!this.horizontalCollision) {
+      return
     }
 
-    const normalWalkSpeed = this.config.speed.walk || 4.317
-    const speedRatio = normalWalkSpeed > 0 ? (targetSpeed / normalWalkSpeed) : 1
+    const { worldX, worldZ, magnitude } = this._computeMoveInput(inputState, false)
+    const actualLength = Math.hypot(actualDx, actualDz)
+    if (magnitude <= 0 || actualLength < 1e-5) {
+      return
+    }
+    const cosAngle = ((worldX * actualDx) + (worldZ * actualDz)) / actualLength
+    this.minorHorizontalCollision = Math.acos(THREE.MathUtils.clamp(cosAngle, -1, 1)) < MINOR_COLLISION_ANGLE
+  }
+
+  /**
+   * MC moveRelative with getFrictionInfluencedSpeed: ground accel is the
+   * movement-speed attribute (x0.216/f^3 on slippery blocks), air accel is
+   * 0.02 (0.026 sprinting). Friction is applied after the move.
+   */
+  _applyMoveAcceleration(inputState, isCombatActive, isGrounded) {
+    const tickRate = this.physicsTickRate
+    const { worldX, worldZ, magnitude } = this._computeMoveInput(inputState, this.currentPoseKey === 'crouching')
 
     if (this.isInWater) {
       const waterDrag = this.config.physics?.waterDrag ?? 0.85
-      const waterAcceleration = this._getWaterAcceleration(speedRatio)
       this.worldVelocity.x *= waterDrag
       this.worldVelocity.z *= waterDrag
-      if (isMoving) {
-        this.worldVelocity.x += worldX * waterAcceleration
-        this.worldVelocity.z += worldZ * waterAcceleration
-      }
+    }
+
+    if (magnitude <= 0) {
       return
     }
 
-    if (this.isClimbing) {
-      const climbDrag = this.config.physics?.climbDrag ?? 0.75
-      const climbAcceleration = this._getClimbAcceleration(speedRatio)
-      this.worldVelocity.x *= climbDrag
-      this.worldVelocity.z *= climbDrag
-      if (isMoving) {
-        this.worldVelocity.x += worldX * climbAcceleration
-        this.worldVelocity.z += worldZ * climbAcceleration
-      }
-      return
+    const walk = this.config.speed?.walk || 4.317
+    const sprintRatio = (this.config.speed?.run || 5.612) / walk
+    // Movement-speed attribute in b/t: 0.1 walking, x1.3 sprinting.
+    let attribute = 0.1 * (walk / 4.317)
+    if (this.isSprinting) {
+      attribute *= sprintRatio
+    }
+    if (isCombatActive) {
+      attribute *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
     }
 
-    if (this.isGrounded) {
-      const friction = Number.isFinite(groundFriction) ? groundFriction : this._getGroundFriction()
-      const acceleration = isMoving ? this._getGroundAcceleration(speedRatio) : 0
-      this.worldVelocity.x *= friction
-      this.worldVelocity.z *= friction
-      if (isMoving) {
-        this.worldVelocity.x += worldX * acceleration
-        this.worldVelocity.z += worldZ * acceleration
-      }
+    let acceleration
+    if (this.isInWater) {
+      acceleration = 0.02 * (walk / 4.317)
+    }
+    else if (isGrounded) {
+      const slip = THREE.MathUtils.clamp(this._tmpMovementProfile.slipperiness ?? 0.6, 0.01, 0.999)
+      acceleration = slip > 0.6 ? attribute * (0.21600002 / (slip * slip * slip)) : attribute
     }
     else {
-      const drag = this.config.physics?.airDrag ?? 0.91
-      const acceleration = isMoving ? this._getAirAcceleration(speedRatio) : 0
-      this.worldVelocity.x *= drag
-      this.worldVelocity.z *= drag
-      if (isMoving) {
-        this.worldVelocity.x += worldX * acceleration
-        this.worldVelocity.z += worldZ * acceleration
+      acceleration = (this.isSprinting ? 0.026 : 0.02) * (walk / 4.317)
+      if (isCombatActive) {
+        acceleration *= MOVEMENT_CONSTANTS.COMBAT_DECELERATION
       }
     }
 
-    if (Math.abs(this.worldVelocity.x) < 0.001) {
-      this.worldVelocity.x = 0
+    const step = acceleration * magnitude * tickRate
+    this.worldVelocity.x += worldX * step
+    this.worldVelocity.z += worldZ * step
+  }
+
+  /**
+   * MC input shaping: unit key vector -> x0.98 -> x sneak speed when moving
+   * slowly -> stretched toward the unit square, capped at 1. Diagonal walking
+   * therefore matches straight walking; diagonal sneaking is a bit faster.
+   * @returns {{worldX:number, worldZ:number, magnitude:number}} unit world
+   *   direction and input length
+   */
+  _computeMoveInput(inputState, isMovingSlowly) {
+    const { worldX, worldZ } = this._computeWorldDirection(inputState)
+    const directionLength = Math.hypot(worldX, worldZ)
+    if (directionLength < 1e-6) {
+      return { worldX: 0, worldZ: 0, magnitude: 0 }
     }
-    if (Math.abs(this.worldVelocity.z) < 0.001) {
-      this.worldVelocity.z = 0
+
+    const walk = this.config.speed?.walk || 4.317
+    const sneakRatio = (this.config.speed?.crouch || 1.295) / walk
+    let length = this.config.physics?.inputFriction ?? 0.98
+    if (isMovingSlowly) {
+      length *= sneakRatio
+    }
+
+    let localX = 0
+    let localZ = 0
+    if (inputState.left)
+      localX -= 1
+    if (inputState.right)
+      localX += 1
+    if (inputState.forward)
+      localZ -= 1
+    if (inputState.backward)
+      localZ += 1
+    const ax = Math.abs(localX)
+    const az = Math.abs(localZ)
+    const tan = az > ax ? ax / az : (ax > 0 ? az / ax : 0)
+    const magnitude = Math.min(length * Math.sqrt(1 + (tan * tan)), 1)
+      * this._computeDirectionScale(this._resolveMovementProfile(inputState), inputState)
+
+    return {
+      worldX: worldX / directionLength,
+      worldZ: worldZ / directionLength,
+      magnitude,
     }
   }
 
@@ -500,23 +814,13 @@ export class PlayerMovementController {
   }
 
   _resolveMovementProfile(inputState) {
-    if (inputState.sprint && inputState.forward && !inputState.backward && !inputState.sneak) {
-      return 'run'
-    }
     if (inputState.sneak) {
       return 'crouch'
     }
+    if (this.isSprinting) {
+      return 'run'
+    }
     return 'walk'
-  }
-
-  _getTargetHorizontalSpeed(profile) {
-    if (profile === 'run') {
-      return this.config.speed.run
-    }
-    if (profile === 'crouch') {
-      return this.config.speed.crouch
-    }
-    return this.config.speed.walk
   }
 
   _getGroundFriction() {
@@ -524,28 +828,13 @@ export class PlayerMovementController {
     return (slipperiness / 0.6) * (this.config.physics?.groundFriction ?? 0.546)
   }
 
-  _getGroundAcceleration(speedRatio) {
-    return 0.098 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
-  }
-
-  _getAirAcceleration(speedRatio) {
-    return 0.02 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
-  }
-
-  _getWaterAcceleration(speedRatio) {
-    return 0.015 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
-  }
-
-  _getClimbAcceleration(speedRatio) {
-    return 0.04 * this.physicsTickRate * Math.max(0, Number(speedRatio) || 0)
-  }
-
   _updateGroundMovementProfile(basePosition) {
     const maxSupportDrop = this.config.physics?.sneakSupportDrop ?? 0.55
     const supportSurface = this._getDominantSupportSurface(basePosition, maxSupportDrop)
     const profile = supportSurface?.movementProfile || getMinecraftBlockMovementProfile()
     this._tmpMovementProfile.slipperiness = profile.slipperiness ?? 0.6
-    this._tmpMovementProfile.speedMultiplier = profile.speedMultiplier ?? 1
+    this._tmpMovementProfile.speedFactor = profile.speedFactor ?? 1
+    this._tmpMovementProfile.jumpFactor = profile.jumpFactor ?? 1
   }
 
   _computeWorldDirection(inputState) {
@@ -780,6 +1069,12 @@ export class PlayerMovementController {
 
   _refreshGroundedState(playerState) {
     if (!playerState.isGrounded) {
+      return
+    }
+    // Rising (jump impulse): MC only sets onGround from a downward collision,
+    // so never pull a jumping player back onto the surface they just left.
+    if (playerState.worldVelocity.y > 0) {
+      playerState.isGrounded = false
       return
     }
 
@@ -1161,6 +1456,7 @@ export class PlayerMovementController {
     this.isGrounded = false
     this.groundedGraceTimer = 0
     this.tickAccumulator = 0
+    this._resetMotionState()
     this._syncMeshCustom()
   }
 
@@ -1202,15 +1498,27 @@ export class PlayerMovementController {
     this.isGrounded = false
     this.groundedGraceTimer = 0
     this.tickAccumulator = 0
+    this._resetMotionState()
     this._syncMeshCustom()
   }
 
+  /** Teleports must not count as walking (bob) or carry jump/collision state. */
+  _resetMotionState() {
+    this.walkDistO = this.walkDist
+    this.bob = 0
+    this.bobO = 0
+    this.jumpDelayTicks = 0
+    this.horizontalCollision = false
+    this.minorHorizontalCollision = false
+    this.horizontalMoveSpeed = 0
+  }
+
   getSpeedProfile(inputState) {
-    if (inputState.sprint && inputState.forward && !inputState.backward && !inputState.sneak) {
-      return LocomotionProfiles.RUN
-    }
     if (inputState.sneak) {
       return LocomotionProfiles.CROUCH
+    }
+    if (this.isSprinting) {
+      return LocomotionProfiles.RUN
     }
     return LocomotionProfiles.WALK
   }

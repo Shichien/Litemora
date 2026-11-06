@@ -6,16 +6,16 @@ import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
 
 const SETTINGS_MOUSE_SENSITIVITY_BASE = 0.03
-const FIRST_PERSON_MOUSE_SENSITIVITY_RATIO = 0.002 / SETTINGS_MOUSE_SENSITIVITY_BASE
-const DEFAULT_GAMEPLAY_FOV = 55
+// Minecraft default: 0.15 degrees of pitch per mouse pixel (sensitivity 100%).
+const FIRST_PERSON_MOUSE_SENSITIVITY_RATIO = (0.15 * Math.PI / 180) / SETTINGS_MOUSE_SENSITIVITY_BASE
+const DEFAULT_GAMEPLAY_FOV = 70
 const FOV_EPSILON = 0.001
+// Minecraft clamps pitch to +-90 degrees; keep a hair off the pole so the
+// third-person lookAt stays well defined.
+const PITCH_LIMIT = (Math.PI / 2) - 0.001
 // Fallbacks when no rig is attached
 const DEFAULT_THIRD_PERSON_DISTANCE = 4
 const DEFAULT_THIRD_PERSON_FOCUS_DISTANCE = 16
-
-function dampScalar(current, target, lambda, dt) {
-  return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt))
-}
 
 export default class Camera {
   constructor() {
@@ -56,14 +56,14 @@ export default class Camera {
     }
     this._modeLabel = { current: '第一人称' }
 
-    // FOV is driven by CameraRig (base FOV from settings + speed-based boost).
+    // FOV is driven by CameraRig (base FOV from settings x MC flight/sprint modifier).
     this.gameplayFov = DEFAULT_GAMEPLAY_FOV
+    // Mouse look applies directly, without smoothing (MC Entity.turn).
     this.gameplayPitch = 0
     this.gameplayPitchTarget = 0
-    this.gameplayPitchMin = -Math.PI * 0.48
-    this.gameplayPitchMax = Math.PI * 0.48
-    this.gameplayPitchSmoothing = 24
-    this.gameplayMouseSensitivity = 0.002
+    this.gameplayPitchMin = -PITCH_LIMIT
+    this.gameplayPitchMax = PITCH_LIMIT
+    this.gameplayMouseSensitivity = SETTINGS_MOUSE_SENSITIVITY_BASE * FIRST_PERSON_MOUSE_SENSITIVITY_RATIO
     this._lookDirection = new THREE.Vector3(0, 0, -1)
     this._lookTarget = new THREE.Vector3()
     this._headPosition = new THREE.Vector3()
@@ -106,6 +106,7 @@ export default class Camera {
         this.gameplayPitchMin,
         this.gameplayPitchMax,
       )
+      this.gameplayPitch = this.gameplayPitchTarget
     }
     this._handleMouseSensitivityChanged = (value) => {
       const numericValue = Number(value)
@@ -151,7 +152,7 @@ export default class Camera {
     this.perspectiveCamera = new THREE.PerspectiveCamera(
       this.gameplayFov,
       this.sizes.width / this.sizes.height,
-      0.1,
+      0.05,
       512,
     )
     this.perspectiveCamera.position.copy(this.position)
@@ -382,14 +383,6 @@ export default class Camera {
       return
     }
 
-    const dt = this.time.delta / 1000
-    this.gameplayPitch = dampScalar(
-      this.gameplayPitch,
-      this.gameplayPitchTarget,
-      this.gameplayPitchSmoothing,
-      dt,
-    )
-
     const playerPos = player.getPosition()
     const eyeHeight = player.getEyeHeight?.() ?? 1.62
     const facingAngle = player.getFacingAngle()
@@ -412,19 +405,12 @@ export default class Camera {
 
     if (this.currentMode === this.cameraModes.FIRST_PERSON) {
       this.instance.position.copy(this._headPosition)
-      if (rigOutput) {
-        // Head bobbing: pure translation in the camera's local frame, so the aim
-        // direction (and block raycasts) stay unchanged.
-        this.instance.position.addScaledVector(this._getRightDirection(facingAngle), rigOutput.bobOffset.x)
-        this.instance.position.y += rigOutput.bobOffset.y
-      }
       this._lookTarget.copy(this.instance.position).add(this._lookDirection)
-      this.instance.lookAt(this._lookTarget)
-      if (rigOutput?.bobRoll) {
-        this.instance.rotateZ(rigOutput.bobRoll)
-      }
+      // Direct yaw/pitch (no lookAt) so looking straight up/down stays stable.
+      this.instance.rotation.set(this.gameplayPitch, facingAngle, 0, 'YXZ')
       this.orbitControls.target.copy(this._lookTarget)
       this.trackballControls.target.copy(this._lookTarget)
+      this._applyViewBob(rigOutput)
       return
     }
 
@@ -458,12 +444,27 @@ export default class Camera {
     this.instance.lookAt(this._lookTarget)
     this.orbitControls.target.copy(this._lookTarget)
     this.trackballControls.target.copy(this._lookTarget)
+    this._applyViewBob(rigOutput)
   }
 
   _applyFov(fov) {
     if (Math.abs(this.instance.fov - fov) > FOV_EPSILON) {
       this.instance.fov = fov
-      this.instance.updateProjectionMatrix()
+    }
+    // Rebuilt every gameplay frame: it clears last frame's bob and keeps
+    // projectionMatrixInverse unbobbed for block raycasts.
+    this.instance.updateProjectionMatrix()
+  }
+
+  /**
+   * MC GameRenderer: projection = P * bob. Only projectionMatrix carries the
+   * bob; the camera transform and projectionMatrixInverse stay unbobbed, so
+   * the crosshair ray and block picking are unaffected.
+   * @param {object|null} rigOutput
+   */
+  _applyViewBob(rigOutput) {
+    if (rigOutput?.bobActive) {
+      this.instance.projectionMatrix.multiply(rigOutput.bobMatrix)
     }
   }
 

@@ -3,10 +3,10 @@ import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
 import { CAMERA_RIG_CONFIG } from './camera-rig-config.js'
 
-const TWO_PI = Math.PI * 2
-const DEFAULT_WALK_SPEED = 4.317
 const OPACITY_EPSILON = 0.005
 const THIRD_PERSON_MODES = new Set(['third-person-back', 'third-person-front'])
+const BOB_MODES = new Set(['first-person', 'third-person-back', 'third-person-front'])
+const DEG = Math.PI / 180
 
 /**
  * 帧率无关的指数阻尼
@@ -20,17 +20,6 @@ function damp(current, target, lambda, dt) {
   return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt))
 }
 
-/**
- * Convert a per-frame (60 fps) smoothing factor from the presets into an
- * exponential damping rate, so FOV smoothing is frame-rate independent.
- * @param {number} smoothSpeed - per-frame lerp factor in (0, 1)
- * @returns {number} damping lambda (1/s)
- */
-function smoothSpeedToLambda(smoothSpeed) {
-  const s = THREE.MathUtils.clamp(Number(smoothSpeed) || 0.05, 0.001, 0.95)
-  return -Math.log(1 - s) * 60
-}
-
 function assignFinite(target, source, keys) {
   for (const key of keys) {
     const value = Number(source?.[key])
@@ -42,8 +31,10 @@ function assignFinite(target, source, keys) {
 
 /**
  * CameraRig computes per-frame camera modifiers from the player state:
- * - dynamic FOV (speed based, replaces Camera's old sprint FOV)
- * - first-person head bobbing / idle breathing (offset + roll)
+ * - Minecraft FOV: baseFov * lerp(effectScale, 1, modifier), where the
+ *   modifier (flight x1.1, sprint x1.15) is eased per tick by the player
+ * - Minecraft view bobbing (GameRenderer.bobView) as a view-space matrix that
+ *   Camera multiplies into the projection only, so aiming rays stay unbobbed
  * - third-person framing: shoulder offset, wheel height, distance, cave pull-in
  *   and player fade
  * Camera owns the mode, pitch, collision and the final transform, and calls
@@ -71,13 +62,16 @@ export default class CameraRig {
     // Reused output (no per-frame allocation)
     this.output = {
       fov: this._currentFov,
-      bobOffset: new THREE.Vector3(),
-      bobRoll: 0,
+      // View-space bob transform; Camera post-multiplies it into the projection.
+      bobMatrix: new THREE.Matrix4(),
+      bobActive: false,
       shoulderOffset: 0,
       height: 0,
       distance: this.config.follow.distance,
       focusDistance: this.config.follow.focusDistance,
     }
+    this._bobState = { walkDistance: 0, bob: 0 }
+    this._tmpBobRotation = new THREE.Matrix4()
 
     this._handleWheel = ({ deltaY } = {}) => {
       // First person: the wheel belongs to the hotbar. Bird view: OrbitControls zoom.
@@ -98,36 +92,19 @@ export default class CameraRig {
 
     this._handleCameraRigChanged = ({ fov, bobbing } = {}) => {
       if (fov) {
-        const previousBase = this.config.fov.baseFov
         if (fov.enabled !== undefined) {
           this.config.fov.enabled = !!fov.enabled
         }
-        assignFinite(this.config.fov, fov, ['baseFov', 'maxFov', 'speedThreshold', 'smoothSpeed'])
+        assignFinite(this.config.fov, fov, ['baseFov', 'fovEffectScale'])
         this.config.fov.baseFov = THREE.MathUtils.clamp(this.config.fov.baseFov, 30, 120)
-        this.config.fov.maxFov = THREE.MathUtils.clamp(this.config.fov.maxFov, this.config.fov.baseFov, 140)
-        // Base FOV changes apply immediately; only speed-driven changes are smoothed.
-        this._currentFov += this.config.fov.baseFov - previousBase
+        this.config.fov.fovEffectScale = THREE.MathUtils.clamp(this.config.fov.fovEffectScale, 0, 2)
       }
       if (bobbing) {
         if (bobbing.enabled !== undefined) {
           this.config.bobbing.enabled = !!bobbing.enabled
         }
-        assignFinite(this.config.bobbing, bobbing, [
-          'verticalFrequency',
-          'verticalAmplitude',
-          'horizontalFrequency',
-          'horizontalAmplitude',
-          'rollFrequency',
-          'rollAmplitude',
-          'speedMultiplier',
-        ])
-        if (bobbing.idleBreathing) {
-          const breathing = this.config.bobbing.idleBreathing
-          if (bobbing.idleBreathing.enabled !== undefined) {
-            breathing.enabled = !!bobbing.idleBreathing.enabled
-          }
-          assignFinite(breathing, bobbing.idleBreathing, ['frequency', 'amplitude'])
-        }
+        assignFinite(this.config.bobbing, bobbing, ['intensity'])
+        this.config.bobbing.intensity = THREE.MathUtils.clamp(this.config.bobbing.intensity, 0, 3)
       }
     }
 
@@ -168,60 +145,64 @@ export default class CameraRig {
     this.setMode(mode)
 
     const dt = Math.min(this.time.delta / 1000, 0.1)
-    const speed = player.getHorizontalSpeed?.() ?? 0
     const isThirdPerson = THIRD_PERSON_MODES.has(mode)
 
-    this._updateFov(speed, dt)
-    this._updateBobbing(mode === 'first-person', speed, player)
+    this._updateFov(player)
+    this._updateBobbing(BOB_MODES.has(mode), player)
     this._updateFraming(mode, isThirdPerson, playerPos, dt)
     this._updatePlayerOpacity(isThirdPerson, dt)
 
     return this.output
   }
 
-  _updateFov(speed, dt) {
+  /**
+   * MC GameRenderer.getFov: fov = base * lerp(pt, oldMod, mod), where the
+   * eased modifier already blends toward 1 by fovEffectScale.
+   * @param {object} player
+   */
+  _updateFov(player) {
     const fov = this.config.fov
-    let targetFov = fov.baseFov
+    let fovMultiplier = 1
     if (fov.enabled) {
-      const walkSpeed = this.target.config?.speed?.walk || DEFAULT_WALK_SPEED
-      const threshold = Math.max(0.1, fov.speedThreshold)
-      const ratio = THREE.MathUtils.clamp((speed - walkSpeed) / threshold, 0, 1)
-      targetFov = fov.baseFov + (fov.maxFov - fov.baseFov) * ratio
+      const rawModifier = player.movement?.getFovModifier?.() ?? 1
+      const scale = Number.isFinite(fov.fovEffectScale) ? fov.fovEffectScale : 1
+      fovMultiplier = THREE.MathUtils.clamp(THREE.MathUtils.lerp(1, rawModifier, scale), 0.1, 1.5)
     }
-    this._currentFov = damp(this._currentFov, targetFov, smoothSpeedToLambda(fov.smoothSpeed), dt)
-    if (Math.abs(this._currentFov - targetFov) < 0.01) {
-      this._currentFov = targetFov
-    }
+    this._currentFov = fov.baseFov * fovMultiplier
     this.output.fov = this._currentFov
   }
 
-  _updateBobbing(isFirstPerson, speed, player) {
+  /**
+   * MC GameRenderer.bobView, in view space:
+   *   translate(sin(w*pi)*b*0.5, -|cos(w*pi)*b|, 0)
+   *   rotZ(sin(w*pi)*b*3 deg) * rotX(|cos(w*pi - 0.2)*b|*5 deg)
+   * w is the backwards-interpolated walk distance and b the eased bob amount.
+   * @param {boolean} isBobMode - first or third person
+   * @param {object} player
+   */
+  _updateBobbing(isBobMode, player) {
     const out = this.output
     const bobbing = this.config.bobbing
-    out.bobOffset.set(0, 0, 0)
-    out.bobRoll = 0
+    out.bobActive = false
 
-    if (!isFirstPerson || !bobbing.enabled) {
+    if (!isBobMode || !bobbing.enabled || !player.movement?.getViewBobState) {
+      out.bobMatrix.identity()
       return
     }
 
-    const elapsed = this.time.elapsed / 1000
-    const movement = player.movement
-    const onFoot = !movement?.isFlying && movement?.isGrounded !== false
+    const state = player.movement.getViewBobState(this._bobState)
+    const b = state.bob * (Number.isFinite(bobbing.intensity) ? bobbing.intensity : 1)
+    if (b <= 1e-5) {
+      out.bobMatrix.identity()
+      return
+    }
 
-    if (onFoot && speed > 0.1) {
-      const speedFactor = Math.min(speed / 3.5, 1) * bobbing.speedMultiplier
-      out.bobOffset.set(
-        Math.sin(elapsed * bobbing.horizontalFrequency * TWO_PI) * bobbing.horizontalAmplitude * speedFactor,
-        Math.sin(elapsed * bobbing.verticalFrequency * TWO_PI) * bobbing.verticalAmplitude * speedFactor,
-        0,
-      )
-      out.bobRoll = Math.sin(elapsed * bobbing.rollFrequency * TWO_PI) * bobbing.rollAmplitude * speedFactor
-    }
-    else if (speed <= 0.1 && bobbing.idleBreathing.enabled) {
-      out.bobOffset.y = Math.sin(elapsed * bobbing.idleBreathing.frequency * TWO_PI)
-        * bobbing.idleBreathing.amplitude
-    }
+    const phase = state.walkDistance * Math.PI
+    const sinPhase = Math.sin(phase)
+    out.bobMatrix.makeTranslation(sinPhase * b * 0.5, -Math.abs(Math.cos(phase) * b), 0)
+    out.bobMatrix.multiply(this._tmpBobRotation.makeRotationZ(sinPhase * b * 3 * DEG))
+    out.bobMatrix.multiply(this._tmpBobRotation.makeRotationX(Math.abs(Math.cos(phase - 0.2) * b) * 5 * DEG))
+    out.bobActive = true
   }
 
   _updateFraming(mode, isThirdPerson, playerPos, dt) {
@@ -303,24 +284,14 @@ export default class CameraRig {
 
     const fovFolder = debugFolder.addFolder({ title: '动态 FOV', expanded: false })
     fovFolder.addBinding(this.config.fov, 'enabled', { label: '启用' })
-    fovFolder.addBinding(this.config.fov, 'baseFov', { label: '基础 FOV', min: 30, max: 90, step: 1 })
-    fovFolder.addBinding(this.config.fov, 'maxFov', { label: '最大 FOV', min: 45, max: 120, step: 1 })
-    fovFolder.addBinding(this.config.fov, 'speedThreshold', { label: '超出步行速度', min: 0.5, max: 10, step: 0.5 })
+    fovFolder.addBinding(this.config.fov, 'baseFov', { label: '基础 FOV', min: 30, max: 110, step: 1 })
+    fovFolder.addBinding(this.config.fov, 'fovEffectScale', { label: 'FOV 效果', min: 0, max: 2, step: 0.05 })
     fovFolder.addBinding(this, '_currentFov', { label: '当前 FOV', readonly: true })
 
     const bobbing = this.config.bobbing
-    const bobbingFolder = debugFolder.addFolder({ title: '镜头震动', expanded: false })
+    const bobbingFolder = debugFolder.addFolder({ title: '视角摇晃', expanded: false })
     bobbingFolder.addBinding(bobbing, 'enabled', { label: '启用' })
-    bobbingFolder.addBinding(bobbing, 'verticalFrequency', { label: '垂直频率', min: 1, max: 20, step: 0.5 })
-    bobbingFolder.addBinding(bobbing, 'verticalAmplitude', { label: '垂直幅度', min: 0, max: 0.2, step: 0.005 })
-    bobbingFolder.addBinding(bobbing, 'horizontalFrequency', { label: '水平频率', min: 1, max: 20, step: 0.5 })
-    bobbingFolder.addBinding(bobbing, 'horizontalAmplitude', { label: '水平幅度', min: 0, max: 0.1, step: 0.005 })
-    bobbingFolder.addBinding(bobbing, 'rollFrequency', { label: 'Roll 频率', min: 1, max: 20, step: 0.5 })
-    bobbingFolder.addBinding(bobbing, 'rollAmplitude', { label: 'Roll 幅度', min: 0, max: 0.05, step: 0.001 })
-    bobbingFolder.addBinding(bobbing, 'speedMultiplier', { label: '速度因子', min: 0, max: 3, step: 0.1 })
-    bobbingFolder.addBinding(bobbing.idleBreathing, 'enabled', { label: '静止呼吸' })
-    bobbingFolder.addBinding(bobbing.idleBreathing, 'frequency', { label: '呼吸频率', min: 0.1, max: 2, step: 0.1 })
-    bobbingFolder.addBinding(bobbing.idleBreathing, 'amplitude', { label: '呼吸幅度', min: 0, max: 0.05, step: 0.001 })
+    bobbingFolder.addBinding(bobbing, 'intensity', { label: '强度', min: 0, max: 3, step: 0.05 })
   }
 
   destroy() {

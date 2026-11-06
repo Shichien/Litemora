@@ -26,10 +26,10 @@ export const CAMERA_RIG_CONFIG = {
     playerOpacity: 0.1,
   },
 
-  // Dynamic FOV: FOV rises from baseFov to maxFov as horizontal speed goes from
-  // walking speed to walking speed + speedThreshold (sprinting / flying).
+  // Minecraft FOV: baseFov (vertical) times the eased flight/sprint modifier,
+  // blended toward 1 by fovEffectScale (MC "FOV Effects" slider).
   fov: { ...FOV_PRESETS.default },
 
-  // First-person head bobbing and idle breathing
+  // Minecraft view bobbing, scaled by intensity (1 = vanilla)
   bobbing: structuredClone(BOBBING_PRESETS.default),
 }

@@ -7,84 +7,54 @@
 // ========================================
 // Camera FOV Presets
 // ========================================
+// Minecraft model: fov = baseFov (vertical degrees, MC default 70) * modifier,
+// where the modifier comes from the movement-speed attribute (sprint 1.15)
+// and creative flight (x1.1), eased per tick. fovEffectScale is MC's
+// "FOV Effects" slider (0 = no change, 1 = vanilla).
 export const FOV_PRESETS = {
   off: {
     enabled: false,
-    baseFov: 55,
-    maxFov: 85,
-    speedThreshold: 3.0,
-    smoothSpeed: 0.05,
+    baseFov: 70,
+    fovEffectScale: 0,
   },
   default: {
     enabled: true,
-    baseFov: 55,
-    maxFov: 85,
-    speedThreshold: 3.0,
-    smoothSpeed: 0.05,
+    baseFov: 70,
+    fovEffectScale: 1,
   },
   cinematic: {
     enabled: true,
-    baseFov: 50,
-    maxFov: 95,
-    speedThreshold: 2.5,
-    smoothSpeed: 0.035,
+    baseFov: 60,
+    fovEffectScale: 0.6,
   },
   arcade: {
     enabled: true,
-    baseFov: 60,
-    maxFov: 100,
-    speedThreshold: 2.0,
-    smoothSpeed: 0.07,
+    baseFov: 80,
+    fovEffectScale: 1.5,
   },
 }
 
 // ========================================
 // Camera Bobbing Presets
 // ========================================
+// Minecraft "View Bobbing": driven by walked distance, so the step rhythm
+// follows the real speed. intensity scales vanilla amplitudes (1 = vanilla).
 export const BOBBING_PRESETS = {
   off: {
     enabled: false,
-    verticalFrequency: 4.0,
-    verticalAmplitude: 0.025,
-    horizontalFrequency: 4.0,
-    horizontalAmplitude: 0.015,
-    rollFrequency: 4.0,
-    rollAmplitude: 0.005,
-    speedMultiplier: 1.0,
-    idleBreathing: { enabled: false, frequency: 0.7, amplitude: 0.015 },
+    intensity: 1,
   },
   default: {
     enabled: true,
-    verticalFrequency: 4.0,
-    verticalAmplitude: 0.025,
-    horizontalFrequency: 4.0,
-    horizontalAmplitude: 0.015,
-    rollFrequency: 4.0,
-    rollAmplitude: 0.005,
-    speedMultiplier: 1.0,
-    idleBreathing: { enabled: true, frequency: 0.7, amplitude: 0.015 },
+    intensity: 1,
   },
   cinematic: {
     enabled: true,
-    verticalFrequency: 3.0,
-    verticalAmplitude: 0.015,
-    horizontalFrequency: 3.0,
-    horizontalAmplitude: 0.008,
-    rollFrequency: 3.0,
-    rollAmplitude: 0.002,
-    speedMultiplier: 0.8,
-    idleBreathing: { enabled: true, frequency: 0.6, amplitude: 0.012 },
+    intensity: 0.5,
   },
   arcade: {
     enabled: true,
-    verticalFrequency: 6.0,
-    verticalAmplitude: 0.040,
-    horizontalFrequency: 6.0,
-    horizontalAmplitude: 0.025,
-    rollFrequency: 6.0,
-    rollAmplitude: 0.010,
-    speedMultiplier: 1.6,
-    idleBreathing: { enabled: true, frequency: 0.9, amplitude: 0.018 },
+    intensity: 1.5,
   },
 }
 
