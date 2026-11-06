@@ -42,13 +42,37 @@ function handleInputUpdate(inputKeys) {
 }
 
 function handleFlightModeChanged(payload) {
+  const wasFlying = keys.flyMode
   keys.flyMode = !!payload?.enabled
   keys.f = keys.flyMode
+  // Only announce real toggles, not the initial sync on world load.
+  if (keys.flyMode !== wasFlying) {
+    emitter.emit('hud:toast', {
+      icon: 'F',
+      text: keys.flyMode ? '飞行已开启' : '飞行已关闭',
+      tone: keys.flyMode ? 'on' : 'off',
+    })
+  }
+}
+
+const PERSPECTIVE_LABELS = {
+  'first-person': '第一人称',
+  'third-person-back': '第三人称（后）',
+  'third-person-front': '第三人称（前）',
 }
 
 function handleCameraPerspectiveChanged(payload) {
-  keys.cameraMode = payload?.mode || 'first-person'
-  keys.q = payload?.mode === 'bird-perspective'
+  const nextMode = payload?.mode || 'first-person'
+  const changed = keys.cameraMode !== nextMode
+  keys.cameraMode = nextMode
+  keys.q = nextMode === 'bird-perspective'
+  if (changed && nextMode !== 'bird-perspective') {
+    emitter.emit('hud:toast', {
+      icon: 'Y',
+      text: PERSPECTIVE_LABELS[nextMode] || nextMode,
+      tone: 'on',
+    })
+  }
 }
 
 function resetKeys() {

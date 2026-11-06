@@ -1,5 +1,6 @@
 <script setup>
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
+import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -78,26 +79,38 @@ const brokenCircuit = (() => {
         <a class="primary-link rs-btn rs-btn--primary rs-btn--lg" :href="homeHref">返回 Litemora 首页</a>
       </div>
     </section>
+
+    <footer class="missing-footer">
+      <RedstoneCredits />
+    </footer>
   </main>
 </template>
 
 <style scoped>
 .missing-shell {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   min-height: 100vh;
-  padding: 32px 20px;
+  padding: 32px 20px 28px;
   color: var(--rs-text);
   font-family: var(--rs-font-body);
 }
 
+/* Auto block margins centre the card in the free space, leaving the credits at the bottom. */
 .missing-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: min(600px, 100%);
+  margin-block: auto;
   padding: 28px 40px 40px;
   text-align: center;
+}
+
+.missing-footer {
+  flex: none;
+  padding-top: 28px;
 }
 
 /* The wire strip stays dark: the signal never arrives. */

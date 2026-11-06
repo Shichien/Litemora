@@ -276,6 +276,51 @@ function handleEnter(event) {
   transform: translateY(-2px);
 }
 
+/* Dust ring: redstone dust runs the card border while it is hovered. */
+.world-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--dust-angle, 0deg),
+    transparent 0deg,
+    transparent 250deg,
+    var(--rs-red-hot) 320deg,
+    #ffd0c0 350deg,
+    var(--rs-red-hot) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.world-card:hover::after,
+.world-card:focus-within::after {
+  opacity: 1;
+  animation: world-card-dust 2.4s linear infinite;
+}
+
+@property --dust-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes world-card-dust {
+  to { --dust-angle: 360deg; }
+}
+
 /* ---------------------------------------------------------------- thumb */
 
 .world-card-thumb {
@@ -618,6 +663,11 @@ function handleEnter(event) {
   .world-card:hover,
   .world-card:focus-within {
     transform: none;
+  }
+
+  .world-card:hover::after,
+  .world-card:focus-within::after {
+    animation: none;
   }
 
   .world-card:hover .thumb-media.has-image-thumb,

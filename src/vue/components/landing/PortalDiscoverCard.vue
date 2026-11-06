@@ -107,6 +107,56 @@ function onImageError() {
   box-shadow: var(--rs-glow);
 }
 
+/* Dust ring: the card border powers up as a running redstone line. */
+.discover-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--dust-angle, 0deg),
+    transparent 0deg,
+    transparent 250deg,
+    var(--rs-red-hot) 320deg,
+    #ffd0c0 350deg,
+    var(--rs-red-hot) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.discover-card.is-active::after {
+  opacity: 1;
+  animation: discover-card-dust 2.4s linear infinite;
+}
+
+@property --dust-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes discover-card-dust {
+  to { --dust-angle: 360deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discover-card.is-active::after {
+    animation: none;
+  }
+}
+
 .discover-card:focus-visible {
   outline: 2px solid var(--rs-red-hot);
   outline-offset: 3px;

@@ -18,6 +18,7 @@ const AdminConfigPage = defineAsyncComponent(() => import('@ui-components/admin/
 const Crosshair = defineAsyncComponent(() => import('@ui-components/Crosshair.vue'))
 const EventMonitorPanel = defineAsyncComponent(() => import('@ui-components/debug/EventMonitorPanel.vue'))
 const GameHud = defineAsyncComponent(() => import('@ui-components/hud/GameHud.vue'))
+const ToastStack = defineAsyncComponent(() => import('@ui-components/hud/ToastStack.vue'))
 const PortalHome = defineAsyncComponent(() => import('@ui-components/landing/PortalHome.vue'))
 const UiRoot = defineAsyncComponent(() => import('@ui-components/menu/UiRoot.vue'))
 const SpaceBreadcrumbs = defineAsyncComponent(() => import('@ui-components/space/SpaceBreadcrumbs.vue'))
@@ -245,6 +246,9 @@ onBeforeUnmount(() => {
 
     <!-- Minecraft Style HUD (只在 playing 时显示) -->
     <GameHud />
+
+    <!-- 短暂操作提示：菜单里也能看到（例如复制链接） -->
+    <ToastStack />
 
     <!-- 准星（仅在 Pointer Lock 激活时显示） -->
     <Crosshair />

@@ -15,6 +15,7 @@ import { getStaticThumbnailUrl, loadThumbnailManifest } from '@three/gallery/wor
 import { resolvePublicAssetUrl } from '@three/utils/public-asset-url.js'
 import { buildSpaceUrl, isValidSpaceName, normalizeSpaceName } from '@three/utils/space-context.js'
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
+import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PortalDiscoverCard from './PortalDiscoverCard.vue'
@@ -262,7 +263,17 @@ const prefersReducedMotion = typeof window !== 'undefined'
 // The lever in the hero powers the whole page; it switches on shortly after load.
 const leverOn = ref(true)
 const booted = ref(false)
-const heroPowered = computed(() => booted.value && leverOn.value)
+
+// ---------------------------------------------------------------------------
+// Logo easter egg: three quick clicks power the whole page by hand.
+// ---------------------------------------------------------------------------
+const LOGO_CLICK_WINDOW_MS = 900
+const eggClicks = ref(0)
+const eggActive = ref(false)
+let eggClickTimer = 0
+let eggResetTimer = 0
+
+const heroPowered = computed(() => (booted.value && leverOn.value) || eggActive.value)
 
 // Sections light in order as they scroll into view; the index never goes back.
 const SECTION_ORDER = ['manifesto', 'features', 'create', 'discover', 'footer']
@@ -335,6 +346,31 @@ function scrollToSection(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' })
 }
 
+// ---------------------------------------------------------------------------
+// Logo easter egg: three quick clicks power the whole page by hand.
+// ---------------------------------------------------------------------------
+function handleLogoClick() {
+  const now = Date.now()
+  if (now - eggClickTimer > LOGO_CLICK_WINDOW_MS) {
+    eggClicks.value = 0
+  }
+  eggClickTimer = now
+  eggClicks.value += 1
+
+  if (eggClicks.value < 3) {
+    return
+  }
+
+  eggClicks.value = 0
+  eggActive.value = true
+  // The egg overrides the lever for a moment, then hands control back.
+  leverOn.value = true
+  window.clearTimeout(eggResetTimer)
+  eggResetTimer = window.setTimeout(() => {
+    eggActive.value = false
+  }, 2600)
+}
+
 let sectionObserver = null
 let resizeObserver = null
 let bootTimer = 0
@@ -402,6 +438,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.clearTimeout(eggClickTimer)
+  window.clearTimeout(eggResetTimer)
   window.removeEventListener('admin-auth-changed', syncAuthSession)
   window.removeEventListener('gallery:changed', handleGalleryChanged)
   document.removeEventListener('click', handleDocumentClick)
@@ -535,9 +573,15 @@ onBeforeUnmount(() => {
             {{ t('home.hero.eyebrow') }}
           </p>
           <h1 class="hero-title">
-            <span class="hero-title-badge">
+            <button
+              type="button"
+              class="hero-title-badge"
+              :class="{ 'is-egg': eggActive }"
+              :aria-label="eggActive ? 'Litemora 彩蛋已触发' : 'Litemora'"
+              @click="handleLogoClick"
+            >
               <img :src="logoUrl" alt="" class="hero-title-icon">
-            </span>
+            </button>
             <span class="hero-title-word">Litemora</span>
           </h1>
           <p class="hero-subtitle">{{ t('home.hero.subtitle') }}</p>
@@ -769,17 +813,7 @@ onBeforeUnmount(() => {
       end
       :powered="sectionPowered('footer')"
     >
-      <p class="home-credits">
-        <span class="home-credits__dot" aria-hidden="true" />
-        {{ t('home.creditsLead') }}
-        <a
-          class="home-credits__link"
-          href="https://github.com/azazo1/redstone-rs"
-          target="_blank"
-          rel="noopener noreferrer"
-        >azazo1/redstone-rs</a>
-        {{ t('home.creditsBody') }}
-      </p>
+      <RedstoneCredits class="home-credits" />
       <p>{{ t('home.footer') }}</p>
     </PortalSignalSection>
   </main>
@@ -1125,11 +1159,44 @@ onBeforeUnmount(() => {
   flex: none;
   width: 72px;
   height: 72px;
+  padding: 0;
+  border: 0;
   background: #1a1d21;
   box-shadow:
     inset 3px 3px 0 rgba(0, 0, 0, 0.55),
     inset -3px -3px 0 rgba(255, 255, 255, 0.08),
     0 0 0 2px #0a0b0d;
+  cursor: pointer;
+  transition: box-shadow 0.18s, transform 0.12s;
+}
+
+.hero-title-badge:active {
+  transform: scale(0.96);
+}
+
+.hero-title-badge:focus-visible {
+  outline: 2px solid var(--rs-red-hot);
+  outline-offset: 3px;
+}
+
+/* Easter egg: the slot floods with redstone light for a moment. */
+.hero-title-badge.is-egg {
+  box-shadow:
+    inset 3px 3px 0 rgba(0, 0, 0, 0.45),
+    inset -3px -3px 0 rgba(255, 200, 180, 0.25),
+    0 0 0 2px var(--rs-red-hot),
+    var(--rs-glow);
+  animation: hero-logo-egg 0.42s steps(2, end) 6;
+}
+
+.hero-title-badge.is-egg .hero-title-icon {
+  filter: brightness(1.35) saturate(1.3) drop-shadow(0 0 10px rgba(255, 70, 40, 0.8));
+}
+
+@keyframes hero-logo-egg {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+  100% { transform: translateY(0); }
 }
 
 .hero-title-icon {
@@ -1752,46 +1819,10 @@ onBeforeUnmount(() => {
 }
 
 .home-footer .home-credits {
-  display: block;
-  max-width: 44em;
   margin-bottom: 10px;
+  /* Re-state the box padding: `.home-footer p` above is more specific than the
+     component's own rule and would otherwise strip it down to a top padding. */
   padding: 10px 14px;
-  border: 1px solid var(--rs-line);
-  border-left: 2px solid var(--rs-red);
-  border-radius: var(--rs-radius);
-  background: rgba(15, 17, 20, 0.6);
-  color: var(--rs-text-2);
-}
-
-.home-credits__dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  vertical-align: 2px;
-  background: var(--rs-red-hot);
-  box-shadow: 0 0 6px var(--rs-glow);
-}
-
-.home-credits__link {
-  color: var(--rs-text);
-  font-family: var(--rs-font-mono);
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-color: var(--rs-red);
-  text-underline-offset: 3px;
-  transition: color 0.15s ease, text-shadow 0.15s ease;
-}
-
-.home-credits__link:hover,
-.home-credits__link:focus-visible {
-  color: var(--rs-red-hot);
-  text-shadow: 0 0 8px var(--rs-glow-soft);
-}
-
-.home-credits__link:focus-visible {
-  outline: 2px solid var(--rs-red-hot);
-  outline-offset: 2px;
 }
 
 /* ---------------------------------------------------------------- Responsive */

@@ -25,6 +25,16 @@ const GAMEPLAY_SHORTCUT_KEYS = new Set([
  * InputManager - 统一管理键盘和鼠标输入
  * 负责监听用户输入并通过 mitt 发送事件
  */
+
+// Redstone replay transport shortcuts. A panel that is not showing ignores these.
+const REPLAY_TRANSPORT_KEYS = {
+  ',': 'step-back',
+  '.': 'step-forward',
+  '[': 'prev-change',
+  ']': 'next-change',
+  'k': 'toggle',
+}
+
 export default class InputManager {
   constructor() {
     this.controlPermissions = {
@@ -76,6 +86,10 @@ export default class InputManager {
     // 方块编辑模式 ('remove' | 'add')，决定滚轮用于快捷栏还是相机
     this.blockEditMode = 'remove'
 
+    // A menu overlay is up: gameplay shortcuts (Tab, replay transport) step aside.
+    this.menuOpen = false
+    this._onPauseChanged = this.onPauseChanged.bind(this)
+
     this.init()
   }
 
@@ -95,6 +109,11 @@ export default class InputManager {
 
     emitter.on('ui:control-permissions-changed', this._onControlPermissionsChanged)
     emitter.on('game:block_edit_mode_changed', this._onBlockEditModeChanged)
+    emitter.on('ui:pause-changed', this._onPauseChanged)
+  }
+
+  onPauseChanged(paused) {
+    this.menuOpen = !!paused
   }
 
   onControlPermissionsChanged(payload = {}) {
@@ -131,7 +150,12 @@ export default class InputManager {
     }
 
     // 阻止游戏控制键的默认行为（如空格滚动页面）
-    if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(key)) {
+    // Tab 例外：菜单打开时它要留给焦点导航。
+    const blocked = [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']
+    if (key === 'tab' && !this.menuOpen) {
+      blocked.push('tab')
+    }
+    if (blocked.includes(key)) {
       event.preventDefault()
     }
 
@@ -142,7 +166,17 @@ export default class InputManager {
     }
 
     if (key === 'tab') {
-      emitter.emit('input:toggle_camera_side')
+      // In a menu, Tab belongs to menu focus navigation, not the camera.
+      if (!this.menuOpen) {
+        emitter.emit('input:toggle_camera_side')
+      }
+      return
+    }
+
+    // Redstone replay transport: only while a replay panel is listening.
+    const replayKey = REPLAY_TRANSPORT_KEYS[key]
+    if (replayKey && !event.repeat && !this.menuOpen) {
+      emitter.emit('redstone-replay:key', replayKey)
       return
     }
 
@@ -350,5 +384,6 @@ export default class InputManager {
     window.removeEventListener('contextmenu', this._onContextMenu)
     emitter.off('ui:control-permissions-changed', this._onControlPermissionsChanged)
     emitter.off('game:block_edit_mode_changed', this._onBlockEditModeChanged)
+    emitter.off('ui:pause-changed', this._onPauseChanged)
   }
 }

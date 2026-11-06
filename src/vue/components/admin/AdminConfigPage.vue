@@ -47,6 +47,7 @@ import {
 } from '@three/world/terrain/minecraft-resource-pack-storage.js'
 import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
+import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -1211,6 +1212,10 @@ onBeforeUnmount(() => {
 
         </section>
       </div>
+
+      <footer class="admin-footer">
+        <RedstoneCredits variant="inline" />
+      </footer>
     </div>
   </div>
 </template>
@@ -1490,6 +1495,14 @@ onBeforeUnmount(() => {
 
 .settings-panel::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.65);
+}
+
+/* Pinned under the scrollable settings, so the attribution never scrolls away. */
+.admin-footer {
+  flex: none;
+  padding: 10px 18px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
 }
 
 .setting-section {

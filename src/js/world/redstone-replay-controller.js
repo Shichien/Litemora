@@ -26,6 +26,37 @@ function normalizeOffset(offset = {}) {
   }
 }
 
+// Ticks worth marking on the timeline: local maxima of how many blocks changed
+// in one frame. They are where the interesting machinery actually fires.
+const MAX_HOT_TICKS = 64
+
+function buildHotTicks(timeline) {
+  if (!timeline?.frameCount) {
+    return []
+  }
+
+  const candidates = []
+  for (let frame = 0; frame < timeline.frameCount; frame += 1) {
+    const start = timeline.frameChangeStart[frame]
+    const end = timeline.frameChangeStart[frame + 1]
+    const changed = end - start
+    if (changed > 0) {
+      candidates.push({ tick: timeline.frameTicks[frame], changed })
+    }
+  }
+
+  if (candidates.length <= MAX_HOT_TICKS) {
+    return candidates.sort((left, right) => left.tick - right.tick)
+  }
+
+  // Keep the busiest ticks, then restore timeline order.
+  const busiest = candidates
+    .slice()
+    .sort((left, right) => right.changed - left.changed)
+    .slice(0, MAX_HOT_TICKS)
+  return busiest.sort((left, right) => left.tick - right.tick)
+}
+
 export function resolveRedstoneReplayUrl(item = null, backendConfig = null) {
   return String(
     item?.redstoneReplayUrl
@@ -452,6 +483,7 @@ export default class RedstoneReplayController {
       }
       this._actionTargetPositions = [...actionTargetPositions.values()]
       this._actionTargets = new Set(actionTargetPositions.keys())
+      this._hotTicks = buildHotTicks(timeline)
       this.available = true
       this.world.blockInteractionManager?.setUseBlockInterceptor?.(this._useBlockInterceptor)
       this._emitState()
@@ -792,6 +824,29 @@ export default class RedstoneReplayController {
       case 'speed':
         this.setSpeed(command.speed)
         break
+      case 'next-change':
+        this._jumpToChange(1)
+        break
+      case 'prev-change':
+        this._jumpToChange(-1)
+        break
+    }
+  }
+
+  /** Jump to the next/previous tick that actually changed blocks. */
+  _jumpToChange(direction) {
+    if (!this.ready || !this._hotTicks?.length) {
+      return
+    }
+
+    const step = direction >= 0 ? 1 : -1
+    const current = this.currentTick
+    const target = step > 0
+      ? this._hotTicks.find(entry => entry.tick > current)
+      : [...this._hotTicks].reverse().find(entry => entry.tick < current)
+
+    if (target) {
+      void this.seek(target.tick)
     }
   }
 
@@ -1109,6 +1164,7 @@ export default class RedstoneReplayController {
       description: String(this.replay?.description || ''),
       changeCount: Number(this.replay?.changeCount || 0),
       lastChangedBlocks: this.lastChangedBlocks,
+      hotTicks: this._hotTicks || [],
       engine: String(this.replay?.engine || ''),
       minecraftVersion: String(this.replay?.minecraftVersion || ''),
       error: this.error,

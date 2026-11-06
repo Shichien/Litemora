@@ -16,6 +16,7 @@ import { buildSpaceProjectionUrl, buildSpaceWorldsAdminUrl, buildSpaceWorldsUrl 
 import { getStaticThumbnailUrl, loadThumbnailManifest } from '@/js/gallery/world-thumbnails.js'
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
 import { redstoneCircuitScene } from '@ui-components/redstone/iso-presets.js'
+import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
 import SpaceNotFoundPage from '@ui-components/space/SpaceNotFoundPage.vue'
 import SpaceProfileSettingsPage from '@ui-components/space/SpaceProfileSettingsPage.vue'
@@ -840,6 +841,10 @@ watch(
           </div>
         </div>
       </template>
+
+      <footer class="worlds-footer">
+        <RedstoneCredits />
+      </footer>
     </section>
   </main>
 </template>
@@ -1058,6 +1063,14 @@ watch(
 .banner.warning {
   border-left-color: var(--rs-red-hot);
   background: linear-gradient(90deg, rgba(92, 21, 16, 0.35), var(--rs-bg-2) 60%);
+}
+
+/* ---------------------------------------------------------------- footer */
+
+.worlds-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
 }
 
 /* ------------------------------------------------------------------ hero */

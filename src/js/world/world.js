@@ -18,6 +18,7 @@ import ItemPickupAnimator from '../interaction/item-pickup-animator.js'
 import emitter from '../utils/event/event-bus.js'
 import { navigateToUrl } from '../utils/navigation.js'
 import { buildProjectionSpawnPointFromPreview } from '../utils/projection-spawn.js'
+import { readSharedPosition } from '../utils/share-position.js'
 import { buildSpaceScopedKey, getActiveProjectionId, getActiveSpaceName } from '../utils/space-context.js'
 import {
   loadBackendWorldConfig,
@@ -480,6 +481,7 @@ export default class World {
         this._initEffects()
         this._setupSettingsListeners()
         await this._applyBackendRuntimeConfig(this.backendConfig, { movePlayer: true })
+        this._applySharedPosition()
         this.redstoneReplayController = new RedstoneReplayController({ world: this })
         await this.redstoneReplayController.initialize()
 
@@ -1096,6 +1098,25 @@ export default class World {
     if (playerConfig.flight) {
       this.player.setFlightOptions(playerConfig.flight)
     }
+  }
+
+  /**
+   * A shared link carries ?at=x,y,z: drop the player there instead of the spawn.
+   * Runs after the backend spawn so it wins, and only once per page load.
+   */
+  _applySharedPosition() {
+    if (this._sharedPositionApplied) {
+      return
+    }
+    this._sharedPositionApplied = true
+
+    const shared = readSharedPosition()
+    if (!shared || !this.player) {
+      return
+    }
+
+    this.player.setRespawnPoint(shared.x, shared.y, shared.z, true)
+    emitter.emit('hud:toast', { text: '已传送到分享的位置' })
   }
 
   _applyPortalLinks(portalLinkConfig = {}) {

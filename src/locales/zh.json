@@ -133,9 +133,11 @@
       "title": "探索空间",
       "desc": "浏览社区中精选的建筑世界与原理图画廊。"
     },
-    "footer": "Litemora - 开源的原理图查看器。由 Cubane 与 Three.js 提供支持。",
-    "creditsLead": "特别感谢",
-    "creditsBody": "提供确定性的红石模拟，红石档案里的每一段回放都由它计算生成。"
+    "footer": "Litemora - 开源的原理图查看器。由 Cubane 与 Three.js 提供支持。"
+  },
+  "credits": {
+    "redstoneLead": "特别感谢",
+    "redstoneBody": "提供确定性的红石模拟，红石档案里的每一段回放都由它计算生成。"
   },
   "space": {
     "hero": {

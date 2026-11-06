@@ -16,6 +16,7 @@ const replay = reactive({
   description: '',
   changeCount: 0,
   lastChangedBlocks: 0,
+  hotTicks: [],
   engine: '',
   minecraftVersion: '',
   error: '',
@@ -73,6 +74,34 @@ function cycleSpeed() {
   emitCommand('speed', { speed: SPEEDS[nextIndex] })
 }
 
+// Markers for ticks where a lot of blocks changed, positioned like the slider thumb.
+const hotMarks = computed(() => {
+  const total = replay.totalTicks
+  if (!replay.ready || !total || !replay.hotTicks?.length) {
+    return []
+  }
+  return replay.hotTicks.map(entry => ({
+    tick: entry.tick,
+    changed: entry.changed,
+    ratio: Math.min(1, Math.max(0, entry.tick / total)),
+  }))
+})
+
+const REPLAY_KEY_COMMANDS = {
+  'step-back': () => emitCommand('step', { delta: -1 }),
+  'step-forward': () => emitCommand('step', { delta: 1 }),
+  'prev-change': () => emitCommand('prev-change'),
+  'next-change': () => emitCommand('next-change'),
+  'toggle': () => emitCommand('toggle'),
+}
+
+function handleReplayKey(action) {
+  if (!replay.available || !replay.ready) {
+    return
+  }
+  REPLAY_KEY_COMMANDS[action]?.()
+}
+
 watch(
   () => replay.currentTick,
   (value) => {
@@ -82,10 +111,12 @@ watch(
 
 onMounted(() => {
   emitter.on('redstone-replay:state', handleState)
+  emitter.on('redstone-replay:key', handleReplayKey)
 })
 
 onUnmounted(() => {
   emitter.off('redstone-replay:state', handleState)
+  emitter.off('redstone-replay:key', handleReplayKey)
 })
 </script>
 
@@ -193,6 +224,16 @@ onUnmounted(() => {
       <div class="timeline" :class="{ 'is-ready': replay.ready }">
         <div class="timeline-wire" aria-hidden="true" />
         <div class="timeline-lit signal-line" aria-hidden="true" />
+        <div class="timeline-hot" aria-hidden="true">
+          <span
+            v-for="mark in hotMarks"
+            :key="mark.tick"
+            class="hot-mark"
+            :class="{ 'is-passed': mark.tick <= replay.currentTick }"
+            :style="{ left: `calc(var(--thumb-w) / 2 + (100% - var(--thumb-w)) * ${mark.ratio})` }"
+            :title="`第 ${mark.tick} gt · ${mark.changed} 个方块变化`"
+          />
+        </div>
         <input
           v-model.number="sliderTick"
           class="timeline-slider"
@@ -440,6 +481,29 @@ onUnmounted(() => {
 .is-playing .timeline-lit {
   background-color: var(--rs-red-hot);
   box-shadow: 0 0 6px rgba(255, 70, 40, 0.8), 0 0 16px rgba(255, 40, 20, 0.35);
+}
+
+/* Hot ticks: small lit notches where the build changed a lot at once. */
+.timeline-hot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hot-mark {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  margin: -5px 0 0 -1px;
+  background: rgba(255, 210, 190, 0.5);
+  box-shadow: 0 0 4px rgba(255, 90, 60, 0.4);
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.hot-mark.is-passed {
+  background: var(--rs-red-hot);
+  box-shadow: 0 0 6px rgba(255, 70, 40, 0.85);
 }
 
 .timeline-slider {

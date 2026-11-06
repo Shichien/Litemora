@@ -5,6 +5,7 @@ import { useUiStore } from '@pinia/uiStore.js'
  * GameHud - Main Minecraft Style HUD Container
  * Only visible when screen === 'playing'
  */
+import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import { onMounted, onUnmounted, ref } from 'vue'
 import Hotbar from './Hotbar.vue'
 import KeyFeedbackPanel from './KeyFeedbackPanel.vue'
@@ -69,5 +70,46 @@ onUnmounted(() => {
 
     <!-- Hotbar: only while placing blocks (Q) -->
     <Hotbar v-if="hud.blockEditMode === 'add'" :style="{ '--hotbar-bottom': hotbarBottom }" />
+
+    <!-- Bottom-left attribution: the in-world view has no scrollable footer. -->
+    <div class="hud-credits">
+      <RedstoneCredits variant="inline" />
+    </div>
   </div>
 </template>
+
+<style scoped>
+/* Corner slot beside the centred replay panel; the HUD root ignores pointer events,
+   so the link opts back in. */
+.hud-credits {
+  position: absolute;
+  left: var(--hud-side);
+  bottom: 16px;
+  max-width: calc((100vw - 720px) / 2 - 24px);
+  padding: 4px 8px;
+  border: 1px solid var(--hud-edge);
+  border-radius: var(--rs-radius);
+  background: var(--hud-surface);
+  pointer-events: auto;
+}
+
+.hud-credits :deep(.redstone-credits) {
+  color: var(--rs-text-2);
+  font-size: 11px;
+  line-height: 1.5;
+  text-shadow: var(--hud-text-shadow);
+}
+
+.hud-credits :deep(.redstone-credits__dot) {
+  width: 4px;
+  height: 4px;
+  margin-right: 3px;
+}
+
+/* Below ~820px the replay panel / hotbar reach the edges; the corner has no room left. */
+@media (max-width: 820px) {
+  .hud-credits {
+    display: none;
+  }
+}
+</style>
