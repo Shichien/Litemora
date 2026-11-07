@@ -19,6 +19,65 @@ const PREVIEW_GAMMA_EXPONENT = 1 / PREVIEW_GAMMA
 const VISIBILITY_UPDATE_INTERVAL_MS = 80
 const RENDER_LAYER_DEBUG_ENABLED = import.meta.env.DEV
 
+// The runtime renderer slices structures into 16-block chunks, while the terrain
+// chunk manager measures its own chunks in raw blocks (64 wide by default). Those
+// are two different grids, so converting one to the other has to go through the
+// runtime chunk size instead of a hard-coded 16.
+const RUNTIME_CHUNK_BLOCKS = 16
+const RUNTIME_HORIZONTAL_RADIUS_MIN = 8
+const RUNTIME_HORIZONTAL_RADIUS_MAX = 16
+const RUNTIME_VERTICAL_RADIUS_MAX = 4
+
+/**
+ * Horizontal streaming radius, in runtime chunks.
+ *
+ * `viewDistance` counts terrain chunks, so the reach it describes is
+ * `viewDistance * chunkWidth` blocks; dividing by the runtime chunk size turns
+ * that back into a runtime chunk radius. The result is clamped to the 8..16
+ * chunk range the world is meant to stream with, so a tiny `viewDistance` still
+ * gives a usable view and a huge one cannot blow up residency.
+ */
+function resolveRuntimeHorizontalRadius(chunkManager = null) {
+  const viewDistance = Number(chunkManager?.viewDistance)
+  const chunkWidth = Number(chunkManager?.chunkWidth)
+
+  if (!Number.isFinite(viewDistance) || viewDistance <= 0) {
+    return RUNTIME_HORIZONTAL_RADIUS_MIN
+  }
+
+  const reachInBlocks = viewDistance * (Number.isFinite(chunkWidth) && chunkWidth > 0
+    ? chunkWidth
+    : 64)
+  const radius = Math.ceil(reachInBlocks / RUNTIME_CHUNK_BLOCKS)
+
+  return Math.min(
+    RUNTIME_HORIZONTAL_RADIUS_MAX,
+    Math.max(RUNTIME_HORIZONTAL_RADIUS_MIN, radius),
+  )
+}
+
+/**
+ * Vertical streaming radius, in runtime chunks.
+ *
+ * The chunk manager reports its full world height (256 by default), but a
+ * structure is usually far shorter. Streaming the whole column would keep every
+ * layer resident no matter where the player stands, so this stays small and lets
+ * the grid bounds trim it further.
+ */
+function resolveRuntimeVerticalRadius(chunkManager = null) {
+  const chunkHeight = Number(chunkManager?.chunkHeight)
+  const chunkWidth = Number(chunkManager?.chunkWidth)
+
+  if (!Number.isFinite(chunkHeight) || chunkHeight <= 0) {
+    return 1
+  }
+
+  const scale = Number.isFinite(chunkWidth) && chunkWidth > 0 ? chunkWidth : 64
+  const radius = Math.ceil((chunkHeight / scale))
+
+  return Math.min(RUNTIME_VERTICAL_RADIUS_MAX, Math.max(1, radius))
+}
+
 function createEmptyBounds() {
   return {
     minX: Number.POSITIVE_INFINITY,
@@ -408,14 +467,8 @@ export default class MinecraftSchematicRenderLayer {
       runtimeStats = await this._runtimeBridge.loadSource(source, {
         playerPosition: this.experience.world?.player?.getPosition?.() || null,
         streaming: {
-          horizontalLoadRadius: Math.max(
-            2,
-            Math.ceil(((this.chunkManager?.viewDistance ?? 1) * (this.chunkManager?.chunkWidth ?? 64)) / 16),
-          ),
-          verticalLoadRadius: Math.max(
-            1,
-            Math.ceil((this.chunkManager?.chunkHeight ?? 32) / 16),
-          ),
+          horizontalLoadRadius: resolveRuntimeHorizontalRadius(this.chunkManager),
+          verticalLoadRadius: resolveRuntimeVerticalRadius(this.chunkManager),
           unloadPadding: this.chunkManager?.unloadPadding ?? 1,
           maxConcurrentBuilds: 2,
         },

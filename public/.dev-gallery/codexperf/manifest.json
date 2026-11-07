@@ -1,7 +1,7 @@
 {
   "space": "codexperf",
   "ownerAccountId": "local-dev",
-  "updatedAt": 1777956353590,
+  "updatedAt": 1794016795431,
   "items": [
     {
       "id": "seed-giant-redstone-dense-tall198",
@@ -186,6 +186,276 @@
         "totalSolidBlocks": 0,
         "sampled": false,
         "bounds": null
+      }
+    },
+    {
+      "id": "seed-giantredstonedensemidapi",
+      "title": "giantredstonedensemidapi",
+      "projectionSlug": "giantredstonedensemidapi",
+      "description": "96x36x96 high-density redstone stress world for mid-scale performance testing.",
+      "visibility": "public",
+      "fileName": "giant-redstone-dense-mid.litematic",
+      "schematic": {
+        "name": "giant-redstone-dense-world",
+        "author": "Litemora generator",
+        "size": {
+          "x": 96,
+          "y": 36,
+          "z": 96
+        },
+        "regionCount": 1,
+        "blockCount": 166445,
+        "yStats": {
+          "minY": 0,
+          "maxY": 35,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 95,
+          "maxY": 35,
+          "maxZ": 95
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1793983818292,
+      "updatedAt": 1793983818292,
+      "preview": {
+        "totalSolidBlocks": 166445,
+        "sampled": true,
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 95,
+          "maxY": 35,
+          "maxZ": 95
+        }
+      }
+    },
+    {
+      "id": "seed-giantredstonedenselargeapi",
+      "title": "giantredstonedenselargeapi",
+      "projectionSlug": "giantredstonedenselargeapi",
+      "description": "128x48x128 high-density redstone stress world for large-scale performance testing.",
+      "visibility": "public",
+      "fileName": "giant-redstone-dense-large.litematic",
+      "schematic": {
+        "name": "giant-redstone-dense-world",
+        "author": "Litemora generator",
+        "size": {
+          "x": 128,
+          "y": 48,
+          "z": 128
+        },
+        "regionCount": 1,
+        "blockCount": 412208,
+        "yStats": {
+          "minY": 0,
+          "maxY": 47,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 127,
+          "maxY": 47,
+          "maxZ": 127
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1793983828332,
+      "updatedAt": 1793983828332,
+      "preview": {
+        "totalSolidBlocks": 412208,
+        "sampled": true,
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 127,
+          "maxY": 47,
+          "maxZ": 127
+        }
+      }
+    },
+    {
+      "id": "seed-giantblockmixworld",
+      "title": "giantblockmixworld",
+      "projectionSlug": "giantblockmixworld",
+      "description": "512x20x512 mixed-block stress world for wide-footprint performance testing.",
+      "visibility": "public",
+      "fileName": "giant-block-mix-world.litematic",
+      "schematic": {
+        "name": "giant-block-mix-world",
+        "author": "Litemora generator",
+        "size": {
+          "x": 512,
+          "y": 8,
+          "z": 512
+        },
+        "regionCount": 1,
+        "blockCount": 274481,
+        "yStats": {
+          "minY": 0,
+          "maxY": 7,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 511,
+          "maxY": 7,
+          "maxZ": 511
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1793983891251,
+      "updatedAt": 1793983891251,
+      "preview": {
+        "totalSolidBlocks": 274481,
+        "sampled": true,
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 511,
+          "maxY": 7,
+          "maxZ": 511
+        }
+      }
+    },
+    {
+      "id": "seed-giantredstonedensexl",
+      "title": "giantredstonedensexl",
+      "projectionSlug": "giantredstonedensexl",
+      "description": "192x66x192 high-density redstone stress world (1.33M blocks) for large-scale performance testing.",
+      "visibility": "public",
+      "fileName": "giant-redstone-dense-xl.litematic",
+      "schematic": {
+        "name": "giant-redstone-dense-world",
+        "author": "Litemora generator",
+        "size": {
+          "x": 192,
+          "y": 66,
+          "z": 192
+        },
+        "regionCount": 1,
+        "blockCount": 1332455,
+        "yStats": {
+          "minY": 0,
+          "maxY": 65,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 191,
+          "maxY": 65,
+          "maxZ": 191
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1794016794586,
+      "updatedAt": 1794016794586,
+      "preview": {
+        "totalSolidBlocks": 1332455,
+        "sampled": true,
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 191,
+          "maxY": 65,
+          "maxZ": 191
+        }
+      }
+    },
+    {
+      "id": "seed-giantredstonedensexxl",
+      "title": "giantredstonedensexxl",
+      "projectionSlug": "giantredstonedensexxl",
+      "description": "256x78x256 high-density redstone stress world (2.86M blocks) for extreme-scale performance testing.",
+      "visibility": "public",
+      "fileName": "giant-redstone-dense-xxl.litematic",
+      "schematic": {
+        "name": "giant-redstone-dense-world",
+        "author": "Litemora generator",
+        "size": {
+          "x": 256,
+          "y": 78,
+          "z": 256
+        },
+        "regionCount": 1,
+        "blockCount": 2861466,
+        "yStats": {
+          "minY": 0,
+          "maxY": 77,
+          "hasBlocksBelowZero": false,
+          "blocksBelowZero": 0
+        },
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 255,
+          "maxY": 77,
+          "maxZ": 255
+        }
+      },
+      "placement": {
+        "offset": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "createdAt": 1794016795431,
+      "updatedAt": 1794016795431,
+      "preview": {
+        "totalSolidBlocks": 2861466,
+        "sampled": true,
+        "bounds": {
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0,
+          "maxX": 255,
+          "maxY": 77,
+          "maxZ": 255
+        }
       }
     }
   ]
