@@ -49,6 +49,10 @@ yarn-error.log*
 /public/spaces/codexperf/
 /public/spaces/blanktest/
 
+# Generated lookup used only by scripts/analyze-litematic-coverage.mjs.
+# Regenerate with: pnpm sync:bedrock-textures
+/src/js/generated/
+
 # local artifacts
 /output/
 /logs/
