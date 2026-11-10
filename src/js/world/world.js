@@ -35,12 +35,8 @@ import { loadRedstoneReplayTimeline } from './redstone-replay-loader.js'
 import ChunkManager from './terrain/chunk-manager.js'
 import MinecraftSchematicRenderLayer from './terrain/minecraft-schematic-render-layer.js'
 import schematicService from './terrain/schematic-service.js'
-import { decodeWorldStateSnapshot, encodeWorldStateSnapshot } from './terrain/world-state-codec.js'
+import WorldStatePersistence, { hasSchematicBlockContent, hasSnapshotContent } from './world-state-persistence.js'
 
-const WORLD_STATE_STORAGE_KEY = 'mc-world-state'
-const WORLD_STATE_DB_NAME = 'mc-world-state-storage'
-const WORLD_STATE_DB_STORE = 'snapshots'
-const WORLD_STATE_DB_VERSION = 1
 const WORLD_DEBUG_ENABLED = import.meta.env.DEV
   && typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).has('world-debug')
@@ -200,229 +196,6 @@ function hasProjectionContentSource(projectionContext = null, sharedWorldState =
   return !!String(sourceFile.fileName || '').trim()
 }
 
-function normalizeStoredWorldStatePayload(record = null) {
-  if (!record || typeof record !== 'object') {
-    return null
-  }
-
-  if (record.payload && typeof record.payload === 'object') {
-    return {
-      payload: record.payload,
-      updatedAt: Number(record.updatedAt || 0) || 0,
-    }
-  }
-
-  return {
-    payload: record,
-    updatedAt: 0,
-  }
-}
-
-function openWorldStateDb() {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('indexeddb_unavailable'))
-      return
-    }
-
-    const request = indexedDB.open(WORLD_STATE_DB_NAME, WORLD_STATE_DB_VERSION)
-    request.onerror = () => reject(request.error || new Error('indexeddb_open_failed'))
-    request.onsuccess = () => resolve(request.result)
-    request.onupgradeneeded = () => {
-      const db = request.result
-      if (!db.objectStoreNames.contains(WORLD_STATE_DB_STORE)) {
-        db.createObjectStore(WORLD_STATE_DB_STORE, { keyPath: 'id' })
-      }
-    }
-  })
-}
-
-async function loadWorldStateFromIndexedDb(storageKey) {
-  const db = await openWorldStateDb()
-  try {
-    const record = await new Promise((resolve, reject) => {
-      const tx = db.transaction(WORLD_STATE_DB_STORE, 'readonly')
-      const store = tx.objectStore(WORLD_STATE_DB_STORE)
-      const request = store.get(storageKey)
-      request.onsuccess = () => resolve(request.result || null)
-      request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'))
-    })
-    return normalizeStoredWorldStatePayload(record)
-  }
-  finally {
-    db.close()
-  }
-}
-
-async function saveWorldStateToIndexedDb(storageKey, payload) {
-  const db = await openWorldStateDb()
-  try {
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(WORLD_STATE_DB_STORE, 'readwrite')
-      const store = tx.objectStore(WORLD_STATE_DB_STORE)
-      store.put({
-        id: storageKey,
-        payload,
-        updatedAt: Date.now(),
-      })
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error || new Error('indexeddb_write_failed'))
-      tx.onabort = () => reject(tx.error || new Error('indexeddb_write_aborted'))
-    })
-  }
-  finally {
-    db.close()
-  }
-}
-
-async function loadLocalWorldStateRecord(storageKey) {
-  try {
-    const indexedDbRecord = await loadWorldStateFromIndexedDb(storageKey)
-    if (indexedDbRecord?.payload && typeof indexedDbRecord.payload === 'object') {
-      return {
-        source: 'indexeddb',
-        ...indexedDbRecord,
-      }
-    }
-  }
-  catch {
-    // ignore IndexedDB failures and fall back to localStorage
-  }
-
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) {
-      return null
-    }
-
-    const parsed = JSON.parse(raw)
-    const normalized = normalizeStoredWorldStatePayload(parsed)
-    if (!normalized?.payload || typeof normalized.payload !== 'object') {
-      return null
-    }
-
-    return {
-      source: 'local-storage',
-      ...normalized,
-    }
-  }
-  catch {
-    return null
-  }
-}
-
-async function persistWorldStateLocally(storageKey, payload) {
-  let savedToIndexedDb = false
-  try {
-    await saveWorldStateToIndexedDb(storageKey, payload)
-    savedToIndexedDb = true
-  }
-  catch {
-    // continue with localStorage fallback below
-  }
-
-  if (savedToIndexedDb) {
-    try {
-      localStorage.removeItem(storageKey)
-    }
-    catch {
-      // localStorage cleanup is not required for the IndexedDB-backed state
-    }
-    return
-  }
-
-  try {
-    localStorage.setItem(storageKey, JSON.stringify({
-      payload,
-      updatedAt: Date.now(),
-    }))
-  }
-  catch {
-    // ignore local storage quota errors
-  }
-}
-
-function hasSnapshotContent(snapshot = null) {
-  // 旧体素地形的 snapshot.modifications 已不再渲染，只看原理图层是否真的有方块
-  return hasSchematicBlockContent(snapshot)
-}
-
-/**
- * Check if the schematic snapshot actually has block data
- * @param {object} snapshot
- * @returns {boolean} True when the snapshot contains schematic block content.
- */
-function hasSchematicBlockContent(snapshot = null) {
-  const minecraftChunks = snapshot?.worldState?.minecraftSchematicLayer?.chunks
-  if (!minecraftChunks || typeof minecraftChunks !== 'object') {
-    return false
-  }
-
-  // Check if any chunk has actual block data
-  for (const chunk of Object.values(minecraftChunks)) {
-    if (chunk && typeof chunk === 'object') {
-      // Legacy shape: { blocks: { [blockKey]: entry } }
-      if (chunk.blocks && typeof chunk.blocks === 'object' && Object.keys(chunk.blocks).length > 0) {
-        return true
-      }
-      // Packed shape written by MinecraftSchematicLayer.exportSnapshot(): { p, pos, pid, c }
-      if (
-        Array.isArray(chunk.p)
-        && chunk.p.length > 0
-        && String(chunk.pos || '').trim()
-        && String(chunk.pid || '').trim()
-        && Number(chunk.c || 0) > 0
-      ) {
-        return true
-      }
-    }
-  }
-
-  return false
-}
-
-function sanitizeSnapshot(snapshot = null) {
-  if (!snapshot || typeof snapshot !== 'object') {
-    return snapshot
-  }
-
-  const worldState = snapshot.worldState && typeof snapshot.worldState === 'object'
-    ? { ...snapshot.worldState }
-    : {}
-
-  worldState.minecraftTransientRemovedBlocks = {}
-
-  return {
-    ...snapshot,
-    worldState,
-  }
-}
-
-function summarizeSnapshotForDebug(snapshot = null) {
-  const safe = snapshot && typeof snapshot === 'object' ? snapshot : {}
-  const modifications = safe.modifications && typeof safe.modifications === 'object'
-    ? safe.modifications
-    : {}
-  const minecraftChunks = safe?.worldState?.minecraftSchematicLayer?.chunks
-    && typeof safe.worldState.minecraftSchematicLayer.chunks === 'object'
-    ? safe.worldState.minecraftSchematicLayer.chunks
-    : {}
-
-  let modificationCount = 0
-  for (const blocks of Object.values(modifications)) {
-    if (blocks && typeof blocks === 'object') {
-      modificationCount += Object.keys(blocks).length
-    }
-  }
-
-  return {
-    format: safe.format || 'classic',
-    chunkCount: Object.keys(modifications).length,
-    modificationCount,
-    minecraftSchematicChunkCount: Object.keys(minecraftChunks).length,
-  }
-}
-
 /**
  * World 场景编排器：只负责在 core:ready 后按依赖顺序创建组件、编排 update/destroy。
  * 具体职责见 .agent/skills/vtj-scene-management/SKILL.md
@@ -443,6 +216,7 @@ export default class World {
     this._minecraftRenderLayerSyncTimer = null
     this._minecraftRenderLayerRestoreTimer = null
     this.isSceneReady = false
+    this._worldStatePersistence = new WorldStatePersistence({ debug: debugWorld })
     this._onMinecraftBlockBreakComplete = this._onMinecraftBlockBreakComplete.bind(this)
     this._onMinecraftBlockPlace = this._onMinecraftBlockPlace.bind(this)
     this._onMinecraftBlockUse = this._onMinecraftBlockUse.bind(this)
@@ -1328,169 +1102,19 @@ export default class World {
   }
 
   async _loadSharedWorldState() {
-    const activeSpace = getActiveSpaceName()
-    const activeProjectionId = getActiveProjectionId()
-    const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace, activeProjectionId)
-    const localRecord = await loadLocalWorldStateRecord(storageKey)
-    const localDecoded = localRecord?.payload
-      ? sanitizeSnapshot(decodeWorldStateSnapshot(localRecord.payload))
-      : null
-
-    if (localDecoded && hasSnapshotContent(localDecoded)) {
-      debugWorld('[World Debug] Loaded local world-state FULL:', localDecoded)
-      debugWorld('[World Debug] Loaded local world-state SUMMARY', {
-        source: localRecord?.source || 'local',
-        space: activeSpace || 'default',
-        storageKey,
-        ...summarizeSnapshotForDebug(localDecoded),
-      })
-      return localDecoded
-    }
-
-    if (activeSpace) {
-      try {
-        const url = new URL('/api/world-state', window.location.origin)
-        url.searchParams.set('space', activeSpace)
-        if (activeProjectionId) {
-          url.searchParams.set('projection', activeProjectionId)
-        }
-        const requestUrl = `${url.pathname}${url.search}`
-        const response = await fetch(requestUrl, { cache: 'no-store' })
-        if (response.ok) {
-          const data = await response.json()
-          if (data && typeof data === 'object') {
-            const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
-            if (hasSnapshotContent(decoded) || !localDecoded) {
-              debugWorld('[World Debug] Loaded remote world-state (space-first)', {
-                source: 'remote-space-first',
-                space: activeSpace || 'default',
-                storageKey,
-                ...summarizeSnapshotForDebug(decoded),
-              })
-              await persistWorldStateLocally(storageKey, data)
-              return decoded
-            }
-          }
-        }
-      }
-      catch {
-        // fallback to local state below
-      }
-    }
-
-    if (localDecoded) {
-      debugWorld('[World Debug] Loaded local fallback world-state', {
-        source: localRecord?.source || 'local-fallback',
-        space: activeSpace || 'default',
-        storageKey,
-        ...summarizeSnapshotForDebug(localDecoded),
-      })
-      return localDecoded
-    }
-
-    try {
-      const url = new URL('/api/world-state', window.location.origin)
-      if (activeSpace) {
-        url.searchParams.set('space', activeSpace)
-      }
-      if (activeProjectionId) {
-        url.searchParams.set('projection', activeProjectionId)
-      }
-      const requestUrl = `${url.pathname}${url.search}` || '/api/world-state'
-      const response = await fetch(requestUrl, { cache: 'no-store' })
-      if (!response.ok) {
-        return activeSpace
-          ? { worldState: {}, modifications: {} }
-          : null
-      }
-
-      const data = await response.json()
-      if (!data || typeof data !== 'object') {
-        return activeSpace
-          ? { worldState: {}, modifications: {} }
-          : null
-      }
-
-      const decoded = sanitizeSnapshot(decodeWorldStateSnapshot(data))
-      debugWorld('[World Debug] Loaded remote world-state (fallback path)', {
-        source: 'remote-fallback',
-        space: activeSpace || 'default',
-        storageKey,
-        ...summarizeSnapshotForDebug(decoded),
-      })
-
-      await persistWorldStateLocally(storageKey, data)
-
-      return decoded
-    }
-    catch {
-      return activeSpace
-        ? { worldState: {}, modifications: {} }
-        : null
-    }
+    return this._worldStatePersistence.loadSharedWorldState()
   }
 
   async _saveSharedWorldState() {
-    if (!this.chunkManager?.persistence?.exportSnapshot) {
+    const persistence = this.chunkManager?.persistence
+    if (!persistence?.exportSnapshot) {
       return false
     }
 
-    try {
-      const payload = this.chunkManager.persistence.exportSnapshot()
-      const compactPayload = encodeWorldStateSnapshot(payload, {
-        chunkWidth: this.chunkManager.chunkWidth,
-      })
-      const activeSpace = getActiveSpaceName()
-      const activeProjectionId = getActiveProjectionId()
-      const storageKey = buildSpaceScopedKey(WORLD_STATE_STORAGE_KEY, activeSpace, activeProjectionId)
-
-      try {
-        await persistWorldStateLocally(storageKey, compactPayload)
-      }
-      catch {
-        // ignore local persistence failures and still try remote
-      }
-
-      const session = loadAdminAuthSession()
-      const token = String(session?.token || '').trim()
-      if (!token) {
-        return false
-      }
-
-      const url = new URL('/api/world-state', window.location.origin)
-      if (activeSpace) {
-        url.searchParams.set('space', activeSpace)
-      }
-      if (activeProjectionId) {
-        url.searchParams.set('projection', activeProjectionId)
-      }
-      const requestUrl = `${url.pathname}${url.search}` || '/api/world-state'
-
-      const response = await fetch(requestUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(compactPayload),
-      })
-
-      if (!response.ok) {
-        throw new Error(`remote_world_state_save_failed_${response.status}`)
-      }
-
-      debugWorld('[World Debug] Saved world-state', {
-        space: activeSpace || 'default',
-        requestUrl,
-        ...summarizeSnapshotForDebug(payload),
-      })
-
-      return true
-    }
-    catch (error) {
-      console.warn('[World] Failed to persist shared world state remotely:', error)
-      return false
-    }
+    return this._worldStatePersistence.saveSharedWorldState({
+      exportSnapshot: () => persistence.exportSnapshot(),
+      chunkWidth: this.chunkManager.chunkWidth,
+    })
   }
 
   /** 地形：ChunkManager（Minecraft 方块数据层）+ 暴露 terrainDataManager */
