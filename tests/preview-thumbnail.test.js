@@ -1,3 +1,4 @@
+/* eslint-disable test/no-import-node-test -- Use the project's built-in Node test runner. */
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
