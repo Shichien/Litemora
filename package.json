@@ -20,6 +20,8 @@
     "redstone:doors:install": "node ./scripts/install-redstone-doors.mjs",
     "kv:seed": "node ./scripts/build-kv-seed.mjs",
     "thumbnails:capture": "node ./scripts/capture-world-thumbnails.mjs",
+    "test": "node --test tests/",
+    "test:watch": "node --test --watch tests/",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "dev": "vite --host localhost",

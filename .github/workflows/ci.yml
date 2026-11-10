@@ -1,0 +1,101 @@
+name: CI
+
+# 触发范围刻意放宽到所有分支：这个仓库此前完全没有 CI，
+# 先让每次 push / PR 都跑一遍，等信号稳定后再收窄到受保护分支。
+on:
+  push:
+  pull_request:
+
+# 同一个 ref 的新提交会取消上一次还在跑的构建，避免排队浪费额度。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 测试与构建是两个独立的 job：
+  # 两者都是 continue-on-error: false（默认值），任何一方失败 CI 都会变红。
+  # 分开的好处是失败原因一眼可见，不必翻同一份日志。
+  test:
+    name: Test (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          # 仓库里只有 pnpm-lock.yaml（没有 package-lock.json），所以包管理器用 pnpm。
+          # lockfileVersion 是 9.0，pnpm 9/10 都能读；这里钉住大版本避免 runner 上的默认值漂移。
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # --frozen-lockfile：CI 里不允许悄悄改 lockfile，锁文件和 package.json 对不上就直接失败。
+      - run: pnpm install --frozen-lockfile
+
+      # 测试用 Node 内置的 node --test 运行器，不引入 vitest/jest 等新依赖，
+      # 因此这一步不需要额外安装任何东西。
+      - name: Run unit tests
+        run: node --test tests/
+
+  build:
+    name: Build (vite build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build production bundle
+        run: npx vite build
+
+  # lint 单独成一个 job，并且显式 continue-on-error: true —— 这是一个有意的取舍。
+  #
+  # 原因：仓库当前有既有的 ESLint 错误（@antfu/eslint-config）。本地实测 `npx eslint`
+  # 的结果是 126 errors + 34 warnings（合计 160 problems，exit 1），这些错误全部来自
+  # src/ 里的既有代码，与本次新增的 tests/ 和 CI 无关。
+  # 如果把 lint 设成必红，CI 从上线第一分钟起就会永久失败，所有人都会立刻学会忽略红灯，
+  # 测试和构建这两个真正有信号的检查也就一起失效了。
+  #
+  # 所以：lint 只作为「可见的提示」跑着，红点会被记录但不会阻塞合并。
+  # 等既有错误被清掉，把 continue-on-error 改成 false 或直接删掉这一行，让 lint 变成门禁。
+  #
+  # 注意：tests/ 目录本身是 lint 干净的（`npx eslint tests/` exit 0）。
+  # 因为 antfu 预设的 test/no-import-node-test 规则要求用 vitest，而本项目刻意不引入
+  # 新依赖，所以每个测试文件头部有一行 scoped 的 eslint-disable 说明这个取舍。
+  lint:
+    name: Lint (eslint, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run ESLint
+        run: pnpm run lint
