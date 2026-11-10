@@ -43,6 +43,12 @@ yarn-error.log*
 /bedrock-samples/
 /litematic/
 
+# Local gallery uploads and generated performance fixtures
+/public/.dev-gallery/
+/public/litematic/giant-*.litematic
+/public/spaces/codexperf/
+/public/spaces/blanktest/
+
 # local artifacts
 /output/
 /logs/
