@@ -110,6 +110,7 @@ function excludeDevArtifactsFromBuild() {
 }
 
 export default {
+  worker: { format: 'es' },
   server: {
     host: HOST,
     port: PORT,

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { prepareMinecraftLightGeometry } from './terrain/minecraft-light-field-render.js'
 
 import emitter from '../utils/event/event-bus.js'
 import {
@@ -227,7 +228,9 @@ class BatchedBlockModelRegistry {
         const transformedGeometries = parts.map((part) => {
           const geometry = part.geometry.clone()
           geometry.applyMatrix4(part.relativeMatrix)
-          return geometry
+          const litGeometry = prepareMinecraftLightGeometry(geometry, { blockCenter: { x: 0, y: 0, z: 0 } })
+          geometry.dispose()
+          return litGeometry
         })
         const mergedGeometry = transformedGeometries.length === 1
           ? transformedGeometries[0]
@@ -575,6 +578,10 @@ export default class RedstoneReplayController {
     this._simState.fill(-1)
     this._simMotion.fill(-1)
     this._simStateCount = 0
+    const light = this.world?.minecraftSchematicRenderLayer?._runtimeBridge?.lightRuntime
+    for (let posIndex = 0; posIndex < this._posKeys.length; posIndex++) {
+      light?.setBlock(this._timeline.posX[posIndex] + this.offset.x, this._timeline.posY[posIndex] + this.offset.y, this._timeline.posZ[posIndex] + this.offset.z, AIR_BLOCK_STRING)
+    }
     for (let index = 0; index < baselinePos.length; index += 1) {
       this._writeSimulationState(baselinePos[index], baselineState[index], -1)
     }
@@ -586,6 +593,12 @@ export default class RedstoneReplayController {
     }
     this._simState[posIndex] = state
     this._simMotion[posIndex] = motionIndex
+    this.world?.minecraftSchematicRenderLayer?._runtimeBridge?.lightRuntime?.setBlock(
+      this._timeline.posX[posIndex] + this.offset.x,
+      this._timeline.posY[posIndex] + this.offset.y,
+      this._timeline.posZ[posIndex] + this.offset.z,
+      this._getSettledBlockString(posIndex) || AIR_BLOCK_STRING,
+    )
   }
 
   /** 坐标当前应显示的方块：活塞运动结束后的稳定状态优先，没有则用记录的状态 */
@@ -708,8 +721,14 @@ export default class RedstoneReplayController {
       return
     }
 
+    const logicalLight = renderLayer._runtimeBridge?.lightRuntime
+    for (let posIndex = 0; posIndex < this._posKeys.length; posIndex++) {
+      const patch = this._buildWorldPatch(posIndex, this._simState[posIndex] >= 0 ? this._getSettledBlockString(posIndex) : AIR_BLOCK_STRING)
+      logicalLight?.setBlock(patch.worldX, patch.worldY, patch.worldZ, patch.blockString)
+    }
+    logicalLight?.commit({ reset: true })
     const clearPatches = this._posKeys
-      .map((_key, posIndex) => this._buildWorldPatch(posIndex, AIR_BLOCK_STRING))
+      .map((_key, posIndex) => ({ ...this._buildWorldPatch(posIndex, AIR_BLOCK_STRING), lightRenderOnly: true }))
     const cleared = await renderLayer.setRuntimeBlocksAtWorldAsync(clearPatches)
     if (!cleared) {
       throw new Error('无法建立独立活塞渲染层')
@@ -1023,6 +1042,7 @@ export default class RedstoneReplayController {
     this.currentFrameIndex = nextFrameIndex
     this.tickAccumulator = 0
     this.lastChangedBlocks = this._simStateCount
+    this.world?.minecraftSchematicRenderLayer?._runtimeBridge?.lightRuntime?.commit({ reset: true })
     this._emitState()
   }
 
@@ -1067,6 +1087,7 @@ export default class RedstoneReplayController {
 
     this.currentTick = targetTick
     this.lastChangedBlocks = changedPositions.size
+    this.world?.minecraftSchematicRenderLayer?._runtimeBridge?.lightRuntime?.commit()
     if (this.currentTick >= this.replay.totalTicks) {
       this.playing = false
     }

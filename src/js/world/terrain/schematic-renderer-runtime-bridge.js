@@ -1,4 +1,7 @@
 import * as THREE from 'three'
+import emitter from '../../utils/event/event-bus.js'
+import { MinecraftLightRuntime } from './minecraft-light-runtime.js'
+import { prepareMinecraftLightGeometry, setMinecraftLightField } from './minecraft-light-field-render.js'
 import { createMinecraftBlockMaterial } from './minecraft-block-material.js'
 import { installCauldronModelFix } from './cubane-cauldron-model-fix.js'
 
@@ -564,6 +567,10 @@ function createMinecraftBlockString(blockName = '', properties = {}) {
 export default class SchematicRendererRuntimeBridge {
   constructor(options = {}) {
     this.hostGroup = options.hostGroup || null
+    this.lightRuntime = new MinecraftLightRuntime({
+      onField: setMinecraftLightField,
+      onStatus: status => emitter.emit('minecraft-light:status', status),
+    })
     this.renderer = null
     this.rendererReadyPromise = null
     this.rendererContainer = null
@@ -856,6 +863,11 @@ export default class SchematicRendererRuntimeBridge {
     this.runtimeOffset = offset
     this.bounds = createBoundsFromSchematic(schematicObject, offset)
     this.loadedSourceSignature = sourceSignature
+    const lightGl = renderer.renderManager?.getRenderer?.()?.getContext?.()
+    this.lightRuntime.maxAxis = lightGl?.MAX_3D_TEXTURE_SIZE
+      ? lightGl.getParameter(lightGl.MAX_3D_TEXTURE_SIZE)
+      : 256
+    this.lightRuntime.initialize({ buffer, name: source.name, offset })
     this._streamConfig = normalizeStreamingConfig(options.streaming)
     this._chunkBounds = this._createRuntimeChunkGridBounds(schematicObject)
     this._streamStartedAt = performance.now()
@@ -889,6 +901,7 @@ export default class SchematicRendererRuntimeBridge {
   }
 
   detachRuntimeGroup() {
+    this.lightRuntime?.dispose()
     this._cancelChunkStreaming()
 
     if (this.runtimeGroup?.parent) {
@@ -1125,6 +1138,12 @@ export default class SchematicRendererRuntimeBridge {
         forEachMaterial(child.material, normalizeRuntimeMaterial)
         mergeTintedMaterialGroups(child, this._getTintMergedMaterials)
         child.material = directionalRuntimeMaterial(child.material)
+        child.updateWorldMatrix(true, false)
+        if (!child.geometry.getAttribute('mcBlockCenter')) {
+          const originalGeometry = child.geometry
+          child.geometry = prepareMinecraftLightGeometry(originalGeometry, { matrix: child.matrixWorld })
+          originalGeometry.dispose()
+        }
         consolidateIndexedGeometryGroups(child.geometry)
         if (!this._meshEntrySet.has(child)) {
           this._meshEntrySet.add(child)
@@ -1617,6 +1636,7 @@ export default class SchematicRendererRuntimeBridge {
         localX,
         localY,
         localZ,
+        lightRenderOnly: worldBlock?.lightRenderOnly === true,
         blockString: String(worldBlock?.blockString || 'minecraft:air').trim() || 'minecraft:air',
       })
     }
@@ -1725,6 +1745,9 @@ export default class SchematicRendererRuntimeBridge {
   }
 
   async _applyRuntimePatches({ schematic, normalizedOffset, patches }) {
+    if (schematic !== this.schematicObject) {
+      return false
+    }
     const affectedChunks = new Map()
     for (const patch of patches) {
       const position = {
@@ -1734,12 +1757,19 @@ export default class SchematicRendererRuntimeBridge {
       }
 
       await schematic.setBlockNoRebuild(position, patch.blockString)
+      if (schematic !== this.schematicObject) {
+        return false
+      }
+      if (!patch.lightRenderOnly) {
+        this.lightRuntime.setBlock(position.x + normalizedOffset.x, position.y + normalizedOffset.y, position.z + normalizedOffset.z, patch.blockString)
+      }
 
       for (const chunk of this._collectPatchChunkKeys(patch, schematic)) {
         affectedChunks.set(chunk.key, chunk)
       }
     }
 
+    this.lightRuntime.commit()
     const palette = schematic.getPalettes?.(schematic.schematicWrapper)?.default || []
     await schematic.worldMeshBuilder?.precomputePaletteGeometries?.(palette)
     this._primeCollisionProfiles(palette)

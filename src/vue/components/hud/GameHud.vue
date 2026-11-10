@@ -9,6 +9,7 @@ import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import { onMounted, onUnmounted, ref } from 'vue'
 import Hotbar from './Hotbar.vue'
 import KeyFeedbackPanel from './KeyFeedbackPanel.vue'
+import MinecraftLightStatus from './MinecraftLightStatus.vue'
 import RedstoneReplayPanel from './RedstoneReplayPanel.vue'
 import TopInfoBar from './TopInfoBar.vue'
 
@@ -66,6 +67,7 @@ onUnmounted(() => {
       <KeyFeedbackPanel />
     </div>
 
+    <MinecraftLightStatus />
     <RedstoneReplayPanel />
 
     <!-- Hotbar: only while placing blocks (Q) -->
