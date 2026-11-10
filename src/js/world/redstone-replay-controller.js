@@ -123,6 +123,11 @@ export function resolveRedstoneReplayUrl(item = null, backendConfig = null) {
 function getMaterialBatchSignature(material) {
   return JSON.stringify({
     type: material?.type || '',
+    shaderKey: material?.customProgramCacheKey?.() || '',
+    aoMap: material?.aoMap?.uuid || '',
+    aoMapIntensity: material?.aoMapIntensity ?? 1,
+    lightMap: material?.lightMap?.uuid || '',
+    lightMapIntensity: material?.lightMapIntensity ?? 1,
     map: material?.map?.uuid || '',
     alphaMap: material?.alphaMap?.uuid || '',
     opacity: material?.opacity ?? 1,

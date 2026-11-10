@@ -2,11 +2,13 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import Experience from '../../experience.js'
+import { installCauldronModelFix } from './cubane-cauldron-model-fix.js'
 import {
   BUNDLED_MINECRAFT_RESOURCE_PACK_NAME,
   loadBundledMinecraftResourcePackBlob,
   loadPreferredMinecraftResourcePack,
 } from './minecraft-resource-pack.js'
+import { createMinecraftBlockMaterial } from './minecraft-block-material.js'
 import { buildSchematicLighting } from './minecraft-schematic-lighting.js'
 import SchematicRendererRuntimeBridge from './schematic-renderer-runtime-bridge.js'
 
@@ -14,8 +16,6 @@ const BUILD_BATCH_SIZE = 12
 const INSTANCE_UPLOAD_BATCH_SIZE = 4096
 const STATE_PARTITION_MIN_INSTANCES = 192
 const STATE_PARTITION_CHUNK_SPAN = 2
-const PREVIEW_GAMMA = 0.5
-const PREVIEW_GAMMA_EXPONENT = 1 / PREVIEW_GAMMA
 const VISIBILITY_UPDATE_INTERVAL_MS = 80
 const RENDER_LAYER_DEBUG_ENABLED = import.meta.env.DEV
 
@@ -99,43 +99,7 @@ function expandBounds(bounds, x, y, z) {
 }
 
 function createPreviewSyncedMaterial(material) {
-  if (Array.isArray(material)) {
-    return material.map(entry => createPreviewSyncedMaterial(entry))
-  }
-
-  if (!material?.isMaterial) {
-    return material
-  }
-
-  const synced = new THREE.MeshBasicMaterial({
-    name: material.name ? `${material.name}-preview-synced` : 'minecraft-preview-synced',
-    color: material.color?.clone?.() || new THREE.Color(0xFFFFFF),
-    map: material.map || null,
-    alphaMap: material.alphaMap || null,
-    transparent: material.transparent,
-    opacity: material.opacity,
-    side: material.side,
-    alphaTest: material.alphaTest,
-    blending: material.blending,
-    depthTest: material.depthTest,
-    depthWrite: material.depthWrite,
-    vertexColors: material.vertexColors,
-    fog: false,
-  })
-
-  synced.toneMapped = false
-  synced.premultipliedAlpha = material.premultipliedAlpha
-  synced.dithering = material.dithering
-  synced.visible = material.visible
-  synced.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <dithering_fragment>',
-      `gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(${PREVIEW_GAMMA_EXPONENT.toFixed(1)}));\n#include <dithering_fragment>`,
-    )
-  }
-  synced.customProgramCacheKey = () => `preview-synced-gamma-${PREVIEW_GAMMA_EXPONENT}`
-
-  return synced
+  return createMinecraftBlockMaterial(material)
 }
 
 function buildBlockString(blockName = '', properties = {}) {
@@ -203,6 +167,7 @@ export default class MinecraftSchematicRenderLayer {
     this._cubanePromise = (async () => {
       const { Cubane } = await import('cubane')
       const cubane = new Cubane({ autoRestore: false })
+      installCauldronModelFix(cubane)
       this._cubane = cubane
       await this._syncCubaneResourcePack(cubane)
       return cubane

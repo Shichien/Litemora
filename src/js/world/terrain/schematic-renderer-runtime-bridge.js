@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { createMinecraftBlockMaterial } from './minecraft-block-material.js'
+import { installCauldronModelFix } from './cubane-cauldron-model-fix.js'
 
 import {
   getMinecraftBlockCollisionProfile,
@@ -189,6 +191,27 @@ function collectObjectResources(objects = []) {
     geometries,
     materials,
   }
+}
+
+const runtimeBlockMaterials = new WeakMap()
+
+function directionalRuntimeMaterial(source) {
+  if (Array.isArray(source))
+    return source.map(directionalRuntimeMaterial)
+  if (!source?.isMaterial)
+    return source
+  let converted = runtimeBlockMaterials.get(source)
+  if (!converted) {
+    converted = createMinecraftBlockMaterial(source)
+    runtimeBlockMaterials.set(source, converted)
+    if (converted !== source) {
+      source.addEventListener('dispose', () => {
+        converted.dispose()
+        runtimeBlockMaterials.delete(source)
+      })
+    }
+  }
+  return converted
 }
 
 function normalizeRuntimeMaterial(material) {
@@ -668,6 +691,7 @@ export default class SchematicRendererRuntimeBridge {
   }
 
   async _replaceRendererResourcePack(packRecord) {
+    installCauldronModelFix(this.renderer?.cubane)
     const packs = this.renderer?.packs
     if (!packs) {
       throw new Error('schematic_renderer_resource_pack_manager_unavailable')
@@ -1100,6 +1124,7 @@ export default class SchematicRendererRuntimeBridge {
         child.receiveShadow = false
         forEachMaterial(child.material, normalizeRuntimeMaterial)
         mergeTintedMaterialGroups(child, this._getTintMergedMaterials)
+        child.material = directionalRuntimeMaterial(child.material)
         consolidateIndexedGeometryGroups(child.geometry)
         if (!this._meshEntrySet.has(child)) {
           this._meshEntrySet.add(child)
@@ -1331,6 +1356,11 @@ export default class SchematicRendererRuntimeBridge {
     forEachMaterial(schematic?.worldMeshBuilder?.paletteCache?.globalMaterials, (material) => {
       sharedMaterials.add(material)
     })
+    for (const material of [...sharedMaterials]) {
+      const converted = runtimeBlockMaterials.get(material)
+      if (converted)
+        sharedMaterials.add(converted)
+    }
     return sharedMaterials
   }
 

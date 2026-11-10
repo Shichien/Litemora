@@ -11,6 +11,7 @@ import speedLinesVertexShader from '../shaders/speedlines/vertex.glsl'
 
 import { SHADOW_CONFIG, SHADOW_QUALITY } from './config/shadow-config.js'
 import Experience from './experience.js'
+import { setMinecraftBlockDaylight } from './world/terrain/minecraft-block-material.js'
 import emitter from './utils/event/event-bus.js'
 
 export default class Renderer {
@@ -26,7 +27,7 @@ export default class Renderer {
     this.postProcessConfig = {
       // Bloom 辉光参数
       bloom: {
-        enabled: true,
+        enabled: false,
         strength: 0.05, // 辉光强度（降低 GPU 压力）
         radius: 0.1, // 辉光扩散半径（降低 GPU 压力）
         threshold: 0.85, // 亮度阈值（高于此值才会产生辉光）
@@ -111,7 +112,8 @@ export default class Renderer {
       antialias: false, // 关闭抗锯齿：低端机优先保帧率
       alpha: true,
     })
-    this.instance.toneMapping = THREE.ACESFilmicToneMapping
+    this.instance.toneMapping = THREE.NoToneMapping
+    this.instance.outputColorSpace = THREE.SRGBColorSpace
     this.instance.toneMappingExposure = 1
     this.instance.shadowMap.enabled = true
     this.instance.shadowMap.type = THREE.PCFSoftShadowMap
@@ -350,6 +352,8 @@ export default class Renderer {
   }
 
   update() {
+    const daylight = this.experience.world?.environment?.dayCycle?._getCelestialState?.().daylight ?? 1
+    setMinecraftBlockDaylight(daylight)
     // 更新速度线时间 uniform
     this.speedLinePass.uniforms.uTime.value
       = this.experience.time.elapsed * 0.001

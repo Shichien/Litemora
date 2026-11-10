@@ -4,6 +4,8 @@ import {
   loadBundledMinecraftResourcePackBlob,
   loadPreferredMinecraftResourcePack,
 } from '@three/world/terrain/minecraft-resource-pack.js'
+import { createMinecraftBlockMaterial } from '@three/world/terrain/minecraft-block-material.js'
+import { installCauldronModelFix } from '@three/world/terrain/cubane-cauldron-model-fix.js'
 import * as THREE from 'three'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { captureRenderedThumbnail, waitForThumbnailReady } from './preview-thumbnail.js'
@@ -592,10 +594,10 @@ async function ensureRenderer() {
         greedyMeshingEnabled: false,
       },
       postProcessingOptions: {
-        enabled: true,
-        enableSSAO: true,
-        enableSMAA: true,
-        enableGamma: true,
+        enabled: false,
+        enableSSAO: false,
+        enableSMAA: false,
+        enableGamma: false,
       },
       sidebarOptions: {
         enabled: false,
@@ -642,6 +644,7 @@ async function ensureRenderer() {
 }
 
 async function ensurePreferredResourcePack(renderer) {
+  installCauldronModelFix(renderer?.cubane)
   if (!renderer?.packs) {
     throw new Error('resource_pack_manager_unavailable')
   }
@@ -957,6 +960,21 @@ async function renderCurrentSchematic() {
     await loadedSchematic?.meshesReady
     if (token !== renderToken) {
       return
+    }
+    const previewMaterials = new Map()
+    const previewDaylight = { value: 1 }
+    loadedSchematic?.group?.traverse((object) => {
+      if (!object.isMesh || !object.material) return
+      const convert = (source) => {
+        if (!previewMaterials.has(source)) previewMaterials.set(source, createMinecraftBlockMaterial(source, previewDaylight))
+        return previewMaterials.get(source)
+      }
+      object.material = Array.isArray(object.material) ? object.material.map(convert) : convert(object.material)
+    })
+    const previewRenderer = renderer.renderManager?.getRenderer?.()
+    if (previewRenderer) {
+      previewRenderer.toneMapping = THREE.NoToneMapping
+      previewRenderer.outputColorSpace = THREE.SRGBColorSpace
     }
     loadedSchematic?.setPosition?.(getPreviewOffsetArray())
     renderer.cameraManager?.switchCameraPreset?.('isometric')
