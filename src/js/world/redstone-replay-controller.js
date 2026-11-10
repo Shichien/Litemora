@@ -11,6 +11,61 @@ import {
 } from './redstone-replay-data.js'
 import { loadRedstoneReplayTimeline } from './redstone-replay-loader.js'
 
+// Action targets also include scripted set_block positions. Only an initial
+// lever/button is a physical switch; never infer one from a later frame.
+export function getReplaySwitches(timeline, offset = {}) {
+  const initialBlocks = new Map()
+  for (let index = 0; index < (timeline?.baselinePos?.length || 0); index++) {
+    const pos = timeline.baselinePos[index]
+    initialBlocks.set(
+      blockKey(timeline.posX[pos], timeline.posY[pos], timeline.posZ[pos]),
+      timeline.palette[timeline.baselineState[index]],
+    )
+  }
+  const placement = normalizeOffset(offset)
+  const switches = new Map()
+  const targets = timeline?.actionTargets || []
+  for (let index = 0; index < targets.length; index += 3) {
+    const [x, y, z] = [targets[index], targets[index + 1], targets[index + 2]]
+    if (![x, y, z].every(Number.isFinite)) {
+      continue
+    }
+    const name = String(initialBlocks.get(blockKey(x, y, z)) || '').split('[')[0]
+    const type = name === 'minecraft:lever' ? 'lever' : /^minecraft:[a-z0-9_]+_button$/.test(name) ? 'button' : ''
+    if (!type) {
+      continue
+    }
+    const position = { x: x + placement.x, y: y + placement.y, z: z + placement.z }
+    switches.set(blockKey(position.x, position.y, position.z), { ...position, type })
+  }
+  return [...switches.values()]
+}
+
+export function validateDoorControl(control, totalTicks, switches, offset = {}) {
+  if (control?.type !== 'door' || !['open', 'closed'].includes(control.initialState)) {
+    return null
+  }
+  const pos = control.switchPosition
+  const placement = normalizeOffset(offset)
+  if (!pos || !['x', 'y', 'z'].every(axis => Number.isInteger(pos[axis]))) {
+    return null
+  }
+  const key = blockKey(pos.x + placement.x, pos.y + placement.y, pos.z + placement.z)
+  if (!switches.some(entry => entry.type === 'lever' && blockKey(entry.x, entry.y, entry.z) === key)) {
+    return null
+  }
+  const segments = {}
+  for (const direction of ['open', 'close']) {
+    const segment = control.segments?.[direction]
+    if (!segment || !Number.isInteger(segment.fromTick) || !Number.isInteger(segment.toTick)
+      || segment.fromTick < 0 || segment.toTick <= segment.fromTick || segment.toTick > totalTicks) {
+      return null
+    }
+    segments[direction] = { fromTick: segment.fromTick, toTick: segment.toTick }
+  }
+  return { initialState: control.initialState, switchKey: key, segments }
+}
+
 const DEFAULT_SPEED = 1
 const INITIAL_INSTANCE_CAPACITY = 16
 
@@ -468,21 +523,13 @@ export default class RedstoneReplayController {
       this._simMotion = new Int32Array(timeline.positionCount)
       this._resetSimulationStates()
 
-      const actionTargetPositions = new Map()
-      const { actionTargets } = timeline
-      for (let offset = 0; offset < actionTargets.length; offset += 3) {
-        const worldBlock = {
-          x: actionTargets[offset] + this.offset.x,
-          y: actionTargets[offset + 1] + this.offset.y,
-          z: actionTargets[offset + 2] + this.offset.z,
-        }
-        actionTargetPositions.set(
-          blockKey(worldBlock.x, worldBlock.y, worldBlock.z),
-          worldBlock,
-        )
-      }
-      this._actionTargetPositions = [...actionTargetPositions.values()]
-      this._actionTargets = new Set(actionTargetPositions.keys())
+      this._switches = getReplaySwitches(timeline, this.offset)
+      this._actionTargetPositions = this._switches.map(({ x, y, z }) => ({ x, y, z }))
+      this._actionTargets = new Set(this._actionTargetPositions.map(({ x, y, z }) => blockKey(x, y, z)))
+      this._doorControl = validateDoorControl(this.world.activeProjectionContext?.item?.redstoneControl, timeline.meta.totalTicks, this._switches, this.offset)
+      this._doorState = this._doorControl?.initialState || 'custom'
+      this._doorSegment = null
+      this._doorStarting = false
       this._hotTicks = buildHotTicks(timeline)
       this.available = true
       this.world.blockInteractionManager?.setUseBlockInterceptor?.(this._useBlockInterceptor)
@@ -793,7 +840,12 @@ export default class RedstoneReplayController {
       return false
     }
 
-    void this.restart({ autoplay: true })
+    if (this._doorControl?.switchKey === key) {
+      void this.toggleDoor()
+    }
+    else {
+      void this.restart({ autoplay: true })
+    }
     return true
   }
 
@@ -803,6 +855,9 @@ export default class RedstoneReplayController {
     }
 
     switch (command.type) {
+      case 'door-toggle':
+        void this.toggleDoor()
+        break
       case 'play':
         this.play()
         break
@@ -854,6 +909,10 @@ export default class RedstoneReplayController {
     if (!this.ready) {
       return
     }
+    if (this._doorControl && !this._doorSegment) {
+      void this.toggleDoor()
+      return
+    }
     if (this.currentTick >= this.replay.totalTicks) {
       void this.restart({ autoplay: true })
       return
@@ -876,6 +935,32 @@ export default class RedstoneReplayController {
     this._emitState()
   }
 
+  async toggleDoor() {
+    if (!this.ready || !this._doorControl || this._doorStarting || this._doorSegment || this.playing) {
+      return
+    }
+    if (this._doorState === 'custom') {
+      await this.seek(0)
+      return
+    }
+    const direction = this._doorState === 'open' ? 'close' : 'open'
+    const segment = this._doorControl.segments[direction]
+    this._doorStarting = true
+    this._emitState()
+    try {
+      await this.seek(segment.fromTick)
+      if (this._destroyed) {
+        return
+      }
+      this._doorSegment = { ...segment, state: direction === 'close' ? 'closed' : 'open' }
+      this.play()
+    }
+    finally {
+      this._doorStarting = false
+      this._emitState()
+    }
+  }
+
   async restart({ autoplay = false } = {}) {
     await this.seek(0)
     if (autoplay) {
@@ -895,6 +980,14 @@ export default class RedstoneReplayController {
       0,
       Math.max(0, Number(this.replay.totalTicks || 0)),
     )
+    this._doorSegment = null
+    if (this._doorControl) {
+      this._doorState = nextTick === 0
+        ? this._doorControl.initialState
+        : nextTick === this._doorControl.segments.close.toTick
+          ? 'closed'
+          : nextTick === this._doorControl.segments.open.toTick ? 'open' : 'custom'
+    }
     this._resetSimulationStates()
 
     const timeline = this._timeline
@@ -1144,7 +1237,20 @@ export default class RedstoneReplayController {
       const elapsedTicks = Math.floor(this.tickAccumulator)
       if (elapsedTicks > 0) {
         this.tickAccumulator -= elapsedTicks
-        this._advanceToTick(Math.min(this.replay.totalTicks, this.currentTick + elapsedTicks))
+        const segment = this._doorSegment
+        const endTick = segment?.toTick ?? this.replay.totalTicks
+        this._advanceToTick(Math.min(endTick, this.currentTick + elapsedTicks))
+        if (segment && this.currentTick >= segment.toTick) {
+          this.playing = false
+          this.tickAccumulator = 0
+          this._doorState = segment.state
+          this._doorSegment = null
+          this._emitState()
+        }
+        else if (this._doorControl && !segment) {
+          this._doorState = 'custom'
+          this._emitState()
+        }
       }
     }
 
@@ -1164,6 +1270,8 @@ export default class RedstoneReplayController {
       description: String(this.replay?.description || ''),
       changeCount: Number(this.replay?.changeCount || 0),
       lastChangedBlocks: this.lastChangedBlocks,
+      door: this._doorControl ? { state: this._doorState, busy: !!this._doorStarting || !!this._doorSegment || this.playing } : null,
+      switches: this._switches || [],
       hotTicks: this._hotTicks || [],
       engine: String(this.replay?.engine || ''),
       minecraftVersion: String(this.replay?.minecraftVersion || ''),

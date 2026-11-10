@@ -16,6 +16,8 @@ const replay = reactive({
   description: '',
   changeCount: 0,
   lastChangedBlocks: 0,
+  door: null,
+  switches: [],
   hotTicks: [],
   engine: '',
   minecraftVersion: '',
@@ -154,6 +156,29 @@ onUnmounted(() => {
       </div>
     </header>
 
+    <div class="replay-entry">
+      <button
+        type="button"
+        class="rs-btn rs-btn--primary"
+        :disabled="!replay.ready || !!replay.error || !!replay.door?.busy"
+        @click="replay.door ? emitCommand('door-toggle') : emitCommand('restart', { autoplay: true })"
+      >
+        {{ replay.door ? (replay.door.state === 'custom' ? '恢复初始状态' : replay.door.state === 'open' ? '关门' : '开门') : '一键运行' }}
+      </button>
+      <span>预计算红石回放 · {{ replay.door ? '正向播放开 / 关门段，完成后停止保持' : '从头运行完整流程' }} · K 播放 / 暂停</span>
+      <span v-if="replay.door">{{ replay.door.busy ? '门段进行中（暂停后按 K 继续）' : replay.door.state === 'custom' ? '自定义进度，请先恢复初始状态' : replay.door.state === 'open' ? '门已打开' : '门已关闭' }}</span>
+    </div>
+    <details class="replay-switches">
+      <summary>真实开关：{{ replay.switches.length }} 个 · 世界坐标</summary>
+      <p v-if="replay.switches.length">{{ replay.door ? '走近登记的门拉杆并右键，可开 / 关门；每段结束停止保持。自定义进度时先恢复初始状态。' : '走近下列拉杆或按钮并右键，也会从头运行整段回放。' }} 这是预计算回放，不会实时计算新电路。</p>
+      <p v-else>此回放没有登记真实拉杆或按钮，请使用“一键运行”。脚本放置方块的位置不是开关。</p>
+      <ul v-if="replay.switches.length">
+        <li v-for="control in replay.switches" :key="`${control.x},${control.y},${control.z}`">
+          {{ control.type === 'lever' ? '拉杆' : '按钮' }}：X {{ control.x }}，Y {{ control.y }}，Z {{ control.z }}
+        </li>
+      </ul>
+    </details>
+
     <div class="transport">
       <div class="control-row">
         <button
@@ -256,6 +281,26 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.replay-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.replay-entry > button {
+  padding: 9px 18px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.replay-switches {
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.replay-switches summary { cursor: pointer; }
+.replay-switches ul { max-height: 100px; overflow-y: auto; }
+
 .redstone-replay {
   --thumb-w: 8px;
   position: absolute;
