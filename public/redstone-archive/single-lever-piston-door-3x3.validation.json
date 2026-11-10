@@ -1,0 +1,222 @@
+{
+  "test": "PASS output/piston-door-candidates/upstream-3x3-cycle.toml ticks=1200 trace_events=0 requested_engine=interpreted engine=interpreted fallback_reason=none compile_ms=0.000 nodes=0 edges=0 compiled_updates=0 interpreted_updates=683 compiled_hit_rate=0.000000 partial_recompilations=0 full_recompilations=0 dense_full_rebuilds=0 topology_rebuilds=0 recompiled_nodes=0 recompile_ms=0.000",
+  "expectations": 70,
+  "initialBlocksEqualToOriginalNBT": false,
+  "initialDifferences": [
+    {
+      "position": "2,9,1",
+      "original": {
+        "position": {
+          "x": 2,
+          "y": 9,
+          "z": 1
+        },
+        "state": {
+          "id": 11272,
+          "name": "minecraft:comparator",
+          "properties": {
+            "facing": "west",
+            "mode": "compare",
+            "powered": "false"
+          },
+          "supported": true
+        },
+        "block_entity": {
+          "id": "minecraft:comparator",
+          "nbt": {
+            "OutputSignal": 0,
+            "components": {},
+            "id": "minecraft:comparator"
+          }
+        }
+      },
+      "final": {
+        "position": {
+          "x": 2,
+          "y": 9,
+          "z": 1
+        },
+        "state": {
+          "id": 11272,
+          "name": "minecraft:comparator",
+          "properties": {
+            "facing": "west",
+            "mode": "compare",
+            "powered": "false"
+          },
+          "supported": true
+        },
+        "block_entity": {
+          "id": "minecraft:comparator",
+          "nbt": {
+            "OutputSignal": 0,
+            "components": {},
+            "id": "minecraft:comparator",
+            "x": 2,
+            "y": 9,
+            "z": 1
+          }
+        }
+      }
+    },
+    {
+      "position": "7,0,1",
+      "original": {
+        "position": {
+          "x": 7,
+          "y": 0,
+          "z": 1
+        },
+        "state": {
+          "id": 11433,
+          "name": "minecraft:dropper",
+          "properties": {
+            "facing": "north",
+            "triggered": "false"
+          },
+          "supported": true
+        },
+        "block_entity": {
+          "id": "minecraft:dropper",
+          "nbt": {
+            "Items": [],
+            "components": {},
+            "id": "minecraft:dropper"
+          }
+        }
+      },
+      "final": {
+        "position": {
+          "x": 7,
+          "y": 0,
+          "z": 1
+        },
+        "state": {
+          "id": 11433,
+          "name": "minecraft:dropper",
+          "properties": {
+            "facing": "north",
+            "triggered": "false"
+          },
+          "supported": true
+        },
+        "block_entity": {
+          "id": "minecraft:dropper",
+          "nbt": {
+            "Items": [],
+            "components": {},
+            "id": "minecraft:dropper",
+            "x": 7,
+            "y": 0,
+            "z": 1
+          }
+        }
+      }
+    },
+    {
+      "position": "8,5,1",
+      "original": {
+        "position": {
+          "x": 8,
+          "y": 5,
+          "z": 1
+        },
+        "state": {
+          "id": 11276,
+          "name": "minecraft:comparator",
+          "properties": {
+            "facing": "east",
+            "mode": "compare",
+            "powered": "false"
+          },
+          "supported": true
+        },
+        "block_entity": {
+          "id": "minecraft:comparator",
+          "nbt": {
+            "OutputSignal": 0,
+            "components": {},
+            "id": "minecraft:comparator"
+          }
+        }
+      },
+      "final": {
+        "position": {
+          "x": 8,
+          "y": 5,
+          "z": 1
+        },
+        "state": {
+          "id": 11276,
+          "name": "minecraft:comparator",
+          "properties": {
+            "facing": "east",
+            "mode": "compare",
+            "powered": "false"
+          },
+          "supported": true
+        },
+        "block_entity": {
+          "id": "minecraft:comparator",
+          "nbt": {
+            "OutputSignal": 0,
+            "components": {},
+            "id": "minecraft:comparator",
+            "x": 8,
+            "y": 5,
+            "z": 1
+          }
+        }
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "tick": 99,
+      "open": true,
+      "closed": false,
+      "moving": 0,
+      "lever": "minecraft:lever[face=wall,facing=north,powered=true]"
+    },
+    {
+      "tick": 122,
+      "open": false,
+      "closed": true,
+      "moving": 0,
+      "lever": "minecraft:lever[face=wall,facing=north,powered=false]"
+    },
+    {
+      "tick": 499,
+      "open": false,
+      "closed": true,
+      "moving": 0,
+      "lever": "minecraft:lever[face=wall,facing=north,powered=false]"
+    },
+    {
+      "tick": 536,
+      "open": true,
+      "closed": false,
+      "moving": 0,
+      "lever": "minecraft:lever[face=wall,facing=north,powered=true]"
+    },
+    {
+      "tick": 899,
+      "open": true,
+      "closed": false,
+      "moving": 0,
+      "lever": "minecraft:lever[face=wall,facing=north,powered=true]"
+    },
+    {
+      "tick": 922,
+      "open": false,
+      "closed": true,
+      "moving": 0,
+      "lever": "minecraft:lever[face=wall,facing=north,powered=false]"
+    }
+  ],
+  "hashes": {
+    "output/piston-door-candidates/upstream-3x3-cycle.litematic": "f91216e952cc019412d124a43e9bf406486cd4d45ccc99606a1ad0da11ac18e6",
+    "output/piston-door-candidates/upstream-3x3-cycle.toml": "32fea2d882bbf7adcd90c486b1db078816ec66754e11f85edda8f55d5cd38aa7",
+    "output/piston-door-candidates/upstream-3x3-cycle.replay.json.gz": "9037b8ee90bce9169e587552e0c74d990c4191291f26ecc94ed2d83598e3618b"
+  }
+}

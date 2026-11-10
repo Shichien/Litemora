@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "item": {
+        "id": "singleleverpistondoor3x3",
+        "projectionSlug": "singleleverpistondoor3x3",
+        "space": "redstonearchive",
+        "title": "单拉杆 3×3 活塞门",
+        "description": "azazo1 / redstone-rs 的真实单拉杆电路。使用面板开门、关门，或右键拉杆 (3, 1, 0)。操作播放实际红石求解轨迹，结束后保持门状态；并非任意电路实时模拟。",
+        "visibility": "public",
+        "fileName": "single-lever-piston-door-3x3.litematic",
+        "mimeType": "application/octet-stream",
+        "sourceFile": { "fileName": "single-lever-piston-door-3x3.litematic", "mimeType": "application/octet-stream", "size": 928 },
+        "schematic": {
+          "name": "Single-lever 3x3 piston gate",
+          "author": "azazo1",
+          "bounds": { "minX": 0, "minY": 0, "minZ": 0, "maxX": 9, "maxY": 9, "maxZ": 1 },
+          "size": { "x": 10, "y": 10, "z": 2 },
+          "regionCount": 1,
+          "blockCount": 80
+        },
+        "preview": { "totalSolidBlocks": 80, "sampled": false, "bounds": { "minX": 0, "minY": 0, "minZ": 0, "maxX": 9, "maxY": 9, "maxZ": 1 } },
+        "placement": { "offset": { "x": 0, "y": 0, "z": 0 } },
+        "owner": { "id": "builtin-redstone-archive", "name": "azazo1", "avatar": "" },
+        "sourceUrl": "https://github.com/azazo1/redstone-rs/tree/v0.2.0/assets/schematics",
+        "redstoneReplayUrl": "/redstone-archive/single-lever-piston-door-3x3.replay.json.gz",
+        "redstoneControl": {
+          "type": "door",
+          "initialState": "open",
+          "switchPosition": { "x": 3, "y": 1, "z": 0 },
+          "segments": { "close": { "fromTick": 99, "toTick": 122 }, "open": { "fromTick": 499, "toTick": 536 } }
+        },
+        "createdAt": 1794292800000,
+        "updatedAt": 1794292800000
+      },
+      "worldConfig": {
+        "player": { "spawnPoint": { "x": 4.5, "y": 5, "z": -7 }, "view": { "yaw": 180, "pitch": 0 }, "flight": { "groundWalkAnimationWhenMoving": true } },
+        "settings": {
+          "cameraPreset": "default", "visualPreset": "default",
+          "chunk": { "height": 256, "viewDistance": 2, "unloadPadding": 1 },
+          "environment": { "skyMode": "DayCycle", "ambientIntensity": 0.9, "sunIntensity": 3, "timeAutoPlay": false, "timeOfDay": 0.38, "fogDensity": 0.006 },
+          "redstoneArchive": { "replayUrl": "/redstone-archive/single-lever-piston-door-3x3.replay.json.gz" }
+        },
+        "ui": { "controls": { "allowFlightToggle": true, "allowPerspectiveToggle": true }, "pauseMenu": { "showSettings": false, "showSkins": true } }
+      },
+      "sourceUrl": "/redstone-archive/single-lever-piston-door-3x3.litematic",
+      "replayUrl": "/redstone-archive/single-lever-piston-door-3x3.replay.json.gz"
+    }
+  ]
+}

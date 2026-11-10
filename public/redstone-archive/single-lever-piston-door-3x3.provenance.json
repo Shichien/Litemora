@@ -1,0 +1,84 @@
+{
+  "upstream": "https://github.com/azazo1/redstone-rs",
+  "tag": "v0.2.0",
+  "commit": "f073894710be4d898418e39de151603b3c02e388",
+  "files": [
+    {
+      "file": "redstone-rs-piston-gate-3x3.litematic",
+      "bytes": 937,
+      "sha256": "40d456886ddeea3e47004200fd2131cfc665875af1245b25cacda9aa84b181d3",
+      "url": "https://raw.githubusercontent.com/azazo1/redstone-rs/f073894710be4d898418e39de151603b3c02e388/assets/schematics/piston-gate-3x3.litematic"
+    },
+    {
+      "file": "redstone-rs-piston-gate-3x3.nbt",
+      "bytes": 1238,
+      "sha256": "5619843448d8c7a56961e1e763670c46391529234f3152ca5b73072c19a25183",
+      "url": "https://raw.githubusercontent.com/azazo1/redstone-rs/f073894710be4d898418e39de151603b3c02e388/assets/schematics/piston-gate-3x3.nbt"
+    }
+  ],
+  "author": {
+    "litematicMetadata": "azazo1",
+    "commitAuthor": "azazo1",
+    "firstCommit": "507d2d246b8b2a46661cd16cd57eaed981617062"
+  },
+  "license": {
+    "declared": "MIT",
+    "evidence": "https://github.com/azazo1/redstone-rs/blob/v0.2.0/Cargo.toml",
+    "scope": "workspace package license declaration",
+    "independentLicenseFile": false,
+    "fixtureSpecificLicense": false,
+    "relicenseAsAGPL": false
+  },
+  "minecraftVersion": "26.1.2",
+  "dataVersion": 4790,
+  "dimensionsXYZ": [
+    10,
+    10,
+    2
+  ],
+  "counts": {
+    "minecraft:redstone_block": 2,
+    "minecraft:redstone_lamp": 1,
+    "minecraft:observer": 11,
+    "minecraft:quartz_block": 28,
+    "minecraft:sticky_piston": 14,
+    "minecraft:piston": 1,
+    "minecraft:yellow_wool": 2,
+    "minecraft:waxed_copper_bulb": 1,
+    "minecraft:air": 120,
+    "minecraft:piston_head": 2,
+    "minecraft:lever": 1,
+    "minecraft:redstone_wire": 7,
+    "minecraft:redstone_torch": 3,
+    "minecraft:repeater": 2,
+    "minecraft:redstone_wall_torch": 1,
+    "minecraft:water_cauldron": 1,
+    "minecraft:dropper": 1,
+    "minecraft:comparator": 2
+  },
+  "levers": [
+    {
+      "pos": [
+        3,
+        1,
+        0
+      ],
+      "state": {
+        "Properties": {
+          "face": "wall",
+          "powered": "true",
+          "facing": "north"
+        },
+        "Name": "minecraft:lever"
+      }
+    }
+  ],
+  "distributed": {
+    "structure": "single-lever-piston-door-3x3.litematic",
+    "structureSha256": "f91216e952cc019412d124a43e9bf406486cd4d45ccc99606a1ad0da11ac18e6",
+    "replaySha256": "9037b8ee90bce9169e587552e0c74d990c4191291f26ecc94ed2d83598e3618b",
+    "conversion": "redstone-rs convert from the downloaded upstream NBT; identical block states, coordinate fields added to three block entities",
+    "simulation": "Single lever at (3,1,0), pull at ticks 100,500,900; 70 assertions passed; browser plays computed segments, not a live engine"
+  },
+  "scenario": "https://github.com/azazo1/redstone-rs/blob/v0.2.0/assets/scenarios/piston-gate-3x3.toml"
+}
