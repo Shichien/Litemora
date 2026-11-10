@@ -9,11 +9,19 @@
   <script>
     ;(() => {
       const params = new URLSearchParams(window.location.search)
-      const provider = params.get('provider') || ''
+
       const code = params.get('code') || ''
       const state = params.get('state') || ''
+      // This prefix is routing metadata, not authentication. The opener must
+      // compare the entire state (including its 192-bit random nonce).
+      const provider = /^(github|google)\.[A-Za-z0-9_-]{32}$/.exec(state)?.[1] || ''
       const error = params.get('error') || ''
       const errorDescription = params.get('error_description') || ''
+
+      if (!provider) {
+        document.body.textContent = '登录校验失败，请关闭此窗口并重试。'
+        return
+      }
 
       const payload = {
         type: 'mc-admin-oauth-code',
@@ -28,13 +36,19 @@
         window.localStorage.setItem('mc-admin-oauth-result', JSON.stringify(payload))
       } catch (_) {}
 
-      if (window.opener && typeof window.opener.postMessage === 'function') {
-        window.opener.postMessage(payload, '*')
-      }
+      try {
+        if (window.opener && typeof window.opener.postMessage === 'function') {
+          // The opener may be on a different configured origin. It validates
+          // callback origin, popup identity and the complete state on receipt.
+          window.opener.postMessage(payload, '*')
+        }
+      } catch (_) {}
 
       window.close()
       setTimeout(() => {
-        document.body.textContent = '登录完成，你可以关闭此窗口。'
+        document.body.textContent = error
+          ? '登录失败，请关闭此窗口并重试。'
+          : '登录完成，你可以关闭此窗口。'
       }, 120)
     })()
   </script>

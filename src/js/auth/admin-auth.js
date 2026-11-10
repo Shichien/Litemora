@@ -27,6 +27,20 @@ const PROVIDER_CONFIG = {
     scope: 'read:user user:email',
     clientIdEnv: 'VITE_OAUTH_GITHUB_CLIENT_ID',
   },
+  google: {
+    label: 'Google',
+    authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    scope: 'openid email profile',
+    clientIdEnv: 'VITE_OAUTH_GOOGLE_CLIENT_ID',
+  },
+}
+
+function readProviderClientId(config) {
+  if (!config?.clientIdEnv) {
+    return ''
+  }
+
+  return String(import.meta.env[config.clientIdEnv] || '').trim()
 }
 
 function isLocalDevHost() {
@@ -79,15 +93,17 @@ async function sha256Base64Url(input) {
   return toBase64Url(new Uint8Array(digest))
 }
 
-function getRedirectUri(provider) {
+// Google (and GitHub) require the redirect_uri to match a pre-registered value
+// exactly, query string included. A `?provider=` suffix would mean registering
+// one URI per provider, so the callback stays a single provider-agnostic path
+// and the provider travels in the cryptographically random state instead.
+function getRedirectUri() {
   const host = String(window.location.hostname || '').toLowerCase()
   const isLocal = host === 'localhost' || host === '127.0.0.1'
   const callbackOrigin = isLocal
     ? window.location.origin
     : (CONFIGURED_OAUTH_CALLBACK_ORIGIN || window.location.origin)
-  const url = new URL('/auth-callback.html', callbackOrigin)
-  url.searchParams.set('provider', provider)
-  return url.toString()
+  return new URL('/auth-callback.html', callbackOrigin).toString()
 }
 
 function getProviderRuntimeConfig(provider) {
@@ -96,7 +112,7 @@ function getProviderRuntimeConfig(provider) {
     throw new Error(`不支持的登录提供商: ${provider}`)
   }
 
-  const clientId = import.meta.env[config.clientIdEnv]
+  const clientId = readProviderClientId(config)
   if (!clientId) {
     throw new Error(`${config.label} 登录未配置，请设置 ${config.clientIdEnv}`)
   }
@@ -104,18 +120,18 @@ function getProviderRuntimeConfig(provider) {
   return {
     ...config,
     clientId,
-    redirectUri: getRedirectUri(provider),
+    redirectUri: getRedirectUri(),
   }
 }
 
-function openOAuthPopup(url, provider) {
+function openOAuthPopup(url, state) {
   const width = 560
   const height = 700
   const left = window.screenX + Math.max(0, Math.round((window.outerWidth - width) / 2))
   const top = window.screenY + Math.max(0, Math.round((window.outerHeight - height) / 2))
   const popup = window.open(
     url,
-    `mc-admin-auth-${provider}`,
+    `mc-admin-auth-${state}`,
     `popup=yes,width=${width},height=${height},left=${left},top=${top}`,
   )
 
@@ -132,16 +148,16 @@ function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
     let closedCheckId = null
     let closedAt = 0
 
-    const acceptedOrigins = new Set(
-      [expectedOrigin, window.location.origin].filter(Boolean),
-    )
+    const callbackOrigin = expectedOrigin || window.location.origin
 
     const finalizePayload = (payload) => {
       if (!payload || payload.type !== 'mc-admin-oauth-code') {
         return
       }
 
-      if (payload.provider !== provider) {
+      // Unrelated attempts (including errors) must not settle this promise.
+      // The provider prefix only routes the result; the full nonce authenticates it.
+      if (payload.provider !== provider || payload.state !== state) {
         return
       }
 
@@ -150,8 +166,8 @@ function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
         return
       }
 
-      if (payload.state !== state) {
-        fail(new Error('登录校验失败，请重试'))
+      if (typeof payload.code !== 'string' || !payload.code.trim()) {
+        fail(new Error('登录回调缺少授权码，请重试'))
         return
       }
 
@@ -160,7 +176,7 @@ function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
     }
 
     const onMessage = (event) => {
-      if (!acceptedOrigins.has(event.origin)) {
+      if (event.origin !== callbackOrigin || event.source !== popup) {
         return
       }
 
@@ -168,14 +184,16 @@ function waitForOAuthCode({ provider, state, popup, expectedOrigin }) {
     }
 
     const onStorage = (event) => {
-      if (event.key !== ADMIN_AUTH_OAUTH_RESULT_KEY || !event.newValue) {
+      // Storage is only a same-origin fallback; never trust it for a remote callback.
+      if (callbackOrigin !== window.location.origin
+        || event.key !== ADMIN_AUTH_OAUTH_RESULT_KEY || !event.newValue) {
         return
       }
 
       try {
-        const payload = JSON.parse(event.newValue)
-        localStorage.removeItem(ADMIN_AUTH_OAUTH_RESULT_KEY)
-        finalizePayload(payload)
+        // Do not delete a shared slot: another simultaneous attempt may own it.
+        // In particular, unavailable storage must not prevent payload processing.
+        finalizePayload(JSON.parse(event.newValue))
       }
       catch {
         // ignore malformed payloads
@@ -285,9 +303,19 @@ export function getAuthProviders() {
     ]
   }
 
-  return [
-    { id: 'github', label: PROVIDER_CONFIG.github.label },
-  ]
+  // 只暴露已经配好 client id 的提供商，避免出现点了才报错的死按钮。
+  const providers = Object.entries(PROVIDER_CONFIG)
+    .filter(([, config]) => !!readProviderClientId(config))
+    .map(([id, config]) => ({ id, label: config.label }))
+
+  // 全部未配置时保留 GitHub 入口，维持既有行为不变。
+  if (!providers.length) {
+    return [
+      { id: 'github', label: PROVIDER_CONFIG.github.label },
+    ]
+  }
+
+  return providers
 }
 
 export function loadAdminAuthSession() {
@@ -334,7 +362,12 @@ export function loadAdminAuthSession() {
 
 function saveAdminAuthSession(account) {
   const normalized = normalizeSessionPayload(account)
-  localStorage.setItem(ADMIN_AUTH_SESSION_KEY, JSON.stringify(normalized))
+  try {
+    localStorage.setItem(ADMIN_AUTH_SESSION_KEY, JSON.stringify(normalized))
+  }
+  catch {
+    // Authentication still succeeds when persistence is unavailable.
+  }
   emitAdminAuthChanged(normalized)
   return normalized
 }
@@ -350,7 +383,7 @@ export async function signInWithProvider(provider) {
   }
 
   const runtime = getProviderRuntimeConfig(provider)
-  const state = randomString(24)
+  const state = `${provider}.${randomString(24)}`
   const codeVerifier = randomString(64)
   const codeChallenge = await sha256Base64Url(codeVerifier)
 
@@ -363,7 +396,7 @@ export async function signInWithProvider(provider) {
   authUrl.searchParams.set('code_challenge', codeChallenge)
   authUrl.searchParams.set('code_challenge_method', 'S256')
 
-  const popup = openOAuthPopup(authUrl.toString(), provider)
+  const popup = openOAuthPopup(authUrl.toString(), state)
   const { code } = await waitForOAuthCode({
     provider,
     state,
