@@ -3,6 +3,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import emitter from '../utils/event/event-bus.js'
+import { resolveBlockTextureUrl } from '../world/terrain/block-texture-files.js'
 import { blocks as blocksConfig } from '../world/terrain/blocks-config.js'
 
 /**
@@ -16,7 +17,6 @@ export default class ItemPickupAnimator {
   constructor() {
     this.experience = new Experience()
     this.scene = this.experience.scene
-    this.resources = this.experience.resources
 
     // Animation parameters (debug-tunable)
     this.params = {
@@ -29,6 +29,12 @@ export default class ItemPickupAnimator {
 
     // Active animations tracking
     this.activeItems = []
+
+    // textureKey -> THREE.Texture, so each PNG is fetched at most once
+    this._textureCache = new Map()
+    // textureKey -> Promise<THREE.Texture|null>, dedupes concurrent loads
+    this._texturePromises = new Map()
+    this._textureLoader = new THREE.TextureLoader()
 
     // Bind and listen to block break event
     this._onBlockBreakComplete = this._onBlockBreakComplete.bind(this)
@@ -57,13 +63,50 @@ export default class ItemPickupAnimator {
       return
     }
 
-    // Create temporary mini-block
-    const mesh = this._createMiniBlock(blockConfig, worldPos)
+    // Texture loading is async; don't block the event chain on it.
+    this._spawnPickup(blockConfig, blockId, worldPos)
+  }
+
+  /**
+   * Build and animate the mini-block, falling back to a plain add event.
+   *
+   * Never throws and never rejects: every failure path ends in exactly one
+   * `hud:add-item` emission, so the item is granted exactly once.
+   *
+   * @param {object} blockConfig Entry from blocks-config.js
+   * @param {number} blockId Block id being picked up
+   * @param {{ x: number, y: number, z: number }} worldPos Corner-based block coords
+   */
+  async _spawnPickup(blockConfig, blockId, worldPos) {
+    let mesh = null
+    try {
+      mesh = await this._createMiniBlock(blockConfig, worldPos)
+    }
+    catch {
+      mesh = null
+    }
+
     if (!mesh) {
       emitter.emit('hud:add-item', { blockId, amount: 1 })
       return
     }
 
+    try {
+      this._animatePickup(mesh, blockId)
+    }
+    catch {
+      // Animation setup failed after the mesh existed; still grant the item.
+      this._cleanupItem(mesh, blockId)
+    }
+  }
+
+  /**
+   * Attach the mesh to the scene and fly it toward the player.
+   *
+   * @param {THREE.Mesh} mesh Mini-block mesh
+   * @param {number} blockId Block id being picked up
+   */
+  _animatePickup(mesh, blockId) {
     this.scene.add(mesh)
     this.activeItems.push({ mesh, blockId })
 
@@ -115,51 +158,117 @@ export default class ItemPickupAnimator {
   }
 
   /**
-   * Create a temporary mini BoxGeometry mesh with block texture
-   * Following blocks-config.js material creation pattern
+   * Load a block texture from the bundled default pack.
+   *
+   * Results (including failures) are cached per texture key so a given PNG is
+   * fetched at most once for the whole session. Never throws: a rejected load
+   * resolves to null and the caller falls back to the plain `hud:add-item`
+   * event.
+   *
+   * @param {string} key Texture key from blocks-config.js
+   * @returns {Promise<THREE.Texture | null>} The texture, or null when unknown or failed.
    */
-  _createMiniBlock(blockConfig, worldPos) {
-    const geometry = new THREE.BoxGeometry(1, 1, 1)
-    const textureKeys = blockConfig.textureKeys
+  _loadTexture(key) {
+    if (!key)
+      return Promise.resolve(null)
 
-    if (!textureKeys) {
-      geometry.dispose()
+    const cached = this._textureCache.get(key)
+    if (cached)
+      return Promise.resolve(cached)
+
+    // A null in the cache means "this key already failed"; don't retry it.
+    if (this._textureCache.has(key))
+      return Promise.resolve(null)
+
+    const pending = this._texturePromises.get(key)
+    if (pending)
+      return pending
+
+    const url = resolveBlockTextureUrl(key)
+    if (!url)
+      return Promise.resolve(null)
+
+    const promise = new Promise((resolve) => {
+      this._textureLoader.load(
+        url,
+        (texture) => {
+          // Pixel-art pipeline: nearest filtering, no mipmaps, sRGB.
+          texture.magFilter = THREE.NearestFilter
+          texture.minFilter = THREE.NearestFilter
+          texture.generateMipmaps = false
+          texture.wrapS = THREE.ClampToEdgeWrapping
+          texture.wrapT = THREE.ClampToEdgeWrapping
+          texture.colorSpace = THREE.SRGBColorSpace
+          texture.needsUpdate = true
+
+          this._textureCache.set(key, texture)
+          this._texturePromises.delete(key)
+          resolve(texture)
+        },
+        undefined,
+        () => {
+          // Remember the failure so we never hammer a missing file.
+          this._textureCache.set(key, null)
+          this._texturePromises.delete(key)
+          resolve(null)
+        },
+      )
+    })
+
+    this._texturePromises.set(key, promise)
+    return promise
+  }
+
+  /**
+   * Create a temporary mini BoxGeometry mesh with block texture.
+   *
+   * Resolves to null when any required texture is unavailable, which keeps the
+   * caller on the `hud:add-item` fallback path instead of throwing.
+   *
+   * @param {object} blockConfig Entry from blocks-config.js
+   * @param {{ x: number, y: number, z: number }} worldPos Corner-based block coords
+   * @returns {Promise<THREE.Mesh | null>} The mini-block mesh, or null when textures are missing.
+   */
+  async _createMiniBlock(blockConfig, worldPos) {
+    const textureKeys = blockConfig?.textureKeys
+
+    if (!textureKeys)
+      return null
+
+    // Six-face texture block (has side, top, bottom)
+    const hasFaces = Boolean(textureKeys.side && textureKeys.top && textureKeys.bottom)
+    const requiredKeys = hasFaces
+      ? [textureKeys.side, textureKeys.top, textureKeys.bottom]
+      : [textureKeys.all]
+
+    if (requiredKeys.some(key => !key))
+      return null
+
+    let textures
+    try {
+      textures = await Promise.all(requiredKeys.map(key => this._loadTexture(key)))
+    }
+    catch {
       return null
     }
 
-    // Helper to get texture with pixelated filtering
-    const getTexture = (key) => {
-      const tex = this.resources.items[key]
-      if (tex) {
-        tex.magFilter = THREE.NearestFilter
-        tex.minFilter = THREE.NearestFilter
-      }
-      return tex
-    }
+    if (textures.some(texture => !texture))
+      return null
 
-    // Create material from texture
-    const makeMaterial = (tex) => {
-      if (!tex)
-        return null
-      return new THREE.MeshBasicMaterial({
-        map: tex,
-        transparent: false,
-      })
-    }
+    const makeMaterial = texture => new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: false,
+      // Unlit, unfogged, untouched by ACES tone mapping: same as the atlas
+      // materials built by the schematic renderer, so colours match the world.
+      fog: false,
+      toneMapped: false,
+    })
+
+    const geometry = new THREE.BoxGeometry(1, 1, 1)
 
     let materials
-
-    // Six-face texture block (has side, top, bottom)
-    if (textureKeys.side && textureKeys.top && textureKeys.bottom) {
-      const sideTex = getTexture(textureKeys.side)
-      const topTex = getTexture(textureKeys.top)
-      const bottomTex = getTexture(textureKeys.bottom)
-
-      if (!sideTex || !topTex || !bottomTex) {
-        geometry.dispose()
-        return null
-      }
-
+    if (hasFaces) {
+      const [sideTex, topTex, bottomTex] = textures
       // BoxGeometry face order: right, left, top, bottom, front, back
       materials = [
         makeMaterial(sideTex), // right
@@ -171,13 +280,7 @@ export default class ItemPickupAnimator {
       ]
     }
     else {
-      // Single texture for all faces
-      const allTex = getTexture(textureKeys.all)
-      if (!allTex) {
-        geometry.dispose()
-        return null
-      }
-      materials = makeMaterial(allTex)
+      materials = makeMaterial(textures[0])
     }
 
     const mesh = new THREE.Mesh(geometry, materials)
@@ -271,8 +374,21 @@ export default class ItemPickupAnimator {
     for (const item of this.activeItems) {
       this.scene.remove(item.mesh)
       item.mesh.geometry.dispose()
-      item.mesh.material.dispose()
+      const material = item.mesh.material
+      if (Array.isArray(material)) {
+        material.forEach(mat => mat.dispose())
+      }
+      else {
+        material.dispose()
+      }
     }
     this.activeItems = []
+
+    // Release cached textures
+    for (const texture of this._textureCache.values()) {
+      texture?.dispose()
+    }
+    this._textureCache.clear()
+    this._texturePromises.clear()
   }
 }

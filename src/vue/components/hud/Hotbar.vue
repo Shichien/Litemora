@@ -4,18 +4,12 @@
  * Keys 1-9 select a slot; mouse wheel cycles while placing (handled in input.js).
  */
 import { useHudStore } from '@pinia/hudStore.js'
-import sources from '@three/sources.js'
-import { resolvePublicAssetUrl } from '@three/utils/public-asset-url.js'
+import { resolveBlockTextureUrl } from '@three/world/terrain/block-texture-files.js'
 import { getBlockTypeById } from '@three/world/terrain/blocks-config.js'
 import { computed, reactive } from 'vue'
 
 const hud = useHudStore()
 
-// Loose block textures were folded into the atlas; icons come from the bundled default pack.
-const PACK_BLOCK_TEXTURE_DIR = 'minecraft-default-pack/assets/minecraft/textures/block'
-const textureFileByName = Object.fromEntries(
-  sources.filter(source => source.type === 'texture').map(source => [source.name, source.path.split('/').pop()]),
-)
 const brokenIcons = reactive(new Set())
 
 function blockIcon(blockId) {
@@ -23,8 +17,11 @@ function blockIcon(blockId) {
   const key = keys?.side || keys?.all || keys?.top
   if (!key)
     return null
-  const file = textureFileByName[key] || `${String(key).replace(/^minecraft:(block\/)?/u, '')}.png`
-  const url = resolvePublicAssetUrl(`${PACK_BLOCK_TEXTURE_DIR}/${file}`)
+
+  const url = resolveBlockTextureUrl(key)
+  if (!url)
+    return null
+
   return brokenIcons.has(url) ? null : url
 }
 
@@ -39,7 +36,6 @@ const slots = computed(() => hud.hotbarItems.map(item => item
 
 const selectedLabel = computed(() => slots.value[hud.selectedSlot]?.label || '')
 </script>
-
 
 <template>
   <div class="hotbar" aria-label="快捷栏">

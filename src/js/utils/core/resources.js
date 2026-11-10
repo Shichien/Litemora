@@ -12,7 +12,6 @@ export default class Resources {
     this.sources = sources
 
     this.items = {}
-    this.sourceMap = new Map(this.sources.map(source => [source.name, source]))
     this.loadingPromises = new Map()
     this._readyEmitted = false
     this.toLoad = this.sources.filter(source => !source.lazy).length
@@ -204,24 +203,6 @@ export default class Resources {
     }
 
     emitter.emit('core:ready')
-  }
-
-  async loadByNames(names = []) {
-    const uniqueNames = [...new Set((names || []).filter(Boolean))]
-    if (uniqueNames.length === 0) {
-      return []
-    }
-
-    const tasks = uniqueNames.map((name) => {
-      const source = this.sourceMap.get(name)
-      if (!source) {
-        return Promise.resolve(null)
-      }
-      return this.loadSource(source)
-    })
-
-    await Promise.all(tasks)
-    return uniqueNames.filter(name => !!this.items[name])
   }
 
   get loadProgress() {
