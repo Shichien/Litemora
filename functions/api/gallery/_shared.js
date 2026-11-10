@@ -1,5 +1,14 @@
 import { getKv, sendError, sendJson } from '../_space.js'
 import { readAccountSession, trimString } from '../auth/_shared.js'
+import {
+  findGalleryManifestItemByIdentifier,
+  normalizeProjectionSlug,
+  resolveProjectionSlug,
+} from './_gallery-slugs.js'
+
+// 这三个函数同时被本地 dev mock 使用, 实现放在 `_gallery-slugs.js` 里, 这里只做再导出,
+// 保持 `functions/api/**` 其它文件原有的 `from './_shared.js'` 导入路径不变.
+export { findGalleryManifestItemByIdentifier, hasLegacyGalleryContent } from './_gallery-slugs.js'
 
 const SPACE_REGEX = /^[a-z0-9-]{3,63}$/
 const MAX_TEXT_LENGTH = 4000
@@ -52,7 +61,7 @@ function sanitizeThumbnailDataUrl(value = '') {
     return ''
   }
 
-  if (!/^data:image\/(jpeg|jpg|png|webp);base64,/iu.test(normalized)) {
+  if (!/^data:image\/(?:jpeg|jpg|png|webp);base64,/iu.test(normalized)) {
     return ''
   }
 
@@ -97,10 +106,6 @@ export function gallerySourceKey(spaceName, itemId) {
 
 export function galleryDiscoverKey() {
   return 'gallery:discover:public'
-}
-
-export function hasLegacyGalleryContent(profile = null, manifest = null) {
-  return !profile && Array.isArray(manifest?.items) && manifest.items.length > 0
 }
 
 export async function readGalleryJson(kv, key, fallbackValue = null) {
@@ -241,19 +246,6 @@ export function createGalleryManifest(spaceName, profile) {
 
 function normalizeVisibility(value) {
   return value === 'private' ? 'private' : 'public'
-}
-
-function normalizeProjectionSlug(value = '') {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, '-')
-    .replace(/^-+|-+$/gu, '')
-    .slice(0, 63)
-}
-
-function resolveProjectionSlug(value = '', fallback = '') {
-  return normalizeProjectionSlug(value) || normalizeProjectionSlug(fallback)
 }
 
 function estimateBase64ByteLength(value = '') {
@@ -461,24 +453,6 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
     createdAt: now,
     updatedAt: now,
   }
-}
-
-export function findGalleryManifestItemByIdentifier(manifest, identifier = '') {
-  const normalizedIdentifier = trimString(identifier)
-  if (!normalizedIdentifier) {
-    return null
-  }
-
-  const normalizedSlug = resolveProjectionSlug(normalizedIdentifier)
-  const items = Array.isArray(manifest?.items) ? manifest.items : []
-
-  return items.find((item) => {
-    if (trimString(item?.id) === normalizedIdentifier) {
-      return true
-    }
-
-    return !!normalizedSlug && resolveProjectionSlug(item?.projectionSlug, item?.title) === normalizedSlug
-  }) || null
 }
 
 export async function loadGalleryItemByIdentifier(kv, spaceName, manifest, identifier = '') {

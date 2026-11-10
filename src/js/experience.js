@@ -35,7 +35,10 @@ export default class Experience {
     this.canvas = canvas
 
     // Panel
+    // tweakpane 走动态 import（仅 `#debug` 需要），这里不阻塞构造：
+    // 面板就绪前 `debug.ui` 是一个延迟节点，会把调用排队等加载完再回放。
     this.debug = new Debug()
+    void this.debug.init()
     this.stats = new Stats()
     this.sizes = new Sizes()
     this.time = new Time()
