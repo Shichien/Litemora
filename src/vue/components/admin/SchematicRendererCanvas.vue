@@ -6,6 +6,7 @@ import {
 } from '@three/world/terrain/minecraft-resource-pack.js'
 import * as THREE from 'three'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { captureRenderedThumbnail, waitForThumbnailReady } from './preview-thumbnail.js'
 
 let schematicRendererModulePromise = null
 
@@ -820,54 +821,25 @@ function setupPreviewBlockPicking(renderer) {
 }
 
 async function capturePreviewThumbnail(options = {}) {
-  const sourceCanvas = canvasRef.value
-  if (!sourceCanvas) {
-    return ''
+  const token = renderToken
+  await waitForThumbnailReady(() => {
+    if (token !== renderToken) {
+      throw new Error('预览文件已改变，请重新创建投影')
+    }
+    if (errorMessage.value) {
+      throw new Error(errorMessage.value)
+    }
+    return !isPreparing.value && Boolean(diagnostics.value)
+      && Boolean(rendererInstance?.schematicManager?.getSchematic?.(SCHEMATIC_ID))
+  }, THUMBNAIL_FRAME_TIMEOUT_MS)
+  if (token !== renderToken) {
+    throw new Error('预览文件已改变，请重新创建投影')
   }
-
-  const targetWidth = Math.max(1, Math.round(Number(options.width || 640)))
-  const targetHeight = Math.max(1, Math.round(Number(options.height || 360)))
-  const quality = Math.min(0.95, Math.max(0.5, Number(options.quality || 0.82)))
-
-  rendererInstance?.renderManager?.requestRender?.()
-  // Hidden or occluded tabs never fire rAF; give up on the fresh frame after a
-  // short wait so projection creation does not hang on the thumbnail.
-  const framePainted = await new Promise((resolve) => {
-    const timer = window.setTimeout(() => resolve(false), THUMBNAIL_FRAME_TIMEOUT_MS)
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.clearTimeout(timer)
-      resolve(true)
-    }))
-  })
-  if (!framePainted) {
-    return ''
+  const schematic = rendererInstance?.schematicManager?.getSchematic?.(SCHEMATIC_ID)
+  if (!schematic?.meshes?.length) {
+    throw new Error('真实模型没有可用于封面的网格，请检查文件后重试')
   }
-
-  const sourceWidth = Number(sourceCanvas.width || sourceCanvas.clientWidth || 0)
-  const sourceHeight = Number(sourceCanvas.height || sourceCanvas.clientHeight || 0)
-  if (!sourceWidth || !sourceHeight) {
-    return ''
-  }
-
-  const exportCanvas = document.createElement('canvas')
-  exportCanvas.width = targetWidth
-  exportCanvas.height = targetHeight
-  const context = exportCanvas.getContext('2d')
-  if (!context) {
-    return ''
-  }
-
-  context.fillStyle = '#081219'
-  context.fillRect(0, 0, targetWidth, targetHeight)
-
-  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight)
-  const drawWidth = sourceWidth * scale
-  const drawHeight = sourceHeight * scale
-  const offsetX = (targetWidth - drawWidth) * 0.5
-  const offsetY = (targetHeight - drawHeight) * 0.5
-
-  context.drawImage(sourceCanvas, 0, 0, sourceWidth, sourceHeight, offsetX, offsetY, drawWidth, drawHeight)
-  return exportCanvas.toDataURL('image/jpeg', quality)
+  return captureRenderedThumbnail(rendererInstance, canvasRef.value, options)
 }
 
 defineExpose({
@@ -981,6 +953,11 @@ async function renderCurrentSchematic() {
     }
 
     const loadedSchematic = renderer.schematicManager?.getSchematic?.(SCHEMATIC_ID)
+    // loadSchematic resolves after registration, before the async batched meshes.
+    await loadedSchematic?.meshesReady
+    if (token !== renderToken) {
+      return
+    }
     loadedSchematic?.setPosition?.(getPreviewOffsetArray())
     renderer.cameraManager?.switchCameraPreset?.('isometric')
     renderer.cameraManager?.focusOnSchematics?.()
@@ -991,6 +968,9 @@ async function renderCurrentSchematic() {
     isPreparing.value = false
   }
   catch (error) {
+    if (token !== renderToken) {
+      return
+    }
     errorMessage.value = error?.message || 'schematic-renderer 渲染失败'
     appendHandshakeStep('真实渲染失败', errorMessage.value)
     isPreparing.value = false

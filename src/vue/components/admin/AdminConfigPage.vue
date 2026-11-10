@@ -533,16 +533,19 @@ async function applySchematic() {
     isApplying.value = true
 
     try {
-      let thumbnailDataUrl = ''
+      let thumbnailDataUrl
       try {
         thumbnailDataUrl = await schematicRendererCanvasRef.value?.capturePreviewThumbnail?.({
           width: 640,
           height: 360,
           quality: 0.82,
-        }) || ''
+        })
+        if (!thumbnailDataUrl?.startsWith('data:image/jpeg;base64,')) {
+          throw new Error('真实预览尚未就绪')
+        }
       }
-      catch {
-        thumbnailDataUrl = ''
+      catch (error) {
+        throw new Error(`封面生成失败，尚未创建投影。文件已保留，请等待模型显示后重新点击创建：${error?.message || '请保持页面可见后重试'}`)
       }
 
       const projectionSpawnPoint = resolveProjectionSpawnPointFromSelection()
@@ -660,8 +663,10 @@ async function applySchematic() {
           : `创建投影失败: ${error.message}`,
         'warning',
       )
-      isApplying.value = false
       return
+    }
+    finally {
+      isApplying.value = false
     }
   }
 
