@@ -154,8 +154,9 @@ async function pending(promise) {
 }
 
 async function openedPopup(h, count = 1) {
-  for (let i = 0; i < 100 && h.opened.length < count; i++) {
-    await new Promise(resolve => setImmediate(resolve))
+  const deadline = Date.now() + 5000
+  while (h.opened.length < count && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 5))
   }
   assert.equal(h.opened.length, count)
   return h.opened[count - 1]

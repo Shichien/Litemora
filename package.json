@@ -47,6 +47,7 @@
     "@antfu/eslint-config": "^4.10.1",
     "@vitejs/plugin-vue": "^5.2.3",
     "eslint": "^9.22.0",
+    "jszip": "^3.10.1",
     "playwright": "^1.59.1",
     "postcss": "^8.4.41",
     "prettier": "^3.3.3",
