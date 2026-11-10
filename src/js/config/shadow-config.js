@@ -16,17 +16,3 @@ export const SHADOW_QUALITY = {
 export const SHADOW_CONFIG = {
   quality: SHADOW_QUALITY.HIGH, // Default to high quality
 }
-
-/**
- * Tree block IDs that should cast shadows in MEDIUM quality
- * Includes all tree trunk and leaves variants
- */
-export const TREE_BLOCK_IDS = new Set([
-  6, // TREE_TRUNK
-  7, // TREE_LEAVES
-  9, // BIRCH_TRUNK
-  10, // BIRCH_LEAVES
-  11, // CHERRY_TRUNK
-  12, // CHERRY_LEAVES
-  13, // CACTUS
-])

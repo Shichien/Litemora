@@ -1,9 +1,9 @@
 <script setup>
+import { useHudStore } from '@pinia/hudStore.js'
 /**
  * PauseMenu - ESC menu when game is paused
  */
 import { useUiStore } from '@pinia/uiStore.js'
-import { useHudStore } from '@pinia/hudStore.js'
 import emitter from '@three/utils/event/event-bus.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
 import { buildPositionShareUrl } from '@three/utils/share-position.js'
@@ -124,39 +124,39 @@ function exitWorld() {
 </script>
 
 <template>
-  <div ref="menuEl" class="pause-menu mc-panel" role="dialog" aria-labelledby="pause-menu-title">
-    <header class="mc-panel__head">
-      <div class="mc-panel__heading">
-        <span class="mc-panel__eyebrow" aria-hidden="true">Paused</span>
-        <h2 id="pause-menu-title" class="menu-title mc-panel__title">
+  <div ref="menuEl" class="pause-menu rs-panel rs-panel--glass rs-panel--wired is-powered" role="dialog" aria-labelledby="pause-menu-title">
+    <header class="rs-panel__head">
+      <div class="rs-panel__heading">
+        <span class="rs-eyebrow" aria-hidden="true">Paused</span>
+        <h2 id="pause-menu-title" class="rs-panel__title">
           {{ $t('menu.paused') }}
         </h2>
       </div>
       <RedstoneTorch :size="32" class="pause-torch" />
     </header>
 
-    <div class="mc-menu mc-panel__body">
-      <button class="mc-button mc-button--primary" @click="ui.toPlaying()">
+    <div class="rs-panel__body rs-panel__stack">
+      <button class="rs-btn rs-btn--primary rs-btn--dot rs-btn--block" @click="ui.toPlaying()">
         <span class="title">{{ $t('menu.resume') }}</span>
         <kbd class="rs-kbd">Esc</kbd>
       </button>
-      <button v-if="ui.pauseMenuConfig.showSettings" class="mc-button" @click="ui.toSettings()">
+      <button v-if="ui.pauseMenuConfig.showSettings" class="rs-btn rs-btn--dot rs-btn--block" @click="ui.toSettings()">
         <span class="title">{{ $t('menu.settings') }}</span>
       </button>
-      <button v-if="ui.pauseMenuConfig.showSkins" class="mc-button" @click="ui.toSkinSelector()">
+      <button v-if="ui.pauseMenuConfig.showSkins" class="rs-btn rs-btn--dot rs-btn--block" @click="ui.toSkinSelector()">
         <span class="title">{{ $t('menu.skins') }}</span>
       </button>
-      <button class="mc-button" @click="copyPositionLink">
+      <button class="rs-btn rs-btn--dot rs-btn--block" @click="copyPositionLink">
         <span class="title">{{ copied ? '已复制链接' : '复制当前位置链接' }}</span>
         <kbd class="rs-kbd">{{ positionLabel }}</kbd>
       </button>
       <div class="pause-divider" aria-hidden="true" />
-      <button class="mc-button mc-button--ghost" @click="exitWorld">
+      <button class="rs-btn rs-btn--ghost rs-btn--dot rs-btn--block rs-muted" @click="exitWorld">
         <span class="title">{{ $t('menu.exitWorld') }}</span>
       </button>
     </div>
 
-    <p class="pause-hint" aria-hidden="true">
+    <p class="pause-hint rs-faint" aria-hidden="true">
       <kbd class="rs-kbd">Tab</kbd>
       <span>切换选项</span>
     </p>
@@ -164,8 +164,60 @@ function exitWorld() {
 </template>
 
 <style scoped>
+/* rs-panel + rs-panel--glass give the surface + blur, rs-panel--wired.is-powered the lit strip.
+   Scoped rules compile to `.pause-menu[data-v-…]`, so they outrank the global .rs-panel rules. */
 .pause-menu {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
   width: min(360px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 72px - 16px);
+  /* rs-panel--glass drops the deepslate tiles the in-game panels sit on; keep them under the glass. */
+  background:
+    linear-gradient(rgba(14, 16, 19, 0.84), rgba(14, 16, 19, 0.9)),
+    var(--rs-tex-deepslate-tiles) 0 0 / 64px 64px;
+  image-rendering: pixelated;
+  /* rs-panel's edge is --rs-line; over a bright world the panel needs the stronger edge. */
+  border-color: var(--rs-line-strong);
+  /* rs-panel's --rs-shadow is a small elevation; a menu floating over the 3D scene needs a deeper one. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 60px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+/* Panel chrome (head/heading/title/body/stack) comes from the .rs-panel__* primitives. */
+
+/* rs-btn is 40px/14px/gap 10px; the in-game menu rows keep their 44px slab, 15px and 12px gap. */
+.pause-menu .rs-btn {
+  --rs-btn-h: 44px;
+  gap: 12px;
+  font-size: 15px;
+}
+
+/* rs-btn centres its label; the menu rows keep the left-aligned title + trailing kbd. */
+.pause-menu .rs-btn .title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.pause-menu .rs-btn .rs-kbd {
+  flex: none;
+}
+
+/* rs-btn--dot's dot is redstone-off, which disappears on the redstone-block fill;
+   the primary row needs the lit dot the old primary button gave it.
+   `.rs-btn.rs-btn--primary` outranks the global `.rs-btn--dot:hover::before` rule. */
+.pause-menu .rs-btn.rs-btn--primary::before {
+  background: #ffd0c0;
+  box-shadow: 0 0 6px rgba(255, 200, 180, 0.9);
+}
+
+.pause-menu .rs-btn.rs-btn--primary:hover::before,
+.pause-menu .rs-btn.rs-btn--primary:focus-visible::before {
+  background: #fff;
 }
 
 .pause-torch {
@@ -178,20 +230,37 @@ function exitWorld() {
   background: var(--rs-line);
 }
 
+/* Colour comes from .rs-faint. */
 .pause-hint {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   margin: 10px 0 0;
-  color: var(--rs-text-3);
   font: 400 11px/1 var(--rs-font-body);
 }
 
 /* Focus is the menu's "selected" state: a lit redstone edge. */
-.mc-button:focus-visible {
+.pause-menu .rs-btn:focus-visible {
   outline: none;
   border-color: var(--rs-red-hot);
   box-shadow: inset 0 0 0 1px rgba(255, 90, 60, 0.5), 0 0 12px rgba(255, 70, 40, 0.25);
+}
+
+@media (max-height: 720px) {
+  .rs-panel__head {
+    padding: 16px 24px 12px;
+  }
+
+  .rs-panel__body {
+    padding: 14px 24px;
+  }
+}
+
+/* rs-btn always animates; the menu buttons used to go still under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .pause-menu .rs-btn {
+    transition: none;
+  }
 }
 </style>

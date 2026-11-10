@@ -152,15 +152,15 @@ watch(
 </script>
 
 <template>
-  <div class="skin-selector mc-panel" role="dialog" aria-labelledby="skin-selector-title">
-    <header class="mc-panel__head">
-      <div class="mc-panel__heading">
-        <span class="mc-panel__eyebrow" aria-hidden="true">Skins</span>
-        <h2 id="skin-selector-title" class="skin-title mc-panel__title">
+  <div class="skin-selector rs-panel rs-panel--glass rs-panel--wired is-powered" role="dialog" aria-labelledby="skin-selector-title">
+    <header class="rs-panel__head">
+      <div class="rs-panel__heading">
+        <span class="rs-eyebrow" aria-hidden="true">Skins</span>
+        <h2 id="skin-selector-title" class="rs-panel__title">
           {{ $t('menu.selectSkin') }}
         </h2>
       </div>
-      <span class="mc-hint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
+      <span class="rs-panel__hint rs-faint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
     </header>
 
     <div class="skin-body">
@@ -237,7 +237,7 @@ watch(
       </div>
     </div>
 
-    <footer class="mc-panel__foot">
+    <footer class="rs-panel__foot">
       <!-- 皮肤作者致谢 -->
       <div class="skin-credits">
         <span class="credits-text">{{ $t('skin.credits') }}</span>
@@ -259,12 +259,12 @@ watch(
       </div>
 
       <!-- 操作按钮 -->
-      <div class="mc-menu double skin-actions">
-        <button class="mc-button mc-button--ghost mc-button--center half" @click="cancel">
+      <div class="rs-panel__row skin-actions">
+        <button class="rs-btn rs-btn--ghost rs-muted" @click="cancel">
           <span class="title">{{ $t('common.cancel') }}</span>
         </button>
         <button
-          class="mc-button mc-button--primary mc-button--center half"
+          class="rs-btn rs-btn--primary"
           :disabled="skinStore.previewSkinId === skinStore.currentSkinId"
           @click="apply"
         >
@@ -276,8 +276,34 @@ watch(
 </template>
 
 <style scoped>
+/* rs-panel + rs-panel--glass give the surface + blur, rs-panel--wired.is-powered the lit strip.
+   Scoped rules compile to `.skin-selector[data-v-…]`, so they outrank the global .rs-panel rules. */
 .skin-selector {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
   width: min(900px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 72px - 16px);
+  /* rs-panel--glass drops the deepslate tiles the in-game panels sit on; keep them under the glass. */
+  background:
+    linear-gradient(rgba(14, 16, 19, 0.84), rgba(14, 16, 19, 0.9)),
+    var(--rs-tex-deepslate-tiles) 0 0 / 64px 64px;
+  image-rendering: pixelated;
+  /* rs-panel's edge is --rs-line; over a bright world the panel needs the stronger edge. */
+  border-color: var(--rs-line-strong);
+  /* rs-panel's --rs-shadow is a small elevation; a menu floating over the 3D scene needs a deeper one. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 60px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+/* Panel chrome comes from the .rs-panel__* primitives. */
+
+/* rs-btn's default is 40px/14px; these footer slabs stay at the menu's 44px/15px. */
+.rs-panel__row .rs-btn {
+  --rs-btn-h: 44px;
+  min-width: 128px;
+  font-size: 15px;
 }
 
 .skin-body {
@@ -344,7 +370,7 @@ watch(
 .skin-preview {
   position: relative;
   /* Fixed height (not aspect-ratio) so the frame fills its column; the scene re-fits its camera on mount. */
-  height: clamp(300px, calc(100vh - var(--mc-overlay-top) - 16px - 210px), 480px);
+  height: clamp(300px, calc(100vh - 72px - 16px - 210px), 480px);
   overflow: hidden;
   border: 1px solid var(--rs-line-strong);
   border-radius: var(--rs-radius);
@@ -567,6 +593,14 @@ watch(
 }
 
 @media (max-height: 720px) {
+  .rs-panel__head {
+    padding: 16px 24px 12px;
+  }
+
+  .rs-panel__foot {
+    padding: 12px 24px 14px;
+  }
+
   .skin-body {
     padding: 14px 24px;
   }
@@ -619,7 +653,7 @@ watch(
     align-items: center;
   }
 
-  .mc-panel__foot {
+  .rs-panel__foot {
     flex-direction: column;
     align-items: stretch;
   }
@@ -628,6 +662,11 @@ watch(
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner {
     animation: none;
+  }
+
+  /* rs-btn always animates; the menu buttons used to go still under reduced motion. */
+  .skin-selector .rs-btn {
+    transition: none;
   }
 }
 </style>

@@ -9,7 +9,6 @@
 // crisp at multiples of 8px (8 / 16 / 24 / 32 / 48 / 64).
 //
 // Vue helpers live in src/vue/components/redstone/:
-//   RedstoneWire  - SVG dust line, dim when off, glowing + signal pulse when powered
 //   RedstoneTorch - pixel torch texture with flickering glow
 //   IsoScene      - CSS-3D isometric voxel scene using real pack textures
 // ============================================================================
@@ -114,6 +113,72 @@
   background: rgba(14, 16, 19, 0.78);
   backdrop-filter: blur(10px) saturate(1.1);
   -webkit-backdrop-filter: blur(10px) saturate(1.1);
+}
+
+// Panel chrome primitives. Menus used to redefine these locally in every
+// component (formerly the .mc-panel__* block in _tokens.scss); they live here
+// now so a menu only styles what is genuinely different about it.
+.rs-panel__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--rs-line);
+}
+
+.rs-panel__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rs-panel__title {
+  margin: 0;
+  color: var(--rs-text);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.rs-panel__body {
+  padding: 18px 24px;
+}
+
+.rs-panel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--rs-line);
+}
+
+// Vertical stack of full-width rows, the default menu action list.
+.rs-panel__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+// Horizontal action row pinned to the end, for paired buttons.
+.rs-panel__row {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+// Inline hint line, typically a trailing "Esc 返回" marker next to the title.
+.rs-panel__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 // Redstone strip along the top edge; lights up on hover of an .rs-powerable parent or with .is-powered.

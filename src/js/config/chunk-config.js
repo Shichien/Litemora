@@ -8,10 +8,3 @@ export const CHUNK_BASIC_CONFIG = {
   useIndexedDB: true, // 是否使用 IndexedDB 进行持久化存储，适合保存大型原理图语义快照
   autoSaveDelay: 2000, // 自动保存延迟（毫秒），玩家修改地形后的节流保存时间
 }
-
-// 渲染参数（影响视觉效果，可实时调整）
-export const RENDER_PARAMS = {
-  scale: 1, // 整体缩放倍率（范围: 0.1-3），控制所有 chunk 的整体大小
-  heightScale: 1, // 高度缩放倍率（范围: 0.5-5），控制地形高度的拉伸程度
-  showOresOnly: false, // 仅显示矿产模式，true 时只渲染矿石类方块，用于调试
-}

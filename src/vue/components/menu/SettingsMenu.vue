@@ -37,15 +37,15 @@ function adjustSensitivity(delta) {
 </script>
 
 <template>
-  <div class="settings-menu mc-panel" role="dialog" aria-labelledby="settings-menu-title">
-    <header class="mc-panel__head">
-      <div class="mc-panel__heading">
-        <span class="mc-panel__eyebrow" aria-hidden="true">Settings</span>
-        <h2 id="settings-menu-title" class="menu-title mc-panel__title">
+  <div class="settings-menu rs-panel rs-panel--glass rs-panel--wired is-powered" role="dialog" aria-labelledby="settings-menu-title">
+    <header class="rs-panel__head">
+      <div class="rs-panel__heading">
+        <span class="rs-eyebrow" aria-hidden="true">Settings</span>
+        <h2 id="settings-menu-title" class="rs-panel__title">
           {{ $t('settings.title') }}
         </h2>
       </div>
-      <span class="mc-hint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
+      <span class="rs-panel__hint rs-faint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
     </header>
 
     <div class="settings-content rs-scroll">
@@ -213,12 +213,12 @@ function adjustSensitivity(delta) {
     </div>
 
     <!-- Buttons -->
-    <footer class="mc-panel__foot">
-      <div class="mc-menu double settings-actions">
-        <button class="mc-button mc-button--ghost mc-button--center half" @click="settings.resetToDefaults()">
+    <footer class="rs-panel__foot">
+      <div class="rs-panel__row settings-actions">
+        <button class="rs-btn rs-btn--ghost rs-muted" @click="settings.resetToDefaults()">
           <span class="title">{{ $t('settings.reset') }}</span>
         </button>
-        <button class="mc-button mc-button--primary mc-button--center half" @click="ui.exitSettings()">
+        <button class="rs-btn rs-btn--primary" @click="ui.exitSettings()">
           <span class="title">{{ $t('settings.done') }}</span>
         </button>
       </div>
@@ -227,9 +227,34 @@ function adjustSensitivity(delta) {
 </template>
 
 <style scoped>
+/* rs-panel + rs-panel--glass give the surface + blur, rs-panel--wired.is-powered the lit strip.
+   Scoped rules compile to `.settings-menu[data-v-…]`, so they outrank the global .rs-panel rules. */
 .settings-menu {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
   width: min(880px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   max-height: min(760px, calc(100vh - 32px));
+  /* rs-panel--glass drops the deepslate tiles the in-game panels sit on; keep them under the glass. */
+  background:
+    linear-gradient(rgba(14, 16, 19, 0.84), rgba(14, 16, 19, 0.9)),
+    var(--rs-tex-deepslate-tiles) 0 0 / 64px 64px;
+  image-rendering: pixelated;
+  /* rs-panel's edge is --rs-line; over a bright world the panel needs the stronger edge. */
+  border-color: var(--rs-line-strong);
+  /* rs-panel's --rs-shadow is a small elevation; a menu floating over the 3D scene needs a deeper one. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 60px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+/* Panel chrome comes from the .rs-panel__* primitives. */
+
+/* rs-btn's default is 40px/14px; these footer slabs stay at the menu's 44px/15px. */
+.rs-panel__row .rs-btn {
+  --rs-btn-h: 44px;
+  min-width: 128px;
+  font-size: 15px;
 }
 
 .settings-content {
@@ -393,6 +418,14 @@ function adjustSensitivity(delta) {
 }
 
 @media (max-height: 720px) {
+  .rs-panel__head {
+    padding: 16px 24px 12px;
+  }
+
+  .rs-panel__foot {
+    padding: 12px 24px 14px;
+  }
+
   .settings-content {
     padding: 14px 24px;
   }
@@ -401,6 +434,13 @@ function adjustSensitivity(delta) {
     gap: 8px;
     margin-bottom: 12px;
     padding: 12px 14px;
+  }
+}
+
+/* rs-btn always animates; the menu buttons used to go still under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .settings-menu .rs-btn {
+    transition: none;
   }
 }
 </style>

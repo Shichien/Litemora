@@ -9,14 +9,6 @@
   font-display: swap;
 }
 
-@font-face {
-  font-family: 'MinecraftV2';
-  src: url('/fonts/MinecraftV2.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
 // Inheritable root font. `html body` outranks Tailwind preflight's `html { font-family }`, which loads later.
 // (A `*` rule here used to stop nested elements from inheriting a parent's font, e.g. spans inside .rs-pixel.)
 html body {
@@ -30,330 +22,10 @@ textarea {
   font: inherit;
 }
 
-.mc-text {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif !important;
-  font-size: 14px;
-  font-weight: 400;
-}
-
-// Menus use the inherited body stack. The old `.menu-overlay.lang-* *` font overrides were removed:
-// they forced the body font onto every descendant and so blocked the pixel font (.rs-pixel etc.).
-// UiRoot still sets `lang-<locale>` on the overlay as a hook.
-
-// ========================================
-// In-game menu system (pause / settings / skins)
-// Deepslate + redstone look; colours and textures come from _redstone.scss custom properties.
-// Class names are kept for existing markup and tests (`.pause-menu .mc-button`).
-// ========================================
-
-// Mixin: Flex center both directions
 @mixin flex-center-hv {
   display: flex;
   justify-content: center;
   align-items: center;
-}
-
-:root {
-  --mc-ui-scale: 1;
-  --mc-btn-height: 44px;
-  --mc-btn-width: min(320px, 86vw);
-  --mc-btn-gap: 8px;
-  --mc-btn-font-size: 15px;
-  --mc-overlay-top: 72px;
-  --mc-panel-max-h: calc(100vh - var(--mc-overlay-top) - 16px);
-}
-
-// ========================================
-// MC Menu Container: a column of buttons
-// ========================================
-.mc-menu {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--mc-btn-gap);
-
-  // Button row (e.g. Cancel / Apply)
-  &.double {
-    flex-direction: row;
-    justify-content: flex-end;
-  }
-}
-
-// ========================================
-// MC Button: deepslate slab with a redstone dust dot that powers on with hover / focus.
-// Markup may add `.rs-btn .rs-btn--dot` etc.; the rules here keep the button self-contained too.
-// ========================================
-.mc-button {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: var(--mc-btn-height);
-  width: 100%;
-  padding: 0 16px;
-  box-sizing: border-box;
-  overflow: hidden;
-  border: 1px solid var(--rs-line-strong);
-  border-radius: var(--rs-radius);
-  background: linear-gradient(180deg, var(--rs-bg-4), var(--rs-bg-3));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
-  color: var(--rs-text);
-  font: 500 var(--mc-btn-font-size) / 1 var(--rs-font-body);
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-  user-select: none;
-  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.05s;
-
-  // Redstone dust dot
-  &::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    flex: none;
-    background: var(--rs-red-off);
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
-    transition: background 0.15s, box-shadow 0.15s;
-  }
-
-  &:hover,
-  &:focus-visible {
-    border-color: rgba(255, 74, 46, 0.7);
-    color: #fff;
-    background: linear-gradient(180deg, #30353d, var(--rs-bg-3));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 0 rgba(0, 0, 0, 0.35), var(--rs-glow-soft);
-
-    &::before {
-      background: var(--rs-red-hot);
-      box-shadow: var(--rs-glow);
-    }
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--rs-red-hot);
-    outline-offset: 2px;
-  }
-
-  &:active {
-    transform: translateY(1px);
-    box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.35);
-  }
-
-  .title {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font: inherit;
-    color: inherit;
-  }
-
-  // Trailing keyboard hint inside a button
-  .rs-kbd {
-    flex: none;
-  }
-
-  // Redstone-block primary action
-  &.mc-button--primary {
-    border-color: #ff5a3c;
-    background:
-      linear-gradient(180deg, rgba(255, 90, 60, 0.32), rgba(110, 10, 0, 0.5)),
-      var(--rs-tex-redstone-block) 0 0 / 32px 32px;
-    image-rendering: pixelated;
-    color: #fff;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 0 14px rgba(255, 40, 20, 0.28);
-
-    &::before {
-      background: #ffd0c0;
-      box-shadow: 0 0 6px rgba(255, 200, 180, 0.9);
-    }
-
-    &:hover,
-    &:focus-visible {
-      border-color: #ff8a6c;
-      background:
-        linear-gradient(180deg, rgba(255, 120, 90, 0.34), rgba(140, 16, 0, 0.42)),
-        var(--rs-tex-redstone-block) 0 0 / 32px 32px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), inset 0 -2px 0 rgba(0, 0, 0, 0.3), var(--rs-glow);
-
-      &::before {
-        background: #fff;
-      }
-    }
-  }
-
-  // Quiet action (exit, reset)
-  &.mc-button--ghost {
-    background: transparent;
-    border-color: var(--rs-line);
-    box-shadow: none;
-    color: var(--rs-text-2);
-
-    &:hover,
-    &:focus-visible {
-      background: rgba(255, 255, 255, 0.04);
-      color: var(--rs-text);
-    }
-  }
-
-  // Centred label, no dot (short buttons in a row)
-  &.mc-button--center {
-    justify-content: center;
-    text-align: center;
-
-    &::before {
-      display: none;
-    }
-
-    .title {
-      flex: none;
-    }
-  }
-
-  // Modifier: full width
-  &.full {
-    width: 100%;
-    height: 100%;
-  }
-
-  // Modifier: half width (for double layout)
-  &.half {
-    width: auto;
-    min-width: 128px;
-  }
-
-  // Modifier: small button
-  &.small {
-    width: 200px;
-    height: 36px;
-  }
-
-  // Modifier: disabled state
-  &:disabled,
-  &.disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-}
-
-// ========================================
-// MC Input Field
-// ========================================
-.mc-input {
-  height: 40px;
-  width: 100%;
-  padding: 0 12px;
-  border: 1px solid var(--rs-line-strong);
-  border-radius: var(--rs-radius);
-  background: var(--rs-bg-0);
-  color: var(--rs-text);
-  font: 400 14px/1 var(--rs-font-body);
-
-  &:focus {
-    outline: none;
-    border-color: var(--rs-red-hot);
-    box-shadow: 0 0 0 3px var(--rs-red-soft);
-  }
-
-  &::placeholder {
-    color: var(--rs-text-3);
-  }
-}
-
-// ========================================
-// MC Panel: glass deepslate card over the dimmed world, with a redstone strip on top.
-// Header / footer helpers are shared by the pause, settings and skin menus.
-// ========================================
-.mc-panel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  max-width: calc(100vw - 32px);
-  max-height: var(--mc-panel-max-h);
-  border: 1px solid var(--rs-line-strong);
-  border-radius: var(--rs-radius-lg);
-  background:
-    linear-gradient(rgba(14, 16, 19, 0.84), rgba(14, 16, 19, 0.9)),
-    var(--rs-tex-deepslate-tiles) 0 0 / 64px 64px;
-  image-rendering: pixelated;
-  backdrop-filter: blur(10px) saturate(1.1);
-  -webkit-backdrop-filter: blur(10px) saturate(1.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 60px rgba(0, 0, 0, 0.55);
-  color: var(--rs-text);
-  pointer-events: auto;
-
-  // Powered redstone strip along the top edge
-  &::before {
-    content: '';
-    position: absolute;
-    left: 16px;
-    right: 16px;
-    top: -1px;
-    height: 2px;
-    background: var(--rs-red-hot);
-    box-shadow: var(--rs-glow);
-  }
-}
-
-.mc-panel__head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 24px 16px;
-  border-bottom: 1px solid var(--rs-line);
-}
-
-.mc-panel__heading {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.mc-panel__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--rs-red-hot);
-  font: 400 8px/16px var(--rs-font-pixel);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.mc-panel__title {
-  margin: 0;
-  color: var(--rs-text);
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-}
-
-.mc-panel__body {
-  padding: 18px 24px;
-}
-
-.mc-panel__foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 24px 18px;
-  border-top: 1px solid var(--rs-line);
-}
-
-// "ESC 返回" style hint
-.mc-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--rs-text-3);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 // ========================================
@@ -368,7 +40,7 @@ textarea {
   // Dimmed world behind pause / settings / skins: darker at the edges, so the panel reads on bright scenes.
   // Top padding keeps panels clear of the world breadcrumbs (App.vue, top-left, z 120).
   &.dark {
-    padding: var(--mc-overlay-top) 16px 16px;
+    padding: 72px 16px 16px;
     box-sizing: border-box;
     background:
       radial-gradient(ellipse 70% 75% at 50% 50%, rgba(8, 9, 11, 0.42), rgba(8, 9, 11, 0.78)),
@@ -383,21 +55,21 @@ textarea {
 }
 
 @media (max-height: 720px) {
-  .mc-panel__head {
+  .rs-panel__head {
     padding: 16px 24px 12px;
   }
 
-  .mc-panel__body {
+  .rs-panel__body {
     padding: 14px 24px;
   }
 
-  .mc-panel__foot {
+  .rs-panel__foot {
     padding: 12px 24px 14px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mc-button {
+  .rs-btn {
     transition: none;
   }
 }

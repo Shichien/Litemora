@@ -457,17 +457,6 @@ function mergeToSingleGeometry(geometries = []) {
   return merged
 }
 
-function centeredBoxToCollisionBox(box) {
-  return [
-    box.minX + 0.5,
-    box.minY + 0.5,
-    box.minZ + 0.5,
-    box.maxX + 0.5,
-    box.maxY + 0.5,
-    box.maxZ + 0.5,
-  ]
-}
-
 function collisionBoxToCenteredBox(box = []) {
   return {
     minX: Number(box[0]) - 0.5,
@@ -533,23 +522,14 @@ function createStairGeometry({ half = 'bottom', facing = 'north', shape = 'strai
 const stairGeometries = {
 }
 
-const slabBottomCollisionBoxes = [[0, 0, 0, 1, 0.5, 1]]
-const slabTopCollisionBoxes = [[0, 0.5, 0, 1, 1, 1]]
-const stairCollisionBoxesCache = new Map()
-
 const fenceGeometryCache = new Map()
 ;['bottom', 'top'].forEach((half) => {
   ;['north', 'south', 'east', 'west'].forEach((facing) => {
     ;['straight', 'inner_left', 'inner_right', 'outer_left', 'outer_right'].forEach((shape) => {
       const key = `stair_${half}_${facing}_${shape}`
       stairGeometries[key] = createStairGeometry({ half, facing, shape })
-      stairCollisionBoxesCache.set(
-        key,
-        buildStairBoxesCentered({ half, facing, shape }).map(centeredBoxToCollisionBox),
-      )
       if (shape === 'straight') {
         stairGeometries[`stair_${half}_${facing}`] = stairGeometries[key]
-        stairCollisionBoxesCache.set(`stair_${half}_${facing}`, stairCollisionBoxesCache.get(key))
       }
     })
   })
@@ -1115,20 +1095,4 @@ export function getGeometryForBlockType(blockType) {
   }
 
   return sharedGeometry
-}
-
-export function getCollisionBoxesForBlockType(blockType) {
-  const geometryType = String(blockType?.geometryType || 'cube')
-
-  if (geometryType === 'slab_bottom') {
-    return slabBottomCollisionBoxes.map(box => [...box])
-  }
-  if (geometryType === 'slab_top') {
-    return slabTopCollisionBoxes.map(box => [...box])
-  }
-  if (stairCollisionBoxesCache.has(geometryType)) {
-    return stairCollisionBoxesCache.get(geometryType).map(box => [...box])
-  }
-
-  return null
 }
