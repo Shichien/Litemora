@@ -1,11 +1,5 @@
 <script setup>
-import {
-  clearAdminAuthSession,
-  getAuthProviders,
-  isLocalDevAuthSession,
-  loadAdminAuthSession,
-  signInWithProvider,
-} from '@three/auth/admin-auth.js'
+import { isLocalDevAuthSession } from '@three/auth/admin-auth.js'
 import {
   claimGallerySpace,
   deleteGalleryItem,
@@ -21,6 +15,7 @@ import SpaceBreadcrumbs from '@ui-components/space/SpaceBreadcrumbs.vue'
 import SpaceNotFoundPage from '@ui-components/space/SpaceNotFoundPage.vue'
 import SpaceProfileSettingsPage from '@ui-components/space/SpaceProfileSettingsPage.vue'
 import SpaceWorldCard from '@ui-components/space/SpaceWorldCard.vue'
+import { useGalleryAuth } from '@ui/composables/useGalleryAuth.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -34,9 +29,18 @@ const props = defineProps({
 const LITEMORA_REPOSITORY_URL = 'https://github.com/Shichien/Litemora'
 const PROFILE_SETTINGS_HASH = '#profile-settings'
 
-const authProviders = getAuthProviders()
+const {
+  authProviders,
+  authSession,
+  isAuthenticating,
+  authError,
+  handleProviderAuth,
+  logout: clearAuthSession,
+} = useGalleryAuth({
+  onAuthenticated: session => handleSignedIn(session),
+  onSessionChange: () => handleAuthSessionChanged(),
+})
 
-const authSession = ref(loadAdminAuthSession())
 const galleryProfile = ref(null)
 const galleryItems = ref([])
 const galleryViewer = ref({
@@ -45,10 +49,8 @@ const galleryViewer = ref({
   canManage: false,
 })
 
-const isAuthenticating = ref(false)
 const isLoading = ref(false)
 const loadError = ref('')
-const authError = ref('')
 const actionMessage = ref('')
 const actionTone = ref('neutral')
 const pendingDeleteItemId = ref('')
@@ -84,9 +86,21 @@ const viewerDisplayName = computed(() => {
   }
   return account.name || account.email || account.id
 })
+
 const viewerEmail = computed(() => authSession.value?.account?.email || '')
 const viewerAvatar = computed(() => authSession.value?.account?.avatar || '')
 const viewerInitial = computed(() => viewerDisplayName.value.slice(0, 1).toUpperCase() || 'L')
+
+function handleSignedIn() {
+  setActionMessage(`已登录为 ${viewerDisplayName.value || '当前账户'}`, 'success')
+  return loadWorlds()
+}
+
+function handleAuthSessionChanged() {
+  authMenuOpen.value = false
+  syncCurrentView()
+  void loadWorlds()
+}
 
 const isLocalDevSession = computed(() => isLocalDevAuthSession(authSession.value))
 const isProfileSettingsView = computed(() => currentView.value === 'profile-settings')
@@ -412,27 +426,6 @@ async function loadWorlds() {
   }
 }
 
-async function handleProviderAuth(provider) {
-  if (isAuthenticating.value) {
-    return
-  }
-
-  isAuthenticating.value = true
-  authError.value = ''
-
-  try {
-    authSession.value = await signInWithProvider(provider)
-    setActionMessage(`已登录为 ${viewerDisplayName.value || '当前账户'}`, 'success')
-    await loadWorlds()
-  }
-  catch (error) {
-    authError.value = error?.message || '登录失败'
-  }
-  finally {
-    isAuthenticating.value = false
-  }
-}
-
 function getProjectionBlockCount(item) {
   const preview = resolveProjectionPreview(item)
   return Number(preview?.totalSolidBlocks || item?.schematic?.blockCount || 0)
@@ -445,8 +438,7 @@ function logout() {
     return
   }
 
-  clearAdminAuthSession()
-  authSession.value = null
+  clearAuthSession()
   galleryProfile.value = null
   galleryItems.value = []
   galleryViewer.value = {
@@ -489,13 +481,6 @@ function enterProjection(itemId) {
   navigateToUrl(buildSpaceProjectionUrl(props.spaceName, itemId))
 }
 
-function handleAuthChanged(event) {
-  authSession.value = event?.detail?.session || loadAdminAuthSession()
-  authMenuOpen.value = false
-  syncCurrentView()
-  void loadWorlds()
-}
-
 function handleGalleryChanged(event) {
   const detailSpaceName = String(event?.detail?.spaceName || '').trim().toLowerCase()
   if (!detailSpaceName || detailSpaceName !== String(props.spaceName || '').trim().toLowerCase()) {
@@ -506,7 +491,6 @@ function handleGalleryChanged(event) {
 }
 
 onMounted(() => {
-  window.addEventListener('admin-auth-changed', handleAuthChanged)
   window.addEventListener('gallery:changed', handleGalleryChanged)
   window.addEventListener('popstate', handleRouteChanged)
   window.addEventListener('hashchange', handleRouteChanged)
@@ -519,7 +503,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('admin-auth-changed', handleAuthChanged)
   window.removeEventListener('gallery:changed', handleGalleryChanged)
   window.removeEventListener('popstate', handleRouteChanged)
   window.removeEventListener('hashchange', handleRouteChanged)

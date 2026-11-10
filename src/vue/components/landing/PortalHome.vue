@@ -1,11 +1,5 @@
 <script setup>
-import {
-  clearAdminAuthSession,
-  getAuthProviders,
-  isLocalDevAuthSession,
-  loadAdminAuthSession,
-  signInWithProvider,
-} from '@three/auth/admin-auth.js'
+import { isLocalDevAuthSession } from '@three/auth/admin-auth.js'
 import {
   checkSpaceNameAvailability,
   claimGallerySpace,
@@ -16,6 +10,7 @@ import { resolvePublicAssetUrl } from '@three/utils/public-asset-url.js'
 import { buildSpaceUrl, isValidSpaceName, normalizeSpaceName } from '@three/utils/space-context.js'
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
 import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
+import { useGalleryAuth } from '@ui/composables/useGalleryAuth.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PortalDiscoverCard from './PortalDiscoverCard.vue'
@@ -23,16 +18,25 @@ import PortalSignalSection from './PortalSignalSection.vue'
 import { heroBuildScene, iconBlock, PLACEHOLDER_BUILD_COUNT } from './portal-scenes.js'
 
 const { t } = useI18n()
-const authProviders = getAuthProviders()
 const authMenuOpen = ref(false)
-const authSession = ref(loadAdminAuthSession())
 const authMenuRef = ref(null)
+const {
+  authProviders,
+  authSession,
+  isAuthenticating,
+  authError,
+  isLoggedIn,
+  currentAccount,
+  providerLabel,
+  loginWithProvider,
+  logout: signOut,
+} = useGalleryAuth({
+  onAuthenticated: () => {
+    authMenuOpen.value = false
+  },
+})
 const discoverFeedItems = ref([])
 const thumbnailManifest = ref({})
-
-function syncAuthSession(event = null) {
-  authSession.value = event?.detail?.session || loadAdminAuthSession()
-}
 
 function handleDocumentClick(event) {
   if (!authMenuRef.value?.contains?.(event.target)) {
@@ -71,10 +75,6 @@ function handleGalleryChanged() {
 }
 
 // Auth State
-const isAuthenticating = ref(false)
-const authError = ref('')
-const isLoggedIn = computed(() => !!authSession.value?.account?.id)
-const currentAccount = computed(() => authSession.value?.account || null)
 const currentAccountName = computed(() => {
   const account = currentAccount.value
   return account?.name || account?.email || account?.id || 'Guest'
@@ -87,28 +87,8 @@ const currentAccountRole = computed(() => isLocalDevAuthSession(authSession.valu
 const currentAccountAvatar = computed(() => currentAccount.value?.avatar || '')
 const currentAccountInitial = computed(() => currentAccountName.value.slice(0, 1).toUpperCase() || 'L')
 
-async function loginWithProvider(providerId) {
-  if (isAuthenticating.value) {
-    return
-  }
-
-  isAuthenticating.value = true
-  authError.value = ''
-  try {
-    authSession.value = await signInWithProvider(providerId)
-    authMenuOpen.value = false
-  }
-  catch (error) {
-    authError.value = error?.message || '登录失败'
-  }
-  finally {
-    isAuthenticating.value = false
-  }
-}
-
 function logout() {
-  clearAdminAuthSession()
-  authSession.value = null
+  signOut()
   authMenuOpen.value = false
 }
 
@@ -159,14 +139,6 @@ async function handleSubmit() {
   finally {
     isCheckingSpaceAvailability.value = false
   }
-}
-
-function providerLabel(provider) {
-  if (!provider?.label) {
-    return '登录'
-  }
-
-  return `使用 ${provider.label} 登录`
 }
 
 const defaultDiscoverSpaces = [
@@ -407,7 +379,6 @@ function setupObservers() {
 }
 
 onMounted(async () => {
-  window.addEventListener('admin-auth-changed', syncAuthSession)
   window.addEventListener('gallery:changed', handleGalleryChanged)
   document.addEventListener('click', handleDocumentClick)
   void loadDiscoverFeed()
@@ -440,7 +411,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.clearTimeout(eggClickTimer)
   window.clearTimeout(eggResetTimer)
-  window.removeEventListener('admin-auth-changed', syncAuthSession)
   window.removeEventListener('gallery:changed', handleGalleryChanged)
   document.removeEventListener('click', handleDocumentClick)
   sectionObserver?.disconnect()

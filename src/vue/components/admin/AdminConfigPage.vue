@@ -1,9 +1,5 @@
 <script setup>
-import {
-  getAuthProviders,
-  loadAdminAuthSession,
-  signInWithProvider,
-} from '@three/auth/admin-auth.js'
+import { loadAdminAuthSession } from '@three/auth/admin-auth.js'
 import { PRESET_NAMES } from '@three/config/settings-presets.js'
 import {
   buildSpaceProjectionUrl,
@@ -48,20 +44,29 @@ import {
 import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
 import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
+import { useGalleryAuth } from '@ui/composables/useGalleryAuth.js'
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-const authProviders = getAuthProviders()
-const authSession = ref(loadAdminAuthSession())
-const isAuthenticating = ref(false)
-const authError = ref('')
+const {
+  authProviders,
+  isAuthenticating,
+  authError,
+  currentAccount,
+  currentAccountId,
+  handleProviderAuth,
+} = useGalleryAuth({
+  mode: 'admin',
+  onAuthenticated: async (session) => {
+    setStatus(`已使用 ${session.account.provider} 登录: ${session.account.name || session.account.email || session.account.id}`, 'success')
+    await hydrateCurrentAccountData()
+  },
+})
 const configDraft = ref(structuredClone(DEFAULT_BACKEND_WORLD_CONFIG))
 const statusText = ref('')
 const statusType = ref('neutral')
 const isApplying = ref(false)
 
-const currentAccount = computed(() => authSession.value?.account || null)
-const currentAccountId = computed(() => currentAccount.value?.id || '')
 const currentAccountDisplay = computed(() => {
   const account = currentAccount.value
   if (!account) {
@@ -334,27 +339,6 @@ async function hydrateCurrentAccountData() {
   await loadCurrentConfig()
   await restorePersistedSchematic()
   await loadCurrentResourcePackInfo()
-}
-
-async function handleProviderAuth(provider) {
-  if (isAuthenticating.value) {
-    return
-  }
-
-  isAuthenticating.value = true
-  authError.value = ''
-  try {
-    const session = await signInWithProvider(provider)
-    authSession.value = session
-    setStatus(`已使用 ${session.account.provider} 登录: ${session.account.name || session.account.email || session.account.id}`, 'success')
-    await hydrateCurrentAccountData()
-  }
-  catch (error) {
-    authError.value = error?.message || '登录失败'
-  }
-  finally {
-    isAuthenticating.value = false
-  }
 }
 
 async function loadCurrentConfig() {
