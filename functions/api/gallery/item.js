@@ -1,3 +1,4 @@
+import { findBuiltinEntry, loadBuiltinReadState } from './_builtin.js'
 import { readAccountSession } from '../auth/_shared.js'
 import {
   canManageGallery,
@@ -30,7 +31,7 @@ function getRequestedItemId(request) {
 
 export async function onRequestGet(context) {
   try {
-    const state = await loadGalleryState(context)
+    const state = await loadBuiltinReadState(context)
     if (state.response) {
       return state.response
     }
@@ -40,13 +41,15 @@ export async function onRequestGet(context) {
       return sendError(400, 'missing_item_id', 'A gallery item id is required')
     }
 
-    const { item } = await loadGalleryItemByIdentifier(state.kv, state.spaceName, state.manifest, itemId)
+    const stored = await loadGalleryItemByIdentifier(state.kv, state.spaceName, state.manifest, itemId)
+    const builtin = stored.item ? null : await findBuiltinEntry(context, state, itemId)
+    const item = stored.item || builtin?.item
     if (!item) {
       return sendError(404, 'gallery_item_not_found')
     }
 
     const viewer = await readAccountSession(context.request, context.env)
-    const canManage = canManageGallery(viewer, state.profile)
+    const canManage = !builtin && canManageGallery(viewer, state.profile)
     if (item.visibility === 'private' && !canManage) {
       return sendError(404, 'gallery_item_not_found')
     }

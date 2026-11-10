@@ -1,3 +1,4 @@
+import { builtinWorldRead } from './gallery/_builtin.js'
 import {
   DEFAULT_WORLD_STATE,
   getProjectionId,
@@ -49,10 +50,13 @@ export async function onRequestGet(context) {
     const projectionId = getProjectionId(context.request)
     const kv = getKv(context.env)
     const key = getScopedKey('world-state', spaceName, projectionId)
+    const builtin = await builtinWorldRead(context, spaceName, projectionId)
+    if (builtin.response)
+      return builtin.response
     const fallback = {
       ...DEFAULT_WORLD_STATE,
       worldState: {
-        schematicOnlyMode: false,
+        schematicOnlyMode: !!builtin.entry,
       },
     }
 
@@ -83,6 +87,9 @@ export async function onRequestPost(context) {
     }
 
     const { kv, projectionId, spaceName } = access
+    const builtin = await builtinWorldRead(context, spaceName, projectionId)
+    if (builtin.entry)
+      return sendError(403, 'builtin_projection_read_only')
     const key = getScopedKey('world-state', spaceName, projectionId)
     const payload = normalizeWorldStatePayload(rawPayload, spaceName, projectionId)
 

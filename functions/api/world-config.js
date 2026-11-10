@@ -1,3 +1,4 @@
+import { builtinWorldConfig, builtinWorldRead } from './gallery/_builtin.js'
 import {
   DEFAULT_WORLD_CONFIG,
   getProjectionId,
@@ -17,14 +18,17 @@ export async function onRequestGet(context) {
     const projectionId = getProjectionId(context.request)
     const kv = getKv(context.env)
     const key = getScopedKey('world-config', spaceName, projectionId)
+    const builtin = await builtinWorldRead(context, spaceName, projectionId)
+    if (builtin.response)
+      return builtin.response
     const storedConfig = await readSpaceJson(kv, key, null)
     const config = storedConfig && typeof storedConfig === 'object'
       ? storedConfig
-      : DEFAULT_WORLD_CONFIG
+      : builtin.entry ? builtinWorldConfig(builtin.entry) : DEFAULT_WORLD_CONFIG
     return sendJson(200, {
       ...config,
       __meta: {
-        exists: !!storedConfig,
+        exists: !!storedConfig || !!builtin.entry,
         projection: projectionId || '',
       },
     })
@@ -47,6 +51,9 @@ export async function onRequestPost(context) {
     }
 
     const { kv, projectionId, spaceName } = access
+    const builtin = await builtinWorldRead(context, spaceName, projectionId)
+    if (builtin.entry)
+      return sendError(403, 'builtin_projection_read_only')
     const key = getScopedKey('world-config', spaceName, projectionId)
 
     await writeSpaceJson(kv, key, payload)

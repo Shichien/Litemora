@@ -1,10 +1,10 @@
+import { fetchBuiltinAsset, findBuiltinEntry, loadBuiltinReadState } from './_builtin.js'
 import { readAccountSession } from '../auth/_shared.js'
 import {
   canManageGallery,
   decodeBase64ToUint8Array,
   gallerySourceKey,
   loadGalleryItemByIdentifier,
-  loadGalleryState,
   sendError,
 } from './_shared.js'
 
@@ -51,7 +51,7 @@ function buildSourceResponse(item, buffer) {
 
 export async function onRequestGet(context) {
   try {
-    const state = await loadGalleryState(context)
+    const state = await loadBuiltinReadState(context)
     if (state.response) {
       return state.response
     }
@@ -68,7 +68,13 @@ export async function onRequestGet(context) {
       itemId,
     )
     if (!item || !resolvedItemId) {
-      return sendError(404, 'gallery_item_not_found')
+      const builtin = await findBuiltinEntry(context, state, itemId)
+      if (!builtin)
+        return sendError(404, 'gallery_item_not_found')
+      const source = await fetchBuiltinAsset(context, builtin.sourceUrl)
+      if (!source || source.headers.get('content-type')?.includes('text/html'))
+        return sendError(404, 'gallery_item_source_not_found')
+      return buildSourceResponse(builtin.item, await source.arrayBuffer())
     }
 
     const viewer = await readAccountSession(context.request, context.env)

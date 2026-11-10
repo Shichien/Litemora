@@ -1,8 +1,8 @@
+import { availableBuiltinEntries, loadBuiltinReadState } from './gallery/_builtin.js'
 import { readAccountSession } from './auth/_shared.js'
 import {
   canManageGallery,
   hasLegacyGalleryContent,
-  loadGalleryState,
   publicGalleryItems,
   sendError,
   sendJson,
@@ -12,21 +12,22 @@ export async function onRequestGet(context) {
   try {
     const viewerAccount = await readAccountSession(context.request, context.env)
 
-    const state = await loadGalleryState(context)
+    const state = await loadBuiltinReadState(context)
     if (state.response) {
       return state.response
     }
 
     const profile = state.profile
     const manifest = state.manifest
-    const items = publicGalleryItems(manifest, profile, viewerAccount)
+    const builtins = await availableBuiltinEntries(context, state)
+    const items = [...publicGalleryItems(manifest, profile, viewerAccount), ...builtins.map(entry => entry.item)]
 
     return sendJson(200, {
       space: state.spaceName,
       profile,
       items,
       legacyContent: hasLegacyGalleryContent(profile, manifest),
-      spaceExists: !!profile || (Array.isArray(manifest?.items) && manifest.items.length > 0),
+      spaceExists: !!profile || items.length > 0,
       viewer: {
         authenticated: !!viewerAccount,
         account: viewerAccount,
