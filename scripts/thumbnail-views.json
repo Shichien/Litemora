@@ -1,5 +1,8 @@
 {
   "deralive/st5": { "yaw": 315, "pitch": 26 },
   "redstonearchive/digitalclock": { "yaw": 135, "replayTick": 120 },
-  "redstonearchive/flyingmachine": { "zoom": 1.35 }
+  "redstonearchive/flyingmachine": { "zoom": 1.35 },
+  "shichien1/pearlcannon41x101x29": { "fit": "schematic", "normalizeRegions": true },
+  "shichien1/pearlcannon31x101x23": { "fit": "schematic", "normalizeRegions": true },
+  "shichien1/pearlcorrector": { "fit": "schematic", "normalizeRegions": true }
 }

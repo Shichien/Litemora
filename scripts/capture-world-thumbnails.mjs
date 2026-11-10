@@ -37,6 +37,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { chromium } from 'playwright'
+import { normalizeLitematicForCapture, readLitematicOccupiedBounds } from './litematic-thumbnail-bounds.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const THUMB_DIR = path.join(ROOT, 'public', 'thumbnails')
@@ -227,7 +228,7 @@ async function readJsonFile(file, fallback) {
 
 // --- page-context helpers (serialised into the page) ---
 
-function pagePrepare({ timeOfDay }) {
+function pagePrepare({ timeOfDay, sourceBounds }) {
   const E = window.Experience
   const world = E.world
   const cycle = world.environment?.dayCycle
@@ -252,6 +253,22 @@ function pagePrepare({ timeOfDay }) {
   // grid, so every chunk becomes resident for the capture.
   const layer = world.minecraftSchematicRenderLayer
   const bridge = layer?._runtimeBridge
+  // The upstream renderer reports tight bounds for only its default region on some
+  // multi-region files. Correct the capture page from the original NBT, including
+  // the chunk grid; changing only camera framing would still omit real blocks.
+  if (sourceBounds && bridge?.schematicObject && !bridge.__thumbSourceBounds) {
+    const schematic = bridge.schematicObject
+    schematic.getTightBoundsMin = () => [sourceBounds.minX, sourceBounds.minY, sourceBounds.minZ]
+    schematic.getTightDimensions = () => [sourceBounds.maxX - sourceBounds.minX, sourceBounds.maxY - sourceBounds.minY, sourceBounds.maxZ - sourceBounds.minZ]
+    if (schematic.renderingBounds) {
+      schematic.renderingBounds.min.set(sourceBounds.minX, sourceBounds.minY, sourceBounds.minZ)
+      schematic.renderingBounds.max.set(sourceBounds.maxX, sourceBounds.maxY, sourceBounds.maxZ)
+    }
+    const offset = bridge.runtimeOffset || { x: 0, y: 0, z: 0 }
+    bridge.bounds = Object.fromEntries(Object.entries(sourceBounds).map(([key, value]) => [key, value + offset[key.at(-1).toLowerCase()]]))
+    bridge._chunkBounds = bridge._createRuntimeChunkGridBounds(schematic)
+    bridge.__thumbSourceBounds = true
+  }
   const bounds = bridge?.bounds || null
   if (bridge && bounds && bridge._chunkBounds && !bridge.__thumbPinned) {
     const center = {
@@ -276,6 +293,7 @@ function pagePrepare({ timeOfDay }) {
     bridge._updateStreamingTarget = (_playerPosition, force) => original(center, force)
     bridge.__thumbPinned = true
     bridge._updateStreamingTarget(center, true)
+    bridge._pumpChunkQueue()
   }
   return { bounds, paused: !!E.isPaused, pinned: !!bridge?.__thumbPinned, stream: bridge?._streamConfig || null }
 }
@@ -443,9 +461,12 @@ async function waitForStreaming(page, timeoutMs) {
   while (Date.now() - started < timeoutMs) {
     stats = await page.evaluate(pageStreamStats)
     if (!stats) {
-      return null
+      throw new Error('schematic streaming statistics unavailable; refusing an empty capture')
     }
-    const settled = stats.streamReady && !stats.loadingChunks && !stats.queuedChunks && stats.residentChunks > 0
+    if (stats.streamReady && !stats.loadingChunks && !stats.queuedChunks && stats.residentChunks > 0 && !stats.meshes) {
+      throw new Error('all chunks loaded but no meshes; source region or palette is incompatible')
+    }
+    const settled = stats.streamReady && !stats.loadingChunks && !stats.queuedChunks && stats.residentChunks > 0 && stats.meshes > 0
     const signature = `${stats.meshes}/${stats.residentChunks}`
     if (settled && signature === lastSignature) {
       if (!stableSince) {
@@ -461,8 +482,7 @@ async function waitForStreaming(page, timeoutMs) {
     lastSignature = signature
     await page.waitForTimeout(500)
   }
-  console.warn('  streaming did not settle before timeout', stats)
-  return stats
+  throw new Error(`streaming did not settle before timeout; refusing a partial capture (${JSON.stringify(stats)})`)
 }
 
 function convertToWebp(pngPath, webpPath) {
@@ -493,22 +513,42 @@ async function captureWorld(browser, options, world, view) {
   try {
     const url = `${options.base}/${world.space}/worlds/${world.routeId}`
     console.log(`> ${world.key}  ${url}`)
+    let sourceBounds = null
+    if (/\.litematic$/i.test(world.item?.fileName || '')) {
+      const response = await fetch(`${options.api}/api/gallery/source?space=${encodeURIComponent(world.space)}&item=${encodeURIComponent(world.routeId)}`)
+      if (!response.ok)
+        throw new Error(`source unavailable: HTTP ${response.status}`)
+      const sourceBuffer = await response.arrayBuffer()
+      sourceBounds = await readLitematicOccupiedBounds(sourceBuffer)
+      if (view.normalizeRegions) {
+        const normalized = await normalizeLitematicForCapture(sourceBuffer)
+        await page.route('**/api/gallery/source?**', route => route.fulfill({ status: 200, contentType: 'application/octet-stream', body: normalized.buffer }))
+        console.log(`  normalized ${normalized.blockCount} original blocks into one capture region`)
+      }
+      if (!sourceBounds)
+        throw new Error('source contains no blocks')
+    }
+    console.log(`  source bounds ${JSON.stringify(sourceBounds)}`)
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 })
     await page.waitForFunction(
       () => window.Experience?.world?.isSceneReady && document.querySelector('.hud-root'),
       null,
       { timeout: 300000, polling: 500 },
     )
+    const identity = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    if (identity.bootstrapError || identity.projectionId !== world.routeId) {
+      throw new Error(`wrong or failed projection: ${identity.projectionId} ${identity.bootstrapError}`)
+    }
     await page.addStyleTag({ content: HIDE_UI_CSS })
 
-    let prepared = await page.evaluate(pagePrepare, { timeOfDay: view.timeOfDay })
+    let prepared = await page.evaluate(pagePrepare, { timeOfDay: view.timeOfDay, sourceBounds })
     // The runtime bridge publishes its bounds and chunk grid shortly after scene ready.
     for (let i = 0; i < 120 && !prepared.pinned; i++) {
       await page.waitForTimeout(500)
-      prepared = await page.evaluate(pagePrepare, { timeOfDay: view.timeOfDay })
+      prepared = await page.evaluate(pagePrepare, { timeOfDay: view.timeOfDay, sourceBounds })
     }
     if (!prepared.pinned) {
-      console.warn('  could not pin chunk streaming; capture may be partial')
+      throw new Error('could not pin chunk streaming; refusing a partial capture')
     }
     if (prepared.paused) {
       console.warn('  experience is paused; world updates (and streaming) may not run')
@@ -546,7 +586,7 @@ async function captureWorld(browser, options, world, view) {
     if (!options.keepPng) {
       await fs.rm(pngPath, { force: true })
     }
-    console.log(`  saved ${webpRel}  ${(bytes / 1024).toFixed(1)} KB (q${quality})  chunks ${stats?.residentChunks ?? '-'}/${stats?.totalChunks ?? '-'}  distance ${fit.distance}`)
+    console.log(`  saved ${webpRel}  ${(bytes / 1024).toFixed(1)} KB (q${quality})  chunks ${stats?.residentChunks ?? '-'}/${stats?.totalChunks ?? '-'}  distance ${fit.distance}  bounds ${JSON.stringify(box)}`)
     return { key: world.key, file: webpRel, bytes }
   }
   finally {
