@@ -10,6 +10,7 @@
 # production
 /dist
 /dist-ssr
+/docs/api/_build/
 /src copy
 /TD
 # various
@@ -51,13 +52,16 @@ yarn-error.log*
 
 # Generated lookup used only by scripts/analyze-litematic-coverage.mjs.
 # Regenerate with: pnpm sync:bedrock-textures
-/src/js/generated/
+/src/js/generated/*
+!/src/js/generated/minecraft-selection-shapes.json
+!/src/js/generated/legacy-block-states.js
 
 # local artifacts
 /output/
 /logs/
 /.playwright-cli/
 /tmp-vite.*.log
+/vite.config.*.timestamp-*.mjs
 /.wrangler/
 /progress.md
 /tmp-terrain-renderer-prev.js
