@@ -1,6 +1,8 @@
 /* eslint-disable node/prefer-global/buffer */
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer as BufferPolyfill } from 'buffer'
+import { isAxiomBlueprint, parseAxiomBlueprint, parseLegacySchematic } from './schematic-extra-formats.js'
+import { normalizePaletteState } from './schematic-renderer-encode.js'
 
 if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = BufferPolyfill
@@ -43,7 +45,7 @@ function buildBufferSignature(arrayBuffer = null) {
 
 /**
  * Minecraft 原理图服务
- * 解析 .litematic / .schem 文件并注入方块到地形
+ * 解析 .litematic / .schem / .schematic / .bp 文件并注入方块到地形
  */
 class SchematicService {
   constructor() {
@@ -167,7 +169,7 @@ class SchematicService {
 
   /**
    * 从文件解析 Minecraft 原理图
-   * @param {File} file - .litematic / .schem 文件
+   * @param {File} file - .litematic / .schem / .schematic / .bp 文件
    * @returns {Promise<object>} 解析后的原理图数据
    */
   async parseFile(file) {
@@ -213,8 +215,13 @@ class SchematicService {
    * 内部方法：从 ArrayBuffer 解析原理图
    */
   async _parseBuffer(arrayBuffer, options = {}) {
-    const simplified = await this._parseNbtPayload(arrayBuffer)
-    const schematic = this._normalizeParsedSchematic(simplified, options)
+    const simplified = isAxiomBlueprint(arrayBuffer) ? null : await this._parseNbtPayload(arrayBuffer)
+    const root = simplified?.Schematic || simplified
+    const schematic = isAxiomBlueprint(arrayBuffer)
+      ? await parseAxiomBlueprint(arrayBuffer, this, options)
+      : root?.Blocks && root?.Data && !root?.Palette
+        ? await parseLegacySchematic(root, this, options)
+        : this._normalizeParsedSchematic(root, options)
     this._attachRuntimeSource(schematic, arrayBuffer, options)
 
     if (options.includeRawNbt) {
@@ -227,6 +234,10 @@ class SchematicService {
   _normalizeParsedSchematic(simplified, options = {}) {
     if (simplified?.Metadata && simplified?.Regions) {
       return this._parseLitematicSchematic(simplified)
+    }
+
+    if (simplified?.Blocks?.Palette && simplified?.Blocks?.Data) {
+      return this._parseSpongeSchematic({ ...simplified, Palette: simplified.Blocks.Palette, BlockData: simplified.Blocks.Data }, options)
     }
 
     if (simplified?.Palette && simplified?.BlockData) {
@@ -261,9 +272,15 @@ class SchematicService {
     const length = Math.max(0, Number(simplified.Length || metadata.Length || 0))
     const size = { x: width, y: height, z: length }
     const totalBlocks = width * height * length
+    if (![width, height, length].every(value => Number.isInteger(value) && value > 0) || !Number.isSafeInteger(totalBlocks) || totalBlocks > 64000000) {
+      throw new Error('Invalid schematic dimensions')
+    }
     const regionName = metadata.Name || this._stripSchematicExtension(options.sourceName) || 'Region'
     const palette = this._parseSpongePalette(simplified.Palette)
     const decodedIndices = this._decodeVarIntBlockIndices(simplified.BlockData, totalBlocks)
+    if (decodedIndices.some(index => !palette[index])) {
+      throw new Error('Invalid schematic palette index')
+    }
     const blockData = this._encodeBlockIndices(decodedIndices, Object.keys(palette).length, totalBlocks)
     const offset = this._parseSpongeOffset(simplified.Offset)
 
@@ -334,13 +351,7 @@ class SchematicService {
     const palette = {}
 
     paletteData.forEach((entry, index) => {
-      const blockName = entry.Name || 'minecraft:air'
-      const properties = entry.Properties || {}
-
-      palette[index] = {
-        name: blockName,
-        properties,
-      }
+      palette[index] = normalizePaletteState(entry)
     })
 
     return palette
@@ -441,8 +452,8 @@ class SchematicService {
         indices.push(currentValue >>> 0)
         currentValue = 0
         bitOffset = 0
-        if (expectedLength > 0 && indices.length >= expectedLength) {
-          break
+        if (expectedLength > 0 && indices.length > expectedLength) {
+          throw new Error('Invalid schematic block data length')
         }
         continue
       }
@@ -453,10 +464,8 @@ class SchematicService {
       }
     }
 
-    if (expectedLength > 0 && indices.length < expectedLength) {
-      while (indices.length < expectedLength) {
-        indices.push(0)
-      }
+    if (bitOffset || (expectedLength > 0 && indices.length !== expectedLength)) {
+      throw new Error('Invalid schematic block data length')
     }
 
     return indices
@@ -490,7 +499,7 @@ class SchematicService {
   }
 
   _stripSchematicExtension(fileName = '') {
-    return String(fileName || '').replace(/\.(?:litematic|schem|schematic)$/iu, '')
+    return String(fileName || '').replace(/\.(?:litematic|schem|schematic|bp)$/iu, '')
   }
 
   _toUint64BigInt(value) {
@@ -632,6 +641,45 @@ class SchematicService {
 
     region._solidYStats = { minY, maxY, belowZeroCount }
     return region._solidYStats
+  }
+
+  /**
+   * 查询渲染器坐标系（schematic-renderer 预览里拾取到的方块坐标）下某一格的方块。
+   * 找不到或是空气时返回 null。
+   */
+  getBlockAtRuntimePosition(position = {}, schematic = this.currentSchematic) {
+    if (!schematic?.regions) {
+      return null
+    }
+
+    const visualOffset = this._resolveRuntimeVisualOffset(schematic)
+    const x = Math.floor(Number(position.x)) + visualOffset.x
+    const y = Math.floor(Number(position.y)) + visualOffset.y
+    const z = Math.floor(Number(position.z)) + visualOffset.z
+    if (![x, y, z].every(Number.isFinite)) {
+      return null
+    }
+
+    for (const region of Object.values(schematic.regions)) {
+      const sizeX = Math.abs(region.size.x)
+      const sizeY = Math.abs(region.size.y)
+      const sizeZ = Math.abs(region.size.z)
+      const worldBase = this._getRegionWorldBase(region)
+      const localX = x - worldBase.x
+      const localY = y - worldBase.y
+      const localZ = z - worldBase.z
+      if (localX < 0 || localY < 0 || localZ < 0 || localX >= sizeX || localY >= sizeY || localZ >= sizeZ) {
+        continue
+      }
+
+      const paletteIndex = this._getDecodedIndices(region)[localX + (localZ * sizeX) + (localY * sizeX * sizeZ)] ?? 0
+      const entry = region.palette?.[paletteIndex]
+      if (entry?.name && !EMPTY_BLOCK_NAMES.has(entry.name)) {
+        return { name: entry.name, properties: entry.properties || {} }
+      }
+    }
+
+    return null
   }
 
   /**

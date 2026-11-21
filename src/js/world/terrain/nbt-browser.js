@@ -34,8 +34,9 @@ const TAG_NAME = {
 }
 
 class NbtReader {
-  constructor(buffer) {
+  constructor(buffer, trackTag) {
     this.buffer = buffer
+    this.trackTag = trackTag
     this.offset = 0
   }
 
@@ -169,11 +170,14 @@ class NbtReader {
             break
           }
           const childName = this.readString()
+          const start = this.offset
           const childPayload = this.readTagPayload(childType)
           result[childName] = {
             type: TAG_NAME[childType] || 'unknown',
             value: childPayload,
           }
+          if (childName === this.trackTag)
+            result[childName].range = [start, this.offset]
         }
         return result
       }
@@ -221,13 +225,13 @@ class NbtReader {
   }
 }
 
-export async function parseNbt(data) {
+export async function parseNbt(data, { trackTag } = {}) {
   const buffer = data instanceof ArrayBuffer ? BufferPolyfill.from(data) : data
   if (!(buffer instanceof BufferPolyfill)) {
     throw new TypeError('Invalid argument: `data` must be a Buffer or ArrayBuffer object')
   }
 
-  const reader = new NbtReader(buffer)
+  const reader = new NbtReader(buffer, trackTag)
   const root = reader.readRootTag()
 
   return {

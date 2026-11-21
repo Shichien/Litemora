@@ -16,6 +16,8 @@ import {
   loadPreferredMinecraftResourcePack,
 } from './minecraft-resource-pack.js'
 
+import { prepareSchematicRendererBuffer } from './schematic-renderer-input.js'
+
 const RUNTIME_SCHEMATIC_ID = 'litemora-runtime'
 const RENDERER_READY_TIMEOUT_MS = 60000
 const RUNTIME_CHUNK_SIDE_LENGTH = 16
@@ -824,6 +826,7 @@ export default class SchematicRendererRuntimeBridge {
     }
 
     const renderer = await this.ensureRenderer()
+    const rendererBuffer = await prepareSchematicRendererBuffer(buffer)
 
     this.detachRuntimeGroup()
     await this._waitForActiveChunkBuilds()
@@ -831,7 +834,7 @@ export default class SchematicRendererRuntimeBridge {
 
     await renderer.schematicManager?.loadSchematic(
       RUNTIME_SCHEMATIC_ID,
-      buffer,
+      rendererBuffer,
       {
         focused: false,
         visible: false,
@@ -867,7 +870,7 @@ export default class SchematicRendererRuntimeBridge {
     this.lightRuntime.maxAxis = lightGl?.MAX_3D_TEXTURE_SIZE
       ? lightGl.getParameter(lightGl.MAX_3D_TEXTURE_SIZE)
       : 256
-    this.lightRuntime.initialize({ buffer, name: source.name, offset })
+    this.lightRuntime.initialize({ buffer: rendererBuffer, name: source.name, offset })
     this._streamConfig = normalizeStreamingConfig(options.streaming)
     this._chunkBounds = this._createRuntimeChunkGridBounds(schematicObject)
     this._streamStartedAt = performance.now()
