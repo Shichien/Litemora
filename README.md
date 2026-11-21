@@ -14,6 +14,7 @@
 - **角色与相机**：行走、疾跑、潜行、飞行，第一人称 / 第三人称 / 鸟瞰视角，Minecraft 皮肤可切换。
 - **个人空间**：`litemora.art/<空间名>` 下管理自己的投影，支持 GitHub / Google 登录、RSS 和公开或私有。
 - **红石档案**：播放由 [redstone-rs](https://github.com/azazo1/redstone-rs) 计算出的确定性红石回放，支持播放、暂停、逐刻前后、倍速和拖动时间线。详见 [docs/redstone-archive.md](./docs/redstone-archive.md)。
+- **三维模型导出**：上传原理图后，可在预览下方下载 GLB（带贴图）、STL 或 OBJ；Blender 转换包支持在本机生成 `.blend`。详见 [模型导出说明](./docs/model-export.md)。
 - **中英双语** 界面。
 
 ## 操作

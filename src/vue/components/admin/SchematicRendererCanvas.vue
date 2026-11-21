@@ -6,9 +6,11 @@ import {
 } from '@three/world/terrain/minecraft-resource-pack.js'
 import { createMinecraftBlockMaterial } from '@three/world/terrain/minecraft-block-material.js'
 import { installCauldronModelFix } from '@three/world/terrain/cubane-cauldron-model-fix.js'
+import { prepareSchematicRendererBuffer } from '@three/world/terrain/schematic-renderer-input.js'
 import * as THREE from 'three'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { captureRenderedThumbnail, waitForThumbnailReady } from './preview-thumbnail.js'
+import SchematicModelExportPanel from './SchematicModelExportPanel.vue'
 
 let schematicRendererModulePromise = null
 
@@ -216,6 +218,10 @@ function patchRendererRuntime(renderer) {
     }
     recordingManager.__litemoraSilentDisposePatched = true
   }
+}
+
+function getExportModel() {
+  return rendererInstance?.schematicManager?.getSchematic?.(SCHEMATIC_ID)?.group || null
 }
 
 const hasRenderableSource = computed(() => {
@@ -918,9 +924,14 @@ async function renderCurrentSchematic() {
       sourcePayload.name,
     )
 
+    const rendererBuffer = await prepareSchematicRendererBuffer(sourcePayload.buffer)
+    if (token !== renderToken) {
+      return
+    }
+
     await renderer.schematicManager?.loadSchematic(
       SCHEMATIC_ID,
-      sourcePayload.buffer,
+      rendererBuffer,
       {
         position: getPreviewOffsetArray(),
         focused: true,
@@ -1117,6 +1128,11 @@ onBeforeUnmount(() => {
       <span v-if="diagnostics.blockCount !== null" class="hud-chip">{{ diagnostics.blockCount }} 方块</span>
     </div>
   </div>
+  <SchematicModelExportPanel
+    :ready="Boolean(diagnostics) && !isPreparing && !errorMessage && hasRenderableSource"
+    :name="resolvedDisplayName || diagnostics?.sourceName || 'schematic'"
+    :get-model="getExportModel"
+  />
 </template>
 
 <style scoped>
