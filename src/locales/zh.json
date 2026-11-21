@@ -68,7 +68,10 @@
   },
   "home": {
     "nav": {
-      "loginGithub": "使用 GitHub 登录"
+      "loginGithub": "使用 GitHub 登录",
+      "account": "账户",
+      "signIn": "选择登录方式",
+      "unavailable": "暂时没有可用的登录方式。"
     },
     "hero": {
       "subtitle": "把 Minecraft 原理图变成可以走进去的世界。",

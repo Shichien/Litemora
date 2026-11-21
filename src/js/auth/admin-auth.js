@@ -26,12 +26,25 @@ const PROVIDER_CONFIG = {
     authorizeUrl: 'https://github.com/login/oauth/authorize',
     scope: 'read:user user:email',
     clientIdEnv: 'VITE_OAUTH_GITHUB_CLIENT_ID',
+    callbackOrigin: import.meta.env.VITE_OAUTH_GITHUB_CALLBACK_ORIGIN,
   },
   google: {
     label: 'Google',
     authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     scope: 'openid email profile',
     clientIdEnv: 'VITE_OAUTH_GOOGLE_CLIENT_ID',
+  },
+  x: {
+    label: 'X (Twitter)',
+    authorizeUrl: 'https://x.com/i/oauth2/authorize',
+    scope: 'tweet.read users.read',
+    clientIdEnv: 'VITE_OAUTH_X_CLIENT_ID',
+  },
+  discord: {
+    label: 'Discord',
+    authorizeUrl: 'https://discord.com/oauth2/authorize',
+    scope: 'identify email',
+    clientIdEnv: 'VITE_OAUTH_DISCORD_CLIENT_ID',
   },
 }
 
@@ -50,6 +63,7 @@ function isLocalDevHost() {
 
 export function isLocalDevAuthEnabled() {
   return import.meta.env.DEV && isLocalDevHost()
+    && !Object.values(PROVIDER_CONFIG).some(config => readProviderClientId(config))
 }
 
 function buildLocalDevSession() {
@@ -97,13 +111,13 @@ async function sha256Base64Url(input) {
 // exactly, query string included. A `?provider=` suffix would mean registering
 // one URI per provider, so the callback stays a single provider-agnostic path
 // and the provider travels in the cryptographically random state instead.
-function getRedirectUri() {
+function getRedirectUri(provider) {
   const host = String(window.location.hostname || '').toLowerCase()
   const isLocal = host === 'localhost' || host === '127.0.0.1'
   const callbackOrigin = isLocal
     ? window.location.origin
     : (CONFIGURED_OAUTH_CALLBACK_ORIGIN || window.location.origin)
-  return new URL('/auth-callback.html', callbackOrigin).toString()
+  return new URL('/auth-callback.html', PROVIDER_CONFIG[provider]?.callbackOrigin || callbackOrigin).toString()
 }
 
 function getProviderRuntimeConfig(provider) {
@@ -120,7 +134,7 @@ function getProviderRuntimeConfig(provider) {
   return {
     ...config,
     clientId,
-    redirectUri: getRedirectUri(),
+    redirectUri: getRedirectUri(provider),
   }
 }
 
@@ -304,18 +318,9 @@ export function getAuthProviders() {
   }
 
   // 只暴露已经配好 client id 的提供商，避免出现点了才报错的死按钮。
-  const providers = Object.entries(PROVIDER_CONFIG)
+  return Object.entries(PROVIDER_CONFIG)
     .filter(([, config]) => !!readProviderClientId(config))
     .map(([id, config]) => ({ id, label: config.label }))
-
-  // 全部未配置时保留 GitHub 入口，维持既有行为不变。
-  if (!providers.length) {
-    return [
-      { id: 'github', label: PROVIDER_CONFIG.github.label },
-    ]
-  }
-
-  return providers
 }
 
 export function loadAdminAuthSession() {
@@ -330,7 +335,7 @@ export function loadAdminAuthSession() {
     if (!session?.account?.id || !session?.account?.provider) {
       return fallbackLocalSession
     }
-    if (session.account.provider === 'password') {
+    if (session.account.provider === 'password' || (isLocalDevAuthSession(session) && !fallbackLocalSession)) {
       localStorage.removeItem(ADMIN_AUTH_SESSION_KEY)
       emitAdminAuthChanged(null)
       return fallbackLocalSession
@@ -378,7 +383,7 @@ export function clearAdminAuthSession() {
 }
 
 export async function signInWithProvider(provider) {
-  if (provider === 'local-dev' || isLocalDevAuthEnabled()) {
+  if (provider === 'local-dev' && isLocalDevAuthEnabled()) {
     return saveAdminAuthSession(buildLocalDevSession())
   }
 

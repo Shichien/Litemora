@@ -68,7 +68,10 @@
   },
   "home": {
     "nav": {
-      "loginGithub": "Login with GitHub"
+      "loginGithub": "Login with GitHub",
+      "account": "Account",
+      "signIn": "Choose a sign-in method",
+      "unavailable": "Sign-in is currently unavailable."
     },
     "hero": {
       "subtitle": "Where schematics become playable worlds.",

@@ -8,6 +8,7 @@ import {
 import { getStaticThumbnailUrl, loadThumbnailManifest } from '@three/gallery/world-thumbnails.js'
 import { resolvePublicAssetUrl } from '@three/utils/public-asset-url.js'
 import { buildSpaceUrl, isValidSpaceName, normalizeSpaceName } from '@three/utils/space-context.js'
+import ProviderIcon from '@ui-components/auth/ProviderIcon.vue'
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
 import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import { useGalleryAuth } from '@ui/composables/useGalleryAuth.js'
@@ -20,6 +21,7 @@ import { heroBuildScene, iconBlock, PLACEHOLDER_BUILD_COUNT } from './portal-sce
 const { t } = useI18n()
 const authMenuOpen = ref(false)
 const authMenuRef = ref(null)
+const authTriggerRef = ref(null)
 const {
   authProviders,
   authSession,
@@ -92,8 +94,11 @@ function logout() {
   authMenuOpen.value = false
 }
 
-function toggleAuthMenu() {
-  authMenuOpen.value = !authMenuOpen.value
+function closeAuthMenu() {
+  if (authMenuOpen.value) {
+    authMenuOpen.value = false
+    authTriggerRef.value?.focus()
+  }
 }
 
 const inputSpaceName = ref('')
@@ -423,40 +428,28 @@ onBeforeUnmount(() => {
   <main class="Litemora-home rs-bg-deepslate" :class="{ 'is-powered': heroPowered }" :style="rootStyle">
     <!-- Header -->
     <header class="home-header">
-      <div class="header-spacer" />
+      <a class="header-brand" href="/">
+        <img :src="logoUrl" alt="" width="26" height="26">
+        Litemora
+      </a>
 
-      <nav ref="authMenuRef" class="nav-links">
+      <nav ref="authMenuRef" class="nav-links" :aria-label="t('home.nav.account')" @keydown.esc="closeAuthMenu">
         <div class="auth-popover">
-          <button type="button" class="auth-trigger" :class="{ active: authMenuOpen }" @click.stop="toggleAuthMenu">
-            <template v-if="isLoggedIn">
-              <span class="auth-account">
-                <span class="auth-avatar">
-                  <img v-if="currentAccountAvatar" :src="currentAccountAvatar" :alt="currentAccountName">
-                  <span v-else>{{ currentAccountInitial }}</span>
-                </span>
-                <span class="auth-copy">
-                  <strong>{{ currentAccountName }}</strong>
-                  <small>{{ currentAccountRole }}</small>
-                </span>
-              </span>
-              <span class="auth-trigger-arrow">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M7 10l5 5 5-5" />
-                </svg>
-              </span>
-            </template>
-            <template v-else>
-              <svg class="auth-trigger-mark" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-                <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.050c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.830 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.170.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z" />
-              </svg>
-              <span class="auth-trigger-label">{{ authProviders[0]?.label || t('home.nav.loginGithub') }}</span>
-              <span class="auth-trigger-arrow">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M5 12h14" />
-                  <path d="m12 5 7 7-7 7" />
-                </svg>
-              </span>
-            </template>
+          <button
+            ref="authTriggerRef"
+            type="button"
+            class="auth-trigger"
+            :class="{ active: authMenuOpen }"
+            :aria-expanded="authMenuOpen"
+            :aria-label="isLoggedIn ? currentAccountName : t('home.nav.signIn')"
+            :title="isLoggedIn ? currentAccountName : t('home.nav.signIn')"
+            @click="authMenuOpen = !authMenuOpen"
+          >
+            <span v-if="isLoggedIn" class="auth-avatar">
+              <img v-if="currentAccountAvatar" :src="currentAccountAvatar" alt="">
+              <span v-else>{{ currentAccountInitial }}</span>
+            </span>
+            <ProviderIcon v-else provider="github" />
           </button>
 
           <div v-if="authMenuOpen" class="auth-menu">
@@ -464,7 +457,7 @@ onBeforeUnmount(() => {
               <div class="auth-menu-header">
                 <div class="menu-account-copy">
                   <strong>{{ currentAccountName }}</strong>
-                  <span>{{ currentAccountEmail }}</span>
+                  <span>{{ currentAccountEmail || currentAccountRole }}</span>
                 </div>
               </div>
 
@@ -499,7 +492,12 @@ onBeforeUnmount(() => {
             </template>
 
             <template v-else>
-              <div class="auth-menu-title">选择登录方式</div>
+              <div class="auth-menu-title">
+                {{ t('home.nav.signIn') }}
+              </div>
+              <p v-if="!authProviders.length" class="auth-menu-error">
+                {{ t('home.nav.unavailable') }}
+              </p>
               <button
                 v-for="provider in authProviders"
                 :key="provider.id"
@@ -509,18 +507,13 @@ onBeforeUnmount(() => {
                 @click="loginWithProvider(provider.id)"
               >
                 <span class="menu-icon" aria-hidden="true">
-                  <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                    <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z" />
-                  </svg>
-                  <svg v-else viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M8 12h8" />
-                    <path d="M12 8v8" />
-                  </svg>
+                  <ProviderIcon :provider="provider.id" />
                 </span>
                 <span>{{ isAuthenticating ? '登录中...' : providerLabel(provider) }}</span>
               </button>
-              <p v-if="authError" class="auth-menu-error">{{ authError }}</p>
+              <p v-if="authError" class="auth-menu-error" role="alert">
+                {{ authError }}
+              </p>
             </template>
           </div>
         </div>
@@ -843,86 +836,50 @@ onBeforeUnmount(() => {
 /* ---------------------------------------------------------------- Header */
 .home-header {
   z-index: 20;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  max-width: var(--signal-max);
-  margin: 0 auto;
-  padding: 24px var(--signal-inset) 0;
-}
-
-.nav-links {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 0 max(var(--signal-inset), calc((100% - var(--signal-max)) / 2 + var(--signal-inset)));
+  border-bottom: 1px solid var(--rs-line);
+  background: var(--rs-bg-1);
 }
 
-.auth-popover {
-  position: relative;
-}
-
-.auth-trigger {
+.header-brand {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-width: 180px;
-  height: 40px;
-  padding: 0 10px 0 14px;
-  border: 1px solid var(--rs-line-strong);
-  border-radius: var(--rs-radius);
-  background: linear-gradient(180deg, var(--rs-bg-3), var(--rs-bg-2));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
   color: var(--rs-text);
-  font: 500 14px/1 var(--rs-font-body);
+  font: 600 17px/1 var(--rs-font-body);
+  text-decoration: none;
+}
+
+.header-brand img { image-rendering: pixelated; }
+.auth-popover { position: relative; }
+
+.auth-trigger {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--rs-radius);
+  background: transparent;
+  color: var(--rs-text);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .auth-trigger:hover,
 .auth-trigger.active {
-  border-color: rgba(255, 74, 46, 0.7);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 0 rgba(0, 0, 0, 0.35), var(--rs-glow-soft);
+  background: var(--rs-bg-3);
+  border-color: var(--rs-line-strong);
 }
 
-.auth-trigger:focus-visible {
+.auth-trigger:focus-visible,
+.header-brand:focus-visible {
   outline: 2px solid var(--rs-red-hot);
   outline-offset: 2px;
-}
-
-.auth-trigger-mark {
-  flex: none;
-  color: var(--rs-text-2);
-}
-
-.auth-trigger-label {
-  flex: 1;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.auth-trigger-arrow {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-left: auto;
-  border-radius: 2px;
-  background: var(--rs-bg-0);
-  color: var(--rs-text-2);
-  transition: background 0.15s, color 0.15s;
-}
-
-.auth-trigger:hover .auth-trigger-arrow,
-.auth-trigger.active .auth-trigger-arrow {
-  background: var(--rs-red);
-  color: #fff;
-}
-
-.auth-account {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
 }
 
 .auth-avatar {
@@ -942,27 +899,6 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.auth-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  text-align: left;
-}
-
-.auth-copy strong {
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.auth-copy small {
-  color: var(--rs-text-3);
-  font-size: 11px;
 }
 
 .auth-menu {
@@ -1832,14 +1768,6 @@ onBeforeUnmount(() => {
     --signal-gutter: 36px;
     --signal-pad-top: 88px;
     --signal-marker-top: 92px;
-  }
-
-  .home-header {
-    padding-top: 16px;
-  }
-
-  .auth-trigger {
-    min-width: 0;
   }
 
   .auth-menu {

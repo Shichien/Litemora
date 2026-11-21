@@ -1,13 +1,5 @@
-import {
-  issueAccountSession,
-  normalizeAccount,
-  parseJsonBody,
-  postForm,
-  readEnv,
-  sendAccount,
-  sendError,
-  trimString,
-} from '../_shared.js'
+import { createOAuthExchange, methodNotAllowed } from '../_exchange.js'
+import { normalizeAccount, trimString } from '../_shared.js'
 
 async function fetchGithubUser(accessToken) {
   const profileRes = await fetch('https://api.github.com/user', {
@@ -56,54 +48,5 @@ async function fetchGithubUser(accessToken) {
   })
 }
 
-export async function onRequestPost(context) {
-  try {
-    const body = await parseJsonBody(context.request)
-    const code = trimString(body?.code)
-    const codeVerifier = trimString(body?.codeVerifier)
-    const redirectUri = trimString(body?.redirectUri)
-
-    if (!code || !codeVerifier || !redirectUri) {
-      return sendError(400, 'missing_required_fields', 'code, codeVerifier, redirectUri are required')
-    }
-
-    const clientId = readEnv(context.env, 'OAUTH_GITHUB_CLIENT_ID')
-    const clientSecret = readEnv(context.env, 'OAUTH_GITHUB_CLIENT_SECRET')
-
-    const { response, data } = await postForm(
-      'https://github.com/login/oauth/access_token',
-      {
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: redirectUri,
-        code_verifier: codeVerifier,
-      },
-      {
-        Accept: 'application/json',
-      },
-    )
-
-    if (!response.ok || !data?.access_token) {
-      return sendError(
-        401,
-        'oauth_exchange_failed',
-        trimString(data?.error_description) || trimString(data?.error) || 'github token exchange failed',
-      )
-    }
-
-    const account = await fetchGithubUser(data.access_token)
-    const session = await issueAccountSession(context.env, account)
-    return sendAccount(account, session)
-  }
-  catch (error) {
-    if (String(error?.message || '').startsWith('missing_env:')) {
-      return sendError(500, 'server_oauth_not_configured', error.message)
-    }
-    return sendError(500, 'github_auth_failed', error?.message || 'unknown_error')
-  }
-}
-
-export function onRequest() {
-  return sendError(405, 'method_not_allowed')
-}
+export const onRequestPost = createOAuthExchange('github', 'https://github.com/login/oauth/access_token', fetchGithubUser)
+export const onRequest = methodNotAllowed

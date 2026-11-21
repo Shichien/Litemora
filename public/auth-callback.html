@@ -14,7 +14,7 @@
       const state = params.get('state') || ''
       // This prefix is routing metadata, not authentication. The opener must
       // compare the entire state (including its 192-bit random nonce).
-      const provider = /^(github|google)\.[A-Za-z0-9_-]{32}$/.exec(state)?.[1] || ''
+      const provider = /^(github|google|x|discord)\.[A-Za-z0-9_-]{32}$/.exec(state)?.[1] || ''
       const error = params.get('error') || ''
       const errorDescription = params.get('error_description') || ''
 

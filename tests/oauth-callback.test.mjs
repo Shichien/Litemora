@@ -76,7 +76,7 @@ function authHarness({ callbackOrigin = origin, disabled = false, appOrigin = or
     Uint8Array,
     crypto: webcrypto,
     btoa: value => Buffer.from(value, 'binary').toString('base64'),
-    __env: { VITE_OAUTH_CALLBACK_ORIGIN: callbackOrigin, VITE_OAUTH_GITHUB_CLIENT_ID: 'github-client', VITE_OAUTH_GOOGLE_CLIENT_ID: 'google-client', DEV: false },
+    __env: { VITE_OAUTH_CALLBACK_ORIGIN: callbackOrigin, VITE_OAUTH_GITHUB_CLIENT_ID: 'github-client', VITE_OAUTH_GOOGLE_CLIENT_ID: 'google-client', VITE_OAUTH_X_CLIENT_ID: 'x-client', VITE_OAUTH_DISCORD_CLIENT_ID: 'discord-client', DEV: false },
     setTimeout: (fn) => {
       timers.set(++nextTimer, fn)
       return nextTimer
@@ -162,8 +162,8 @@ async function openedPopup(h, count = 1) {
   return h.opened[count - 1]
 }
 
-test('callback routes both providers exclusively from full-format state, ignoring stale storage/query', () => {
-  for (const provider of ['github', 'google']) {
+test('callback routes each provider exclusively from full-format state, ignoring stale storage/query', () => {
+  for (const provider of ['github', 'google', 'x', 'discord']) {
     const fullState = `${provider}.${nonce}`
     const result = callbackHarness({ state: fullState, code: 'code', provider: 'wrong' })
     assert.equal(result.messages[0].payload.provider, provider)
@@ -184,7 +184,7 @@ test('callback rejects missing, malformed and unknown-provider state, including 
 })
 
 test('cross-origin sign-in works with storage disabled and preserves PKCE and redirect URI', async () => {
-  for (const provider of ['github', 'google']) {
+  for (const provider of ['github', 'google', 'x', 'discord']) {
     const h = authHarness({ callbackOrigin: remoteOrigin, disabled: true })
     const login = h.signInWithProvider(provider)
     const opened = await openedPopup(h)
