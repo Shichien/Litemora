@@ -126,12 +126,9 @@ function exitWorld() {
 <template>
   <div ref="menuEl" class="pause-menu rs-panel rs-panel--glass rs-panel--wired is-powered" role="dialog" aria-labelledby="pause-menu-title">
     <header class="rs-panel__head">
-      <div class="rs-panel__heading">
-        <span class="rs-eyebrow" aria-hidden="true">Paused</span>
-        <h2 id="pause-menu-title" class="rs-panel__title">
-          {{ $t('menu.paused') }}
-        </h2>
-      </div>
+      <h2 id="pause-menu-title" class="rs-panel__title">
+        {{ $t('menu.paused') }}
+      </h2>
       <RedstoneTorch :size="32" class="pause-torch" />
     </header>
 

@@ -86,11 +86,7 @@ function handleReset() {
           </svg>
           <span>返回 Worlds</span>
         </button>
-        <span class="profile-kicker rs-eyebrow">Profile Settings</span>
         <h2>自定义 worlds 顶栏</h2>
-        <p>
-          顶栏左侧会显示你的头像、Title 和快捷入口。这里保存后会直接更新当前 Space 的 worlds 页面展示。
-        </p>
       </div>
 
       <div class="profile-identity">
@@ -198,14 +194,6 @@ function handleReset() {
   font-size: 26px;
   font-weight: 700;
   line-height: 1.25;
-}
-
-.profile-card-head p {
-  max-width: 60ch;
-  margin: 0;
-  color: var(--rs-text-2);
-  font-size: 14px;
-  line-height: 1.7;
 }
 
 .profile-identity {

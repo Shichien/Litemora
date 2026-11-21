@@ -39,12 +39,9 @@ function adjustSensitivity(delta) {
 <template>
   <div class="settings-menu rs-panel rs-panel--glass rs-panel--wired is-powered" role="dialog" aria-labelledby="settings-menu-title">
     <header class="rs-panel__head">
-      <div class="rs-panel__heading">
-        <span class="rs-eyebrow" aria-hidden="true">Settings</span>
-        <h2 id="settings-menu-title" class="rs-panel__title">
-          {{ $t('settings.title') }}
-        </h2>
-      </div>
+      <h2 id="settings-menu-title" class="rs-panel__title">
+        {{ $t('settings.title') }}
+      </h2>
       <span class="rs-panel__hint rs-faint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
     </header>
 

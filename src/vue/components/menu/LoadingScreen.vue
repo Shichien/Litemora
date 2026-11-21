@@ -104,12 +104,9 @@ function backToWorlds() {
 <template>
   <div class="loading-screen ls-root" :class="{ 'is-error': ui.loadError }">
     <div class="ls-stage">
-      <h2 class="ls-brand">
-        LITEMORA
+      <h2 class="ls-brand" :class="{ 'is-world': worldTitle }">
+        {{ worldTitle || 'LITEMORA' }}
       </h2>
-      <p class="ls-sub" :class="{ 'is-world': worldTitle }">
-        {{ worldTitle || 'Playable Schematic Worlds' }}
-      </p>
 
       <div class="ls-circuit" aria-hidden="true">
         <span class="ls-torch" />
@@ -136,7 +133,6 @@ function backToWorlds() {
       </p>
 
       <div v-if="ui.loadError" class="load-error" role="alert">
-        <span class="load-error-tag" aria-hidden="true">SIGNAL LOST</span>
         <h2 class="load-error-title">
           {{ t('loadError.title') }}
         </h2>
@@ -178,7 +174,10 @@ function backToWorlds() {
   inset: 0;
 }
 
-.ls-sub.is-world {
+.ls-brand.is-world {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--rs-text);
   font-weight: 600;
   font-size: 17px;
@@ -237,12 +236,6 @@ function backToWorlds() {
   box-shadow: var(--rs-shadow);
   text-align: center;
   pointer-events: auto;
-}
-
-.load-error-tag {
-  color: #ff8a73;
-  font: 400 8px/16px var(--rs-font-pixel);
-  letter-spacing: 0.14em;
 }
 
 .load-error-title {

@@ -127,13 +127,6 @@
   border-bottom: 1px solid var(--rs-line);
 }
 
-.rs-panel__heading {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
 .rs-panel__title {
   margin: 0;
   color: var(--rs-text);
@@ -320,16 +313,6 @@
 // ----------------------------------------------------------------------------
 // Text
 // ----------------------------------------------------------------------------
-
-.rs-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--rs-red-hot);
-  font: 400 8px/1.6 var(--rs-font-pixel);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
 
 .rs-pixel {
   font-family: var(--rs-font-pixel);

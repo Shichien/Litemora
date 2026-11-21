@@ -154,12 +154,9 @@ watch(
 <template>
   <div class="skin-selector rs-panel rs-panel--glass rs-panel--wired is-powered" role="dialog" aria-labelledby="skin-selector-title">
     <header class="rs-panel__head">
-      <div class="rs-panel__heading">
-        <span class="rs-eyebrow" aria-hidden="true">Skins</span>
-        <h2 id="skin-selector-title" class="rs-panel__title">
-          {{ $t('menu.selectSkin') }}
-        </h2>
-      </div>
+      <h2 id="skin-selector-title" class="rs-panel__title">
+        {{ $t('menu.selectSkin') }}
+      </h2>
       <span class="rs-panel__hint rs-faint"><kbd class="rs-kbd">Esc</kbd>{{ $t('menu.back') }}</span>
     </header>
 
