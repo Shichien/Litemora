@@ -1,0 +1,44 @@
+minecraft-data 3.105.0 — third-party notice
+
+The generated protocol-763.js, protocol-765.js, protocol-767.js and
+protocol-769.js tables are derived from minecraft-data 3.105.0.
+
+Upstream data project: https://github.com/PrismarineJS/minecraft-data
+Node package project: https://github.com/PrismarineJS/node-minecraft-data
+Package author: Romain Beaumont
+Data contributors: https://github.com/PrismarineJS/minecraft-data/graphs/contributors
+Declared package license: MIT
+
+The installed 3.105.0 package does not contain a separate LICENSE file or an
+upstream copyright notice. Its package.json declares "license": "MIT".
+The bundled minecraft-data/README.md license section states verbatim:
+
+    MIT
+
+    Some of the data was extracted manually or automatically from wiki.vg and minecraft.gamepedia.com.
+    If required by one of the sources the license might change to something more appropriate.
+
+The complete standard MIT permission and warranty terms are reproduced below.
+They are not represented as a verbatim upstream LICENSE file. No copyright
+year or copyright-holder notice has been invented on behalf of upstream.
+Terms source: https://spdx.org/licenses/MIT.html
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to
+do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
