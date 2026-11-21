@@ -1,4 +1,5 @@
 <script setup>
+import { SWITCH_INPUTS } from '@three/world/redstone-sim/switch-types.js'
 import emitter from '@three/utils/event/event-bus.js'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
@@ -17,6 +18,7 @@ const replay = reactive({
   changeCount: 0,
   lastChangedBlocks: 0,
   door: null,
+  simulated: false,
   switches: [],
   hotTicks: [],
   engine: '',
@@ -57,6 +59,42 @@ const statusLabel = computed(() => {
   }
   return replay.playing ? '运行中' : '已暂停'
 })
+
+
+
+// 门模式下主按钮和状态行的文案。pulse：操作一次，机器自己复位（按钮 / 压力板门）。
+const doorActionLabel = computed(() => {
+  const door = replay.door
+  if (!door) {
+    return '一键运行'
+  }
+  if (door.state === 'custom') {
+    return '恢复初始状态'
+  }
+  if (door.mode === 'pulse') {
+    return '触发开关'
+  }
+  return door.state === 'open' ? '关门' : '开门'
+})
+
+const doorStatusLabel = computed(() => {
+  const door = replay.door
+  if (!door) {
+    return ''
+  }
+  if (door.busy) {
+    return '运行中（暂停后按 K 继续）'
+  }
+  if (door.state === 'custom') {
+    return '自定义进度，请先恢复初始状态'
+  }
+  if (door.mode === 'pulse') {
+    return '待触发，运行完会自动复位'
+  }
+  return door.state === 'open' ? '门已打开' : '门已关闭'
+})
+
+const sourceLabel = computed(() => (replay.simulated ? '浏览器内红石模拟' : '预计算红石回放'))
 
 function emitCommand(type, detail = {}) {
   emitter.emit('redstone-replay:command', { type, ...detail })
@@ -132,20 +170,15 @@ onUnmounted(() => {
     aria-label="红石运行时间线"
   >
     <header class="replay-heading">
-      <div class="replay-title-block">
-        <span class="replay-kicker rs-eyebrow">
-          REDSTONE ARCHIVE
-          <a
-            class="replay-credit"
-            href="https://github.com/azazo1/redstone-rs"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="红石模拟由 azazo1/redstone-rs 提供，感谢！"
-          >· SIM BY REDSTONE-RS</a>
-        </span>
-        <strong class="replay-title">{{ replay.title }}</strong>
-      </div>
+      <strong class="replay-title">{{ replay.title }}</strong>
       <div class="replay-meta">
+        <a
+          class="replay-credit"
+          href="https://github.com/azazo1/redstone-rs"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="红石模拟由 azazo1/redstone-rs 提供，感谢！"
+        >redstone-rs</a>
         <span class="rs-chip meta-version">Java {{ replay.minecraftVersion }}</span>
         <span class="meta-changes">{{ replay.changeCount }} 次状态变化</span>
         <span class="change-readout" title="上一刻变化的方块数">Δ {{ replay.lastChangedBlocks }}</span>
@@ -163,18 +196,26 @@ onUnmounted(() => {
         :disabled="!replay.ready || !!replay.error || !!replay.door?.busy"
         @click="replay.door ? emitCommand('door-toggle') : emitCommand('restart', { autoplay: true })"
       >
-        {{ replay.door ? (replay.door.state === 'custom' ? '恢复初始状态' : replay.door.state === 'open' ? '关门' : '开门') : '一键运行' }}
+        {{ doorActionLabel }}
       </button>
-      <span>预计算红石回放 · {{ replay.door ? '正向播放开 / 关门段，完成后停止保持' : '从头运行完整流程' }} · K 播放 / 暂停</span>
-      <span v-if="replay.door">{{ replay.door.busy ? '门段进行中（暂停后按 K 继续）' : replay.door.state === 'custom' ? '自定义进度，请先恢复初始状态' : replay.door.state === 'open' ? '门已打开' : '门已关闭' }}</span>
+      <span>{{ sourceLabel }} · {{ replay.door ? (replay.door.mode === 'pulse' ? '操作一次开关，机器运行后自动复位' : '正向播放开 / 关门段，完成后停止保持') : '从头运行完整流程' }} · K 播放 / 暂停</span>
+      <span v-if="replay.door">{{ doorStatusLabel }}</span>
     </div>
+    <p v-if="replay.error" class="replay-error" role="alert">
+      {{ replay.error }}
+    </p>
     <details class="replay-switches">
       <summary>真实开关：{{ replay.switches.length }} 个 · 世界坐标</summary>
-      <p v-if="replay.switches.length">{{ replay.door ? '走近登记的门拉杆并右键，可开 / 关门；每段结束停止保持。自定义进度时先恢复初始状态。' : '走近下列拉杆或按钮并右键，也会从头运行整段回放。' }} 这是预计算回放，不会实时计算新电路。</p>
-      <p v-else>此回放没有登记真实拉杆或按钮，请使用“一键运行”。脚本放置方块的位置不是开关。</p>
+      <p v-if="replay.switches.length">
+        {{ replay.door ? '走近登记的开关并右键，效果与上方按钮相同；每段结束停止保持。自定义进度时先恢复初始状态。' : '走近下列开关并右键，也会从头运行整段回放。' }}
+        {{ replay.simulated ? '动画由浏览器在进入世界时用 redstone-rs 模拟原理图得到；之后在世界里改动的方块不会重新模拟。' : '这是预计算回放，不会实时计算新电路。' }}
+      </p>
+      <p v-else>
+        点击一键运行可以播放整段回放。
+      </p>
       <ul v-if="replay.switches.length">
         <li v-for="control in replay.switches" :key="`${control.x},${control.y},${control.z}`">
-          {{ control.type === 'lever' ? '拉杆' : '按钮' }}：X {{ control.x }}，Y {{ control.y }}，Z {{ control.z }}
+          {{ SWITCH_INPUTS[control.type]?.[0] || '开关' }}：X {{ control.x }}，Y {{ control.y }}，Z {{ control.z }}
         </li>
       </ul>
     </details>
@@ -294,6 +335,11 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 700;
 }
+.replay-error {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #ff8a80;
+}
 .replay-switches {
   margin-bottom: 10px;
   font-size: 12px;
@@ -331,18 +377,6 @@ onUnmounted(() => {
   gap: 14px;
 }
 
-.replay-title-block {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.replay-kicker {
-  line-height: 1;
-}
-
 .replay-credit {
   color: var(--rs-text-3);
   font: inherit;
@@ -362,6 +396,8 @@ onUnmounted(() => {
 }
 
 .replay-title {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   color: #fff;
   font: 600 15px/1.25 var(--rs-font-body);

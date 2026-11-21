@@ -32,6 +32,8 @@ import Player from './player/player.js'
 import PortalLinkController from './portal-link-controller.js'
 import RedstoneReplayController, { resolveRedstoneReplayUrl } from './redstone-replay-controller.js'
 import { loadRedstoneReplayTimeline } from './redstone-replay-loader.js'
+import { normalizeRedstoneSwitch } from './redstone-sim/switch-recorder.js'
+import { simulateSwitchReplay } from './redstone-sim/switch-sim-loader.js'
 import ChunkManager from './terrain/chunk-manager.js'
 import MinecraftSchematicRenderLayer from './terrain/minecraft-schematic-render-layer.js'
 import schematicService from './terrain/schematic-service.js'
@@ -355,6 +357,26 @@ export default class World {
       return { url: replayUrl, data: silence(loadRedstoneReplayTimeline(replayUrl), 'redstone replay timeline') }
     }), 'redstone replay')
 
+    // 没有预计算回放、但上传者标记了开关：用原理图源文件在 worker 里现场模拟。
+    // 源文件稍后要交给渲染器，这里拷贝一份再转移给 worker。
+    const switchSimulation = silence(Promise.all([projectionContext, backendConfigRecord]).then(([context, record]) => {
+      const item = context?.item || null
+      const switchConfig = normalizeRedstoneSwitch(item?.redstoneSwitch)
+      const hasReplay = (item?.redstoneReplay && typeof item.redstoneReplay === 'object')
+        || !!resolveRedstoneReplayUrl(item, record?.config)
+      if (!switchConfig || hasReplay) {
+        return null
+      }
+      return {
+        data: silence(sourcePayload.then(payload => simulateSwitchReplay({
+          buffer: payload?.buffer instanceof ArrayBuffer ? payload.buffer.slice(0) : null,
+          fileName: payload?.fileName || item?.fileName || '',
+          ...switchConfig,
+          title: item?.title || '',
+        })), 'redstone switch simulation'),
+      }
+    }), 'redstone switch simulation')
+
     return {
       projectionContext,
       backendConfigRecord,
@@ -362,6 +384,7 @@ export default class World {
       sourcePayload,
       sourceProjectionContext: projectionContext,
       replay,
+      switchSimulation,
     }
   }
 
@@ -403,6 +426,19 @@ export default class World {
       }
       return loadRedstoneReplayTimeline(replayUrl)
     })
+  }
+
+  /**
+   * 供 RedstoneReplayController 取用浏览器内红石模拟的结果（只取一次）。
+   * 投影没有标记开关时返回 null；模拟失败时返回的 promise 会拒绝。
+   */
+  takeSwitchSimulation() {
+    const pending = this._bootstrap?.switchSimulation
+    if (!pending) {
+      return null
+    }
+    this._bootstrap.switchSimulation = null
+    return pending.then(entry => entry?.data || null)
   }
 
   async _loadActiveProjectionContext() {

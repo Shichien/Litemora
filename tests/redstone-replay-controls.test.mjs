@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import vm from 'node:vm'
+import { resolveSwitchType } from '../src/js/world/redstone-sim/switch-types.js'
 
 // Execute the actual controller with only browser imports stubbed; no WebGL is
 // needed to test playback state. The event bus otherwise eagerly reads Vite env.
@@ -11,6 +12,7 @@ const executable = source.replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*$/gm, ''
   .replace('export default class RedstoneReplayController', 'class RedstoneReplayController')
   .replaceAll('export function ', 'function ')
 const { Controller, getReplaySwitches, validateDoorControl } = vm.runInNewContext(`${executable}\n;({ Controller: RedstoneReplayController, getReplaySwitches, validateDoorControl })`, {
+  resolveSwitchType,
   blockKey: (x, y, z) => `${x},${y},${z}`,
   emitter: { emit() {} },
 })
@@ -42,6 +44,69 @@ test('door metadata requires an actual lever and bounded forward segments', () =
   assert.equal(validateDoorControl(config, 500, switches), null)
   assert.equal(validateDoorControl({ ...config, segments: { ...config.segments, close: { fromTick: 122, toTick: 99 } } }, 1200, switches), null)
   assert.ok(validateDoorControl(config, 1200, getReplaySwitches(timeline, { x: 10 }), { x: 10 }))
+})
+
+test('pressure plates are switches; simulated controls may use any switch and a single pulse segment', () => {
+  const plateTimeline = {
+    ...timeline,
+    palette: ['minecraft:oak_pressure_plate[powered=false]', 'minecraft:stone_button[powered=false]', 'minecraft:redstone_block'],
+  }
+  const switches = getReplaySwitches(plateTimeline)
+  assert.deepEqual(JSON.parse(JSON.stringify(switches)), [
+    { x: 3, y: 1, z: 0, type: 'pressure_plate' },
+    { x: 5, y: 2, z: 0, type: 'button' },
+  ])
+
+  // Hand-written open/close metadata still needs a lever; the simulator has already
+  // proved the round trip, so its result may toggle on any switch.
+  assert.equal(validateDoorControl(config, 1200, switches), null)
+  assert.ok(validateDoorControl(config, 1200, switches, {}, { allowAnySwitch: true }))
+
+  const pulse = { type: 'door', mode: 'pulse', switchPosition: { x: 3, y: 1, z: 0 }, initialState: 'closed', segments: { pulse: { fromTick: 12, toTick: 60 } } }
+  const validated = validateDoorControl(pulse, 60, switches)
+  assert.equal(validated.mode, 'pulse')
+  assert.deepEqual(JSON.parse(JSON.stringify(validated.segments)), { pulse: { fromTick: 12, toTick: 60 } })
+  assert.equal(validateDoorControl(pulse, 59, switches), null)
+  assert.equal(validateDoorControl({ ...pulse, segments: {} }, 60, switches), null)
+})
+
+test('a pulse door replays the same segment each time and ends back in its initial state', async () => {
+  const instance = controller()
+  instance.replay = { totalTicks: 60, ticksPerSecond: 20 }
+  instance._doorControl = { initialState: 'closed', switchKey: '3,1,0', mode: 'pulse', segments: { pulse: { fromTick: 12, toTick: 60 } } }
+  instance._doorState = 'closed'
+  for (let round = 0; round < 2; round += 1) {
+    await instance.toggleDoor()
+    assert.equal(instance.currentTick, 12)
+    assert.equal(instance.playing, true)
+    instance.update()
+    assert.equal(instance.currentTick, 60)
+    assert.equal(instance.playing, false)
+    assert.equal(instance._doorState, 'closed')
+  }
+  await instance.seek(30)
+  assert.equal(instance._doorState, 'custom')
+})
+
+test('a rejected simulation keeps its original error after the static renderer becomes active', async () => {
+  const instance = controller()
+  let rendererActive = false
+  Object.assign(instance, {
+    available: false,
+    ready: false,
+    error: '',
+    _timeline: null,
+    world: { minecraftSchematicRenderLayer: { isRuntimeRendererActive: () => rendererActive } },
+    async _resolveReplayTimeline() { throw new Error('机器没有回到初始状态') },
+    _beginPreparingMotionResources() { assert.fail('a failed simulation must not prepare animation resources') },
+  })
+  assert.equal(await instance.initialize(), false)
+  instance.update()
+  rendererActive = true
+  instance.update()
+  assert.equal(instance.available, true, 'the HUD must remain visible with the failure reason')
+  assert.equal(instance.ready, false)
+  assert.equal(instance.error, '机器没有回到初始状态')
 })
 
 function controller() {

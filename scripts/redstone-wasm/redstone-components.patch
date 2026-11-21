@@ -1,0 +1,2761 @@
+diff --git a/crates/redstone-core/src/types.rs b/crates/redstone-core/src/types.rs
+index 27f5139..6b9c06d 100644
+--- a/crates/redstone-core/src/types.rs
++++ b/crates/redstone-core/src/types.rs
+@@ -199,6 +199,12 @@ pub enum Action {
+         field: String,
+         value: serde_json::Value,
+     },
++    StepOnBlock {
++        pos: BlockPos,
++    },
++    StrikeLightningRod {
++        pos: BlockPos,
++    },
+     HitTarget {
+         pos: BlockPos,
+         face: Direction,
+diff --git a/crates/redstone-io/src/structure.rs b/crates/redstone-io/src/structure.rs
+index 20b9ba1..eaf6340 100644
+--- a/crates/redstone-io/src/structure.rs
++++ b/crates/redstone-io/src/structure.rs
+@@ -278,6 +278,31 @@ fn decode_nbt(bytes: Vec<u8>) -> Result<HashMap<String, Value>, StructureError>
+     fastnbt::from_bytes(&decoded).map_err(StructureError::Nbt)
+ }
+ 
++fn read_palette_state(entry: &Value) -> Result<(&str, BTreeMap<String, String>), StructureError> {
++    if let Value::String(name) = entry {
++        return Ok((name, BTreeMap::new()));
++    }
++    let Value::Compound(state) = entry else {
++        return Err(StructureError::InvalidType("block state"));
++    };
++    let Some(Value::String(name)) = state.get("id").or_else(|| state.get("Name")) else {
++        return Err(StructureError::MissingField("block state id".to_owned()));
++    };
++    let mut properties = BTreeMap::new();
++    if let Some(value) = state.get("properties").or_else(|| state.get("Properties")) {
++        let Value::Compound(entries) = value else {
++            return Err(StructureError::InvalidType("properties"));
++        };
++        for (key, value) in entries {
++            let Value::String(value) = value else {
++                return Err(StructureError::InvalidType("string property"));
++            };
++            properties.insert(key.clone(), value.clone());
++        }
++    }
++    Ok((name, properties))
++}
++
+ pub(super) fn resolve<R: StructureStateResolver>(
+     resolver: &mut R,
+     name: &str,
+@@ -489,7 +514,10 @@ fn container_slot_count(
+         "minecraft:furnace" | "minecraft:blast_furnace" | "minecraft:smoker" => Some(3),
+         "minecraft:chest" | "minecraft:trapped_chest" | "minecraft:barrel" => Some(27),
+         value if value.ends_with("copper_chest") => Some(27),
+-        "minecraft:decorated_pot" => Some(1),
++        "minecraft:shelf" => Some(3),
++        "minecraft:jukebox" | "minecraft:decorated_pot" => Some(1),
++        "minecraft:chiseled_bookshelf" => Some(6),
++        value if value.ends_with("_chest_boat") || value.ends_with("_chest_raft") => Some(27),
+         "minecraft:chest_minecart" => Some(27),
+         "minecraft:hopper_minecart" => Some(5),
+         value if value.ends_with("_shulker_box") || value == "minecraft:shulker_box" => Some(27),
+diff --git a/crates/redstone-io/src/structure/litematic.rs b/crates/redstone-io/src/structure/litematic.rs
+index d6174e0..914b9f8 100644
+--- a/crates/redstone-io/src/structure/litematic.rs
++++ b/crates/redstone-io/src/structure/litematic.rs
+@@ -69,10 +69,8 @@ pub(super) fn load<R: StructureStateResolver>(
+         let mut states = Vec::new();
+         let mut names = Vec::new();
+         for entry in palette {
+-            let entry = compound_value(entry)?;
+-            let name = string(entry, "Name")?;
+-            let properties =
+-                transform_properties(optional_properties(entry, "Properties")?, transform);
++            let (name, properties) = super::read_palette_state(entry)?;
++            let properties = transform_properties(properties, transform);
+             states.push(resolve(resolver, name, &properties)?);
+             names.push(name.to_owned());
+         }
+@@ -177,13 +175,6 @@ fn compound_value(value: &Value) -> Result<&HashMap<String, Value>, StructureErr
+     }
+ }
+ 
+-fn string<'a>(map: &'a HashMap<String, Value>, key: &str) -> Result<&'a str, StructureError> {
+-    match map.get(key) {
+-        Some(Value::String(value)) => Ok(value),
+-        _ => Err(StructureError::MissingField(key.to_owned())),
+-    }
+-}
+-
+ fn integer(map: &HashMap<String, Value>, key: &str) -> Result<i32, StructureError> {
+     map.get(key)
+         .and_then(value_i32)
+@@ -199,25 +190,6 @@ fn xyz_compound(map: &HashMap<String, Value>, key: &str) -> Result<BlockPos, Str
+     ))
+ }
+ 
+-fn optional_properties(
+-    map: &HashMap<String, Value>,
+-    key: &str,
+-) -> Result<BTreeMap<String, String>, StructureError> {
+-    let Some(value) = map.get(key) else {
+-        return Ok(BTreeMap::new());
+-    };
+-    let Value::Compound(properties) = value else {
+-        return Err(StructureError::InvalidType("properties"));
+-    };
+-    properties
+-        .iter()
+-        .map(|(key, value)| match value {
+-            Value::String(value) => Ok((key.clone(), value.clone())),
+-            _ => Err(StructureError::InvalidType("string property")),
+-        })
+-        .collect()
+-}
+-
+ fn long_array<'a>(map: &'a HashMap<String, Value>, key: &str) -> Result<&'a [i64], StructureError> {
+     match map.get(key) {
+         Some(Value::LongArray(value)) => Ok(value),
+diff --git a/crates/redstone-io/src/structure/vanilla.rs b/crates/redstone-io/src/structure/vanilla.rs
+index e59e864..5eeed23 100644
+--- a/crates/redstone-io/src/structure/vanilla.rs
++++ b/crates/redstone-io/src/structure/vanilla.rs
+@@ -18,9 +18,8 @@ pub(super) fn load<R: StructureStateResolver>(
+     let mut states = Vec::new();
+     let mut names = Vec::new();
+     for entry in palette {
+-        let entry = compound_value(entry)?;
+-        let name = string(entry, "Name")?;
+-        let properties = transform_properties(optional_properties(entry, "Properties")?, transform);
++        let (name, properties) = super::read_palette_state(entry)?;
++        let properties = transform_properties(properties, transform);
+         states.push(resolve(resolver, name, &properties)?);
+         names.push(name.to_owned());
+     }
+@@ -92,13 +91,6 @@ fn compound_value(value: &Value) -> Result<&HashMap<String, Value>, StructureErr
+     }
+ }
+ 
+-fn string<'a>(map: &'a HashMap<String, Value>, key: &str) -> Result<&'a str, StructureError> {
+-    match map.get(key) {
+-        Some(Value::String(value)) => Ok(value),
+-        _ => Err(StructureError::MissingField(key.to_owned())),
+-    }
+-}
+-
+ fn integer(map: &HashMap<String, Value>, key: &str) -> Result<i32, StructureError> {
+     map.get(key)
+         .and_then(value_i32)
+@@ -116,22 +108,3 @@ fn int_list(map: &HashMap<String, Value>, key: &str) -> Result<[i32; 3], Structu
+         value_i32(&value[2]).ok_or(StructureError::InvalidType("integer"))?,
+     ])
+ }
+-
+-fn optional_properties(
+-    map: &HashMap<String, Value>,
+-    key: &str,
+-) -> Result<BTreeMap<String, String>, StructureError> {
+-    let Some(value) = map.get(key) else {
+-        return Ok(BTreeMap::new());
+-    };
+-    let Value::Compound(properties) = value else {
+-        return Err(StructureError::InvalidType("properties"));
+-    };
+-    properties
+-        .iter()
+-        .map(|(key, value)| match value {
+-            Value::String(value) => Ok((key.clone(), value.clone())),
+-            _ => Err(StructureError::InvalidType("string property")),
+-        })
+-        .collect()
+-}
+diff --git a/crates/redstone-java-26/src/compiled/frontend.rs b/crates/redstone-java-26/src/compiled/frontend.rs
+index adb6ace..b18efd3 100644
+--- a/crates/redstone-java-26/src/compiled/frontend.rs
++++ b/crates/redstone-java-26/src/compiled/frontend.rs
+@@ -80,6 +80,8 @@ pub(super) fn classify(state: &StateDefinition) -> Option<NodeKind> {
+         BlockBehavior::Button { .. } => NodeKind::Button,
+         BlockBehavior::PressurePlate { .. } => NodeKind::PressurePlate,
+         BlockBehavior::Observer
++        | BlockBehavior::LightningRod
++        | BlockBehavior::SculkSensor
+         | BlockBehavior::Target
+         | BlockBehavior::TripwireHook
+         | BlockBehavior::DetectorRail
+diff --git a/crates/redstone-java-26/src/compiled/network.rs b/crates/redstone-java-26/src/compiled/network.rs
+index b92843d..9110014 100644
+--- a/crates/redstone-java-26/src/compiled/network.rs
++++ b/crates/redstone-java-26/src/compiled/network.rs
+@@ -1373,6 +1373,8 @@ fn identify_kind(behavior: &BlockBehavior) -> Option<NetworkNodeKind> {
+         BlockBehavior::PressurePlate { .. } => NetworkNodeKind::PressurePlate,
+         BlockBehavior::Target => NetworkNodeKind::Target,
+         BlockBehavior::Observer
++        | BlockBehavior::LightningRod
++        | BlockBehavior::SculkSensor
+         | BlockBehavior::TripwireHook
+         | BlockBehavior::DetectorRail
+         | BlockBehavior::DaylightDetector
+@@ -1407,11 +1409,12 @@ fn initial_output(world: &SparseWorld, pos: BlockPos, state: &StateDefinition) -
+         BlockBehavior::Lever | BlockBehavior::Button { .. } => {
+             u8::from(state.bool_property("powered")) * 15
+         }
+-        BlockBehavior::PressurePlate { .. } => state
+-            .int_property("power")
+-            .map_or_else(|| u8::from(state.bool_property("powered")) * 15, |power| {
+-                power.clamp(0, 15) as u8
+-            }),
++        BlockBehavior::PressurePlate { .. } => state.int_property("power").map_or_else(
++            || u8::from(state.bool_property("powered")) * 15,
++            |power| power.clamp(0, 15) as u8,
++        ),
++        BlockBehavior::SculkSensor => state.power,
++        BlockBehavior::LightningRod => u8::from(state.powered) * 15,
+         BlockBehavior::Target => state.int_property("power").unwrap_or(0).clamp(0, 15) as u8,
+         BlockBehavior::Observer => u8::from(state.bool_property("powered")) * 15,
+         BlockBehavior::TripwireHook
+@@ -1434,7 +1437,9 @@ fn initial_output(world: &SparseWorld, pos: BlockPos, state: &StateDefinition) -
+ 
+ fn provides_weak_output(state: &StateDefinition, direction: Direction) -> bool {
+     match state.behavior {
+-        BlockBehavior::RedstoneBlock
++        BlockBehavior::SculkSensor => state.facing != Some(direction),
++        BlockBehavior::LightningRod
++        | BlockBehavior::RedstoneBlock
+         | BlockBehavior::Lever
+         | BlockBehavior::Button { .. }
+         | BlockBehavior::PressurePlate { .. }
+@@ -1463,7 +1468,10 @@ fn provides_strong_output(state: &StateDefinition, direction: Direction) -> bool
+         | BlockBehavior::DetectorRail
+         | BlockBehavior::Lectern
+         | BlockBehavior::TrappedChest => direction == Direction::Up,
+-        BlockBehavior::TripwireHook => state.facing == Some(direction),
++        BlockBehavior::SculkSensor => direction == Direction::Up,
++        BlockBehavior::LightningRod | BlockBehavior::TripwireHook => {
++            state.facing == Some(direction)
++        }
+         BlockBehavior::Repeater | BlockBehavior::Comparator | BlockBehavior::Observer => {
+             state.facing == Some(direction)
+         }
+diff --git a/crates/redstone-java-26/src/compiled/runtime.rs b/crates/redstone-java-26/src/compiled/runtime.rs
+index 0a1aa48..e9b08bc 100644
+--- a/crates/redstone-java-26/src/compiled/runtime.rs
++++ b/crates/redstone-java-26/src/compiled/runtime.rs
+@@ -498,11 +498,12 @@ fn source_output(
+         BlockBehavior::Lever | BlockBehavior::Button { .. } => {
+             u8::from(state.bool_property("powered")) * 15
+         }
+-        BlockBehavior::PressurePlate { .. } => state
+-            .int_property("power")
+-            .map_or_else(|| u8::from(state.bool_property("powered")) * 15, |power| {
+-                power.clamp(0, 15) as u8
+-            }),
++        BlockBehavior::PressurePlate { .. } => state.int_property("power").map_or_else(
++            || u8::from(state.bool_property("powered")) * 15,
++            |power| power.clamp(0, 15) as u8,
++        ),
++        BlockBehavior::SculkSensor => state.power,
++        BlockBehavior::LightningRod => u8::from(state.powered) * 15,
+         BlockBehavior::Target => state.int_property("power").unwrap_or(0).clamp(0, 15) as u8,
+         BlockBehavior::Observer => u8::from(state.bool_property("powered")) * 15,
+         BlockBehavior::TripwireHook
+diff --git a/crates/redstone-java-26/src/registry.rs b/crates/redstone-java-26/src/registry.rs
+index 3118f38..de23aa3 100644
+--- a/crates/redstone-java-26/src/registry.rs
++++ b/crates/redstone-java-26/src/registry.rs
+@@ -88,6 +88,13 @@ pub enum BlockBehavior {
+     NoteBlock,
+     Bell,
+     Target,
++    Furnace,
++    SculkSensor,
++    Shrieker,
++    LightningRod,
++    BigDripleaf,
++    Shelf,
++    RedstoneOre,
+     PressurePlate {
+         max_weight: Option<u32>,
+         detects_items: bool,
+@@ -373,6 +380,8 @@ impl StateResolver for Java26Registry {
+                 | BlockBehavior::Crafter
+                 | BlockBehavior::Piston { .. }
+                 | BlockBehavior::Lamp
++                | BlockBehavior::Shelf
++                | BlockBehavior::BigDripleaf
+                 | BlockBehavior::CopperBulb
+                 | BlockBehavior::PoweredConsumer
+                 | BlockBehavior::Door
+@@ -607,6 +616,13 @@ fn classify(name: &str, properties: &BTreeMap<String, String>) -> BlockTraits {
+         "sticky_piston" => BlockBehavior::Piston { sticky: true },
+         "redstone_lamp" => BlockBehavior::Lamp,
+         value if value.ends_with("_bulb") => BlockBehavior::CopperBulb,
++        "furnace" | "blast_furnace" | "smoker" => BlockBehavior::Furnace,
++        "sculk_sensor" | "calibrated_sculk_sensor" => BlockBehavior::SculkSensor,
++        "sculk_shrieker" => BlockBehavior::Shrieker,
++        "redstone_ore" | "deepslate_redstone_ore" => BlockBehavior::RedstoneOre,
++        value if value.ends_with("_shelf") => BlockBehavior::Shelf,
++        "big_dripleaf" => BlockBehavior::BigDripleaf,
++        value if value.ends_with("lightning_rod") => BlockBehavior::LightningRod,
+         "target" => BlockBehavior::Target,
+         "light_weighted_pressure_plate" => BlockBehavior::PressurePlate {
+             max_weight: Some(15),
+diff --git a/crates/redstone-java-26/src/rules.rs b/crates/redstone-java-26/src/rules.rs
+index 3e8fc32..a3752bf 100644
+--- a/crates/redstone-java-26/src/rules.rs
++++ b/crates/redstone-java-26/src/rules.rs
+@@ -25,9 +25,14 @@ mod consumer;
+ mod inventory;
+ mod item;
+ mod observer;
++mod ore;
++mod physics;
+ mod piston;
++mod rail_cart;
+ mod removal;
+ mod shape;
++mod shelf;
++mod vibration;
+ 
+ use inventory::block_entity_i64;
+ 
+@@ -42,6 +47,8 @@ pub struct Java26RuleCacheFingerprint {
+ 
+ pub struct Java26Rules {
+     registry: Java26Registry,
++    listeners: vibration::Listeners,
++    ore: ore::OreTicks,
+     comparator_outputs: BTreeMap<BlockPos, u8>,
+     block_signal_cache: HashMap<BlockPos, u8, BuildHasherDefault<BlockPosHasher>>,
+     wire_kind: Option<BlockKindId>,
+@@ -67,6 +74,8 @@ impl Java26Rules {
+             .map(|state| state.kind);
+         Self {
+             registry,
++            listeners: vibration::Listeners::default(),
++            ore: ore::OreTicks::default(),
+             comparator_outputs: BTreeMap::new(),
+             block_signal_cache: HashMap::default(),
+             wire_kind,
+@@ -156,6 +165,12 @@ impl Java26Rules {
+             ctx.set_block(pos, state, cause)?
+         };
+         if changed && !wire_to_wire {
++            self.replace_listener(pos, old, state);
++            self.ore.track(
++                pos,
++                self.registry.state(old).unwrap(),
++                self.registry.state(state).unwrap(),
++            );
+             self.block_signal_cache.clear();
+         }
+         Ok(old)
+@@ -430,6 +445,8 @@ impl Java26Rules {
+                     0
+                 }
+             }
++            BlockBehavior::LightningRod => u8::from(state.powered) * 15,
++            BlockBehavior::SculkSensor if state.facing != Some(direction) => state.power,
+             BlockBehavior::Target => state.int_property("power").unwrap_or(0).clamp(0, 15) as u8,
+             BlockBehavior::PressurePlate { .. }
+             | BlockBehavior::TripwireHook
+@@ -467,7 +484,17 @@ impl Java26Rules {
+                     0
+                 }
+             }
+-            BlockBehavior::DetectorRail | BlockBehavior::Lectern | BlockBehavior::TrappedChest => {
++            BlockBehavior::LightningRod => {
++                if state.facing == Some(direction) && state.powered {
++                    15
++                } else {
++                    0
++                }
++            }
++            BlockBehavior::SculkSensor
++            | BlockBehavior::DetectorRail
++            | BlockBehavior::Lectern
++            | BlockBehavior::TrappedChest => {
+                 if direction == Direction::Up {
+                     self.weak_signal(world, pos, state, direction)
+                 } else {
+@@ -649,6 +676,8 @@ impl Java26Rules {
+             }
+             BlockBehavior::Comparator => self.refresh_comparator(ctx, pos, state_id)?,
+             BlockBehavior::Lamp
++            | BlockBehavior::Shelf
++            | BlockBehavior::BigDripleaf
+             | BlockBehavior::CopperBulb
+             | BlockBehavior::PoweredConsumer
+             | BlockBehavior::Door
+@@ -1056,6 +1085,8 @@ impl Java26Rules {
+             | BlockBehavior::Repeater
+             | BlockBehavior::Comparator
+             | BlockBehavior::Observer
++            | BlockBehavior::SculkSensor
++            | BlockBehavior::LightningRod
+             | BlockBehavior::Target
+             | BlockBehavior::PressurePlate { .. }
+             | BlockBehavior::TripwireHook
+@@ -1262,7 +1293,10 @@ impl Java26Rules {
+                 self.set_block(ctx, pos, next, "container_trigger")?;
+             }
+         } else if !powered && triggered {
+-            let next = self.changed_state(state.id, "triggered", "false")?;
++            let mut next = self.changed_state(state.id, "triggered", "false")?;
++            if state.behavior == BlockBehavior::Crafter {
++                next = self.changed_state(next, "crafting", "false")?;
++            }
+             if notify_observers {
+                 self.set_state_and_update_shapes(ctx, pos, next, "container_untrigger")?;
+             } else {
+@@ -1272,6 +1306,25 @@ impl Java26Rules {
+         Ok(())
+     }
+ 
++    fn tilt_dripleaf(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        state: &StateDefinition,
++        tilt: &str,
++        delay: u64,
++    ) -> Result<(), RulesError> {
++        let next = self.changed_state(state.id, "tilt", tilt)?;
++        if self.set_state_and_update_shapes(ctx, pos, next, "dripleaf_tilt")? && tilt != "unstable"
++        {
++            self.vibrate(ctx, pos, 11, false);
++        }
++        if delay > 0 {
++            ctx.schedule_tick(pos, state.kind, delay, TickPriority::Normal);
++        }
++        Ok(())
++    }
++
+     fn refresh_powered_consumer(
+         &mut self,
+         ctx: &mut EventContext<'_>,
+@@ -1302,6 +1355,10 @@ impl Java26Rules {
+                     ctx.schedule_tick(pos, state.kind, 4, TickPriority::Normal);
+                 }
+             }
++            BlockBehavior::Shelf => self.refresh_shelf(ctx, pos, &state, powered)?,
++            BlockBehavior::BigDripleaf if powered => {
++                self.tilt_dripleaf(ctx, pos, &state, "none", 0)?
++            }
+             BlockBehavior::CopperBulb => {
+                 let was_powered = state.bool_property("powered");
+                 if powered != was_powered {
+@@ -1314,16 +1371,17 @@ impl Java26Rules {
+                 }
+             }
+             BlockBehavior::PoweredConsumer => {
++                let mut next = state_id;
+                 if state.properties.contains_key("powered")
+                     && state.bool_property("powered") != powered
+                 {
+-                    let next = self.changed_state(state_id, "powered", powered.to_string())?;
+-                    self.set_state_and_notify(ctx, pos, next, "powered_consumer", None)?;
++                    next = self.changed_state(next, "powered", powered.to_string())?;
+                 }
+                 if state.properties.contains_key("open") && state.bool_property("open") != powered {
+-                    let next = self.changed_state(state_id, "open", powered.to_string())?;
+-                    self.set_state_and_notify(ctx, pos, next, "powered_openable", None)?;
++                    next = self.changed_state(next, "open", powered.to_string())?;
++                    self.vibrate(ctx, pos, if powered { 10 } else { 9 }, false);
+                 }
++                self.set_state_and_notify(ctx, pos, next, "powered_openable", None)?;
+             }
+             BlockBehavior::Door => self.refresh_door(ctx, pos, state_id)?,
+             BlockBehavior::PoweredRail => self.refresh_powered_rail(ctx, pos, state_id)?,
+@@ -1332,7 +1390,7 @@ impl Java26Rules {
+             }
+             BlockBehavior::Tnt if powered => {
+                 self.set_state_and_notify(ctx, pos, self.registry.air_state(), "tnt_primed", None)?;
+-                ctx.unsupported(pos, "tnt_explosion");
++                self.prime_tnt(ctx, pos, 80, "redstone");
+                 *self
+                     .event_counts
+                     .entry("tnt_primed".to_owned())
+@@ -1357,6 +1415,7 @@ impl Java26Rules {
+                 let powered = !state.bool_property("powered");
+                 let next = self.changed_state(state_id, "powered", powered.to_string())?;
+                 if self.set_state_and_notify(ctx, pos, next, "lever_use", None)? {
++                    self.vibrate(ctx, pos, if powered { 10 } else { 9 }, true);
+                     update_attached_power_neighbors(ctx, pos, &state);
+                 }
+             }
+@@ -1364,6 +1423,7 @@ impl Java26Rules {
+                 if !state.bool_property("powered") {
+                     let next = self.changed_state(state_id, "powered", "true")?;
+                     if self.set_state_and_notify(ctx, pos, next, "button_press", None)? {
++                        self.vibrate(ctx, pos, 10, true);
+                         update_attached_power_neighbors(ctx, pos, &state);
+                     }
+                     ctx.schedule_tick_after_neighbors(
+@@ -1397,6 +1457,7 @@ impl Java26Rules {
+                 let note = (state.int_property("note").unwrap_or(0) + 1).rem_euclid(25);
+                 let next = self.changed_state(state_id, "note", note.to_string())?;
+                 self.set_state_and_notify(ctx, pos, next, "note_block_use", None)?;
++                self.vibrate(ctx, pos, 10, true);
+                 *self
+                     .event_counts
+                     .entry("note_block_play".to_owned())
+@@ -1535,6 +1596,12 @@ impl BlockRules for Java26Rules {
+         self.block_signal_cache.clear();
+         self.comparator_outputs.clear();
+         self.hopper_last_tick.clear();
++        self.load_listeners(world);
++        self.ore = ore::OreTicks::default();
++        let air = self.registry.state(self.registry.air_state()).unwrap();
++        for (pos, id) in world.iter_blocks() {
++            self.ore.track(pos, air, self.registry.state(id).unwrap());
++        }
+         for (pos, data) in world.block_entities() {
+             let state = self.state(world.get_block(*pos))?;
+             if !matches!(state.behavior, BlockBehavior::Comparator) {
+@@ -1565,6 +1632,20 @@ impl BlockRules for Java26Rules {
+             let state_id = ctx.world.get_block(*pos);
+             let state = self.state(state_id)?.clone();
+             match state.behavior {
++                BlockBehavior::SculkSensor
++                | BlockBehavior::LightningRod
++                | BlockBehavior::Shrieker => {
++                    let delay = match state.property("sculk_sensor_phase") {
++                        Some("active") if state.facing.is_none() => 30,
++                        Some("active" | "cooldown") => 10,
++                        _ if state.powered => 8,
++                        _ if state.bool_property("shrieking") => 90,
++                        _ => 0,
++                    };
++                    if delay != 0 {
++                        ctx.schedule_tick(*pos, state.kind, delay, TickPriority::Normal);
++                    }
++                }
+                 BlockBehavior::Wire => self.update_wire(ctx, *pos, None)?,
+                 BlockBehavior::Torch { .. } => self.refresh_torch(ctx, *pos, state_id)?,
+                 BlockBehavior::Repeater => self.refresh_repeater(ctx, *pos, state_id)?,
+@@ -1575,6 +1656,8 @@ impl BlockRules for Java26Rules {
+                     self.refresh_triggered_container(ctx, *pos, state_id, false)?
+                 }
+                 BlockBehavior::Lamp
++                | BlockBehavior::Shelf
++                | BlockBehavior::BigDripleaf
+                 | BlockBehavior::CopperBulb
+                 | BlockBehavior::PoweredConsumer
+                 | BlockBehavior::Door
+@@ -1617,10 +1700,18 @@ impl BlockRules for Java26Rules {
+                 } else {
+                     *state
+                 };
+-                self.set_state_and_notify(ctx, *pos, state, "action_set_block", None)?;
++                if self.set_state_and_notify(ctx, *pos, state, "action_set_block", None)?
++                    && !self.state(state)?.name.ends_with("_wool")
++                {
++                    self.vibrate(ctx, *pos, 13, true);
++                }
+                 self.repair_shape(ctx, *pos, true)?;
+             }
+             Action::BreakBlock { pos } => {
++                let broken = self.state(ctx.world.get_block(*pos))?;
++                if broken.behavior != BlockBehavior::Air && !broken.name.ends_with("_wool") {
++                    self.vibrate(ctx, *pos, 12, true);
++                }
+                 self.drop_shulker_box(ctx, *pos)?;
+                 self.set_state_and_notify(
+                     ctx,
+@@ -1676,12 +1767,53 @@ impl BlockRules for Java26Rules {
+                     .insert(field.clone(), value.clone());
+                 self.refresh_comparators_near(ctx, pos)?;
+             }
++            Action::StepOnBlock { pos } => {
++                let state = self.state(ctx.world.get_block(*pos))?.clone();
++                match state.behavior {
++                    BlockBehavior::Shrieker => self.shriek(ctx, *pos, &state)?,
++                    BlockBehavior::RedstoneOre if !state.lit => {
++                        let next = self.changed_state(state.id, "lit", "true")?;
++                        self.set_state_and_notify(ctx, *pos, next, "redstone_ore_step", None)?;
++                    }
++                    BlockBehavior::BigDripleaf
++                        if state.property("tilt") == Some("none")
++                            && !self.is_powered(ctx.world, *pos) =>
++                    {
++                        self.tilt_dripleaf(ctx, *pos, &state, "unstable", 10)?;
++                    }
++                    _ => {}
++                }
++                if !state.name.ends_with("_wool") && !state.name.ends_with("_carpet") {
++                    self.vibrate(ctx, *pos, 1, true);
++                }
++            }
++            Action::StrikeLightningRod { pos } => {
++                let state = self.state(ctx.world.get_block(*pos))?.clone();
++                if state.behavior != BlockBehavior::LightningRod {
++                    return Err(RulesError::Message(format!(
++                        "Expected lightning rod at {pos:?}"
++                    )));
++                }
++                let next = self.changed_state(state.id, "powered", "true")?;
++                self.set_state_and_notify(ctx, *pos, next, "lightning_strike", None)?;
++                ctx.update_neighbors(
++                    pos.relative(state.facing.unwrap().opposite()),
++                    state.kind,
++                    None,
++                    None,
++                );
++                ctx.schedule_tick(*pos, state.kind, 8, TickPriority::Normal);
++                self.vibrate(ctx, *pos, 14, false);
++            }
+             Action::HitTarget {
+                 pos,
+                 face,
+                 location,
+                 arrow,
+-            } => self.hit_target(ctx, *pos, *face, *location, *arrow)?,
++            } => {
++                self.hit_target(ctx, *pos, *face, *location, *arrow)?;
++                self.vibrate(ctx, *pos, 2, true);
++            }
+         }
+         Ok(())
+     }
+@@ -1759,6 +1891,8 @@ impl BlockRules for Java26Rules {
+             }
+             BlockBehavior::Piston { .. } => self.refresh_piston(ctx, update.pos, state_id)?,
+             BlockBehavior::Lamp
++            | BlockBehavior::Shelf
++            | BlockBehavior::BigDripleaf
+             | BlockBehavior::CopperBulb
+             | BlockBehavior::PoweredConsumer
+             | BlockBehavior::Door
+@@ -1800,6 +1934,7 @@ impl BlockRules for Java26Rules {
+                 if state.bool_property("powered") {
+                     let next = self.changed_state(state_id, "powered", "false")?;
+                     if self.set_state_and_notify(ctx, tick.pos, next, "button_release", None)? {
++                        self.vibrate(ctx, tick.pos, 9, false);
+                         update_attached_power_neighbors(ctx, tick.pos, &state);
+                     }
+                 }
+@@ -1895,6 +2030,51 @@ impl BlockRules for Java26Rules {
+                     }
+                 }
+             }
++            BlockBehavior::SculkSensor => match state.property("sculk_sensor_phase") {
++                Some("active") => {
++                    let next = self.changed_state(state.id, "power", "0")?;
++                    let next = self.changed_state(next, "sculk_sensor_phase", "cooldown")?;
++                    self.set_state_and_notify(ctx, tick.pos, next, "sculk_cooldown", None)?;
++                    ctx.update_neighbors(
++                        tick.pos.relative(Direction::Down),
++                        state.kind,
++                        None,
++                        None,
++                    );
++                    ctx.schedule_tick(tick.pos, state.kind, 10, TickPriority::Normal);
++                }
++                Some("cooldown") => {
++                    let next = self.changed_state(state.id, "sculk_sensor_phase", "inactive")?;
++                    self.set_state_and_notify(ctx, tick.pos, next, "sculk_idle", None)?;
++                }
++                _ => {}
++            },
++            BlockBehavior::LightningRod | BlockBehavior::Shrieker => {
++                let rod = state.behavior == BlockBehavior::LightningRod;
++                let next = self.changed_state(
++                    state.id,
++                    if rod { "powered" } else { "shrieking" },
++                    "false",
++                )?;
++                self.set_state_and_notify(ctx, tick.pos, next, "pulse_end", None)?;
++                if rod {
++                    ctx.update_neighbors(
++                        tick.pos.relative(state.facing.unwrap().opposite()),
++                        state.kind,
++                        None,
++                        None,
++                    );
++                }
++            }
++            BlockBehavior::BigDripleaf => {
++                let (tilt, delay) = match state.property("tilt") {
++                    _ if self.is_powered(ctx.world, tick.pos) => ("none", 0),
++                    Some("unstable") => ("partial", 10),
++                    Some("partial") => ("full", 100),
++                    _ => ("none", 0),
++                };
++                self.tilt_dripleaf(ctx, tick.pos, &state, tilt, delay)?;
++            }
+             BlockBehavior::Target => {
+                 if state.int_property("power").unwrap_or(0) != 0 {
+                     let next = self.changed_state(state_id, "power", "0")?;
+@@ -1967,6 +2147,8 @@ impl BlockRules for Java26Rules {
+     }
+ 
+     fn tick_entities(&mut self, ctx: &mut EventContext<'_>) -> Result<(), RulesError> {
++        self.receive_vibrations(ctx)?;
++        self.tick_redstone_ore(ctx)?;
+         let item_entities = self.tick_minimal_entities(ctx)?;
+         self.tick_hopper_entity_collisions(ctx, &item_entities)?;
+         let mut occupied_positions = ctx
+@@ -2007,7 +2189,26 @@ impl BlockRules for Java26Rules {
+             return Ok(());
+         }
+         match state.behavior {
++            BlockBehavior::Furnace => self.tick_furnace(ctx, pos, &state)?,
+             BlockBehavior::Hopper => self.tick_container(ctx, pos, &state)?,
++            BlockBehavior::Crafter => {
++                let remaining =
++                    block_entity_i64(ctx.world, pos, "crafting_ticks_remaining").unwrap_or(0);
++                if remaining > 0 {
++                    ctx.update_block_entity(pos, |data| {
++                        if remaining == 1 {
++                            data.fields.remove("crafting_ticks_remaining");
++                        } else {
++                            data.fields
++                                .insert("crafting_ticks_remaining".into(), (remaining - 1).into());
++                        }
++                    });
++                    if remaining == 1 {
++                        let next = self.changed_state(state.id, "crafting", "false")?;
++                        self.set_state_and_notify(ctx, pos, next, "crafter_idle", None)?;
++                    }
++                }
++            }
+             BlockBehavior::DaylightDetector => {
+                 if ctx.game_time() % 20 != 0 {
+                     return Ok(());
+@@ -2054,14 +2255,18 @@ impl BlockRules for Java26Rules {
+         if data.kind == "minecraft:moving_piston" {
+             return true;
+         }
+-        self.registry.state(world.get_block(pos)).is_some_and(|state| {
+-            matches!(
+-                state.behavior,
+-                BlockBehavior::Hopper
+-                    | BlockBehavior::DaylightDetector
+-                    | BlockBehavior::TrappedChest
+-            )
+-        })
++        self.registry
++            .state(world.get_block(pos))
++            .is_some_and(|state| {
++                matches!(
++                    state.behavior,
++                    BlockBehavior::Hopper
++                        | BlockBehavior::Furnace
++                        | BlockBehavior::Crafter
++                        | BlockBehavior::DaylightDetector
++                        | BlockBehavior::TrappedChest
++                )
++            })
+     }
+ 
+     fn read_probe(&self, world: &SparseWorld, probe: &Probe) -> ProbeValue {
+@@ -2151,6 +2356,9 @@ impl Java26Rules {
+         let entity_ids = ctx.world.entities().map(|(id, _)| *id).collect::<Vec<_>>();
+         for id in entity_ids {
+             let kind = ctx.world.entity(id).map(|entity| entity.kind.clone());
++            if kind.as_deref().is_some_and(|k| k.ends_with("minecart")) {
++                self.move_cart(ctx, id)?;
++            }
+             match kind.as_deref() {
+                 Some("minecraft:item") => {
+                     let Some(fields) = ctx.world.entity_fields_mut(id) else {
+@@ -2181,7 +2389,14 @@ impl Java26Rules {
+                         item_entities.push(id);
+                     }
+                 }
++                Some(
++                    "minecraft:arrow"
++                    | "minecraft:spectral_arrow"
++                    | "minecraft:snowball"
++                    | "minecraft:egg",
++                ) => self.tick_projectile(ctx, id)?,
+                 Some("minecraft:tnt") => {
++                    self.move_tnt(ctx, id);
+                     let Some(fields) = ctx.world.entity_fields_mut(id) else {
+                         continue;
+                     };
+@@ -2215,14 +2430,11 @@ impl Java26Rules {
+             }
+         }
+         for id in expired {
+-            let kind = ctx.world.entity(id).map(|entity| entity.kind.clone());
+-            let pos = ctx
+-                .world
+-                .entity(id)
+-                .map(|entity| entity_block_pos(entity.position));
+-            ctx.world.remove_entity(id);
+-            if kind.as_deref() == Some("minecraft:tnt") {
+-                ctx.unsupported(pos.unwrap_or(BlockPos::ZERO), "tnt_explosion");
++            let Some(entity) = ctx.world.remove_entity(id) else {
++                continue;
++            };
++            if entity.kind == "minecraft:tnt" {
++                self.explode_tnt(ctx, &entity)?;
+                 *self
+                     .event_counts
+                     .entry("tnt_explosion".to_owned())
+@@ -2250,7 +2462,7 @@ impl Java26Rules {
+                 detects_items,
+             } => {
+                 let count = entities_on_block(ctx.world, pos, |entity| {
+-                    detects_items || entity.kind != "minecraft:item"
++                    physics::triggers_plate(entity, detects_items)
+                 });
+                 let power = max_weight.map_or_else(
+                     || if count > 0 { 15 } else { 0 },
+@@ -2266,7 +2478,9 @@ impl Java26Rules {
+                 (if count > 0 { 15 } else { 0 }, 20)
+             }
+             BlockBehavior::Tripwire => {
+-                let count = entities_on_block(ctx.world, pos, |_| true);
++                let count = entities_on_block(ctx.world, pos, |entity| {
++                    physics::triggers_plate(entity, true)
++                });
+                 (if count > 0 { 15 } else { 0 }, 10)
+             }
+             _ => return Ok(()),
+@@ -2295,6 +2509,17 @@ impl Java26Rules {
+             {
+                 ctx.update_neighbors(pos.relative(Direction::Down), state.kind, None, None);
+             }
++            if matches!(state.behavior, BlockBehavior::PressurePlate { .. })
++                && (current == 0 || power == 0)
++            {
++                self.vibrate(
++                    ctx,
++                    pos,
++                    if power > 0 { 10 } else { 9 },
++                    power > 0
++                        && entities_on_block(ctx.world, pos, |e| e.kind == "minecraft:player") > 0,
++                );
++            }
+             if matches!(state.behavior, BlockBehavior::Tripwire) {
+                 self.refresh_tripwire_hooks(ctx, pos, power > 0)?;
+             }
+@@ -2329,6 +2554,7 @@ impl Java26Rules {
+                             next = self.changed_state(next, "powered", powered.to_string())?;
+                         }
+                         if self.set_state_and_notify(ctx, cursor, next, "tripwire_hook", None)? {
++                            self.vibrate(ctx, cursor, if powered { 10 } else { 9 }, false);
+                             update_attached_power_neighbors(ctx, cursor, &state);
+                         }
+                         break;
+diff --git a/crates/redstone-java-26/src/rules/comparator.rs b/crates/redstone-java-26/src/rules/comparator.rs
+index d5f965b..7b508a0 100644
+--- a/crates/redstone-java-26/src/rules/comparator.rs
++++ b/crates/redstone-java-26/src/rules/comparator.rs
+@@ -294,7 +294,7 @@ fn is_chest(path: &str) -> bool {
+     matches!(path, "chest" | "trapped_chest") || path.ends_with("copper_chest")
+ }
+ 
+-fn chests_connect(path: &str, partner: &str) -> bool {
++pub(super) fn chests_connect(path: &str, partner: &str) -> bool {
+     path == partner || path.ends_with("copper_chest") && partner.ends_with("copper_chest")
+ }
+ 
+diff --git a/crates/redstone-java-26/src/rules/consumer.rs b/crates/redstone-java-26/src/rules/consumer.rs
+index 8c31178..bf03381 100644
+--- a/crates/redstone-java-26/src/rules/consumer.rs
++++ b/crates/redstone-java-26/src/rules/consumer.rs
+@@ -23,6 +23,7 @@ impl Java26Rules {
+             next = self.changed_state(next, "powered", powered.to_string())?;
+         }
+         if state.bool_property("open") != powered {
++            self.vibrate(ctx, pos, if powered { 10 } else { 9 }, false);
+             next = self.changed_state(next, "open", powered.to_string())?;
+             *self
+                 .event_counts
+@@ -136,6 +137,12 @@ impl Java26Rules {
+             } else {
+                 "bell_ring"
+             };
++            self.vibrate(
++                ctx,
++                pos,
++                if event == "note_block_play" { 10 } else { 11 },
++                false,
++            );
+             *self.event_counts.entry(event.to_owned()).or_default() += 1;
+         }
+         Ok(())
+diff --git a/crates/redstone-java-26/src/rules/inventory.rs b/crates/redstone-java-26/src/rules/inventory.rs
+index fc1177d..5a70bb2 100644
+--- a/crates/redstone-java-26/src/rules/inventory.rs
++++ b/crates/redstone-java-26/src/rules/inventory.rs
+@@ -1,12 +1,11 @@
+ use std::collections::{BTreeMap, BTreeSet};
+ 
+-use redstone_core::{
+-    BlockPos, Direction, EntityData, EventContext, RulesError, SparseWorld, TickPriority,
+-};
++use redstone_core::{BlockPos, Direction, EntityData, EventContext, RulesError, SparseWorld};
+ use serde_json::{Map, Value};
+ 
+ use super::{BlockBehavior, Java26Rules, StateDefinition};
+ 
++mod crafting;
+ mod hopper;
+ mod shulker;
+ 
+@@ -113,22 +112,36 @@ impl Java26Rules {
+             }
+             Some(DispenserBehavior::Projectile) => {
+                 if take_item_at(ctx, pos, index, 1).is_some() {
+-                    let velocity = facing.step();
+-                    ctx.world.spawn_entity(EntityData {
+-                        kind: projectile_entity_kind(&item).to_owned(),
+-                        position: block_center(target),
+-                        fields: BTreeMap::from([
+-                            ("source_item".to_owned(), Value::String(item)),
+-                            (
+-                                "facing".to_owned(),
+-                                Value::String(direction_name(facing).to_owned()),
+-                            ),
+-                            (
+-                                "velocity".to_owned(),
+-                                serde_json::json!([velocity.0, velocity.1, velocity.2]),
+-                            ),
+-                        ]),
+-                    });
++                    if matches!(
++                        item.as_str(),
++                        "minecraft:arrow"
++                            | "minecraft:tipped_arrow"
++                            | "minecraft:spectral_arrow"
++                            | "minecraft:egg"
++                            | "minecraft:blue_egg"
++                            | "minecraft:brown_egg"
++                            | "minecraft:snowball"
++                    ) {
++                        self.launch_projectile(ctx, pos, facing, item);
++                    } else {
++                        let velocity = facing.step();
++                        ctx.world.spawn_entity(EntityData {
++                            kind: projectile_entity_kind(&item).to_owned(),
++                            position: block_center(target),
++                            fields: BTreeMap::from([
++                                ("source_item".to_owned(), Value::String(item)),
++                                (
++                                    "facing".to_owned(),
++                                    Value::String(direction_name(facing).to_owned()),
++                                ),
++                                (
++                                    "velocity".to_owned(),
++                                    serde_json::json!([velocity.0, velocity.1, velocity.2]),
++                                ),
++                            ]),
++                        });
++                        self.vibrate(ctx, pos, 3, false);
++                    }
+                     *self
+                         .event_counts
+                         .entry("dispenser_projectile".to_owned())
+@@ -137,22 +150,7 @@ impl Java26Rules {
+             }
+             Some(DispenserBehavior::PrimeTnt) => {
+                 if take_item_at(ctx, pos, index, 1).is_some() {
+-                    ctx.world.spawn_entity(EntityData {
+-                        kind: "minecraft:tnt".to_owned(),
+-                        position: [
+-                            target.x as f64 + 0.5,
+-                            target.y as f64,
+-                            target.z as f64 + 0.5,
+-                        ],
+-                        fields: BTreeMap::from([
+-                            ("fuse".to_owned(), Value::from(80)),
+-                            ("explosion_power".to_owned(), Value::from(4)),
+-                            (
+-                                "ignited_by".to_owned(),
+-                                Value::String("dispenser".to_owned()),
+-                            ),
+-                        ]),
+-                    });
++                    self.prime_tnt(ctx, target, 80, "dispenser");
+                     *self
+                         .event_counts
+                         .entry("dispenser_tnt".to_owned())
+@@ -180,13 +178,59 @@ impl Java26Rules {
+                         .or_default() += 1;
+                 }
+             }
+-            Some(DispenserBehavior::DefaultEject) => {
++            Some(DispenserBehavior::Boat) => {
++                let front = self.state(ctx.world.get_block(target))?;
++                let is_water = |s: &StateDefinition| {
++                    s.name.as_ref() == "minecraft:water"
++                        || s.bool_property("waterlogged")
++                        || matches!(
++                            s.name.as_ref(),
++                            "minecraft:bubble_column"
++                                | "minecraft:kelp"
++                                | "minecraft:kelp_plant"
++                                | "minecraft:seagrass"
++                                | "minecraft:tall_seagrass"
++                        )
++                };
++                let offset = if is_water(front) {
++                    Some(1.0)
++                } else if front.behavior == BlockBehavior::Air
++                    && is_water(self.state(ctx.world.get_block(target.relative(Direction::Down)))?)
++                {
++                    Some(0.0)
++                } else {
++                    None
++                };
+                 if let Some(stack) = take_item_at(ctx, pos, index, 1) {
+-                    spawn_item_stack(ctx.world, target, stack);
+-                    *self
+-                        .event_counts
+-                        .entry("dispenser_eject".to_owned())
+-                        .or_default() += 1;
++                    if let Some(height) = offset {
++                        let dir = facing.step();
++                        let center = block_center(pos);
++                        let outside = 0.5625 + 1.375 / 2.0;
++                        ctx.world.spawn_entity(EntityData {
++                            kind: item,
++                            position: [
++                                center[0] + f64::from(dir.0) * outside,
++                                center[1] + f64::from(dir.1) * 1.125 + height,
++                                center[2] + f64::from(dir.2) * outside,
++                            ],
++                            fields: BTreeMap::new(),
++                        });
++                    } else {
++                        spawn_item_stack(ctx.world, target, stack);
++                    }
++                }
++            }
++            Some(DispenserBehavior::ArmorStand) => {
++                if take_item_at(ctx, pos, index, 1).is_some() {
++                    ctx.world.spawn_entity(EntityData {
++                        kind: item,
++                        position: [
++                            f64::from(target.x) + 0.5,
++                            f64::from(target.y),
++                            f64::from(target.z) + 0.5,
++                        ],
++                        fields: BTreeMap::new(),
++                    });
+                 }
+             }
+             None => ctx.unsupported(pos, format!("dispenser_item:{item}")),
+@@ -201,40 +245,47 @@ impl Java26Rules {
+         pos: BlockPos,
+         state: &StateDefinition,
+     ) -> Result<(), RulesError> {
+-        if state.bool_property("crafting") {
+-            let idle = self.changed_state(state.id, "crafting", "false")?;
+-            self.set_state_and_notify(ctx, pos, idle, "crafter_idle", None)?;
+-            return Ok(());
+-        }
+-        let Some(item) = take_first_enabled_item(ctx, pos, 1) else {
++        // Explicit scenario outputs predate the vanilla recipe table.
++        let outputs = if let Some(item_id) = block_entity_string(ctx.world, pos, "output_item_id") {
++            if take_first_enabled_item(ctx, pos, 1).is_none() {
++                return Ok(());
++            }
++            let count = block_entity_i64(ctx.world, pos, "output_count")
++                .unwrap_or(1)
++                .max(1);
++            vec![ItemStack {
++                slot: 0,
++                item_id,
++                count,
++                components: None,
++            }]
++        } else if let Some(result) = crafting::craft(ctx, pos) {
++            result
++        } else {
+             return Ok(());
+         };
+-        let output_item = block_entity_string(ctx.world, pos, "output_item_id")
+-            .unwrap_or_else(|| item.item_id.clone());
+-        let output_count = block_entity_i64(ctx.world, pos, "output_count")
+-            .unwrap_or(1)
+-            .max(1);
+         let front = crafter_front(state);
+         let target = pos.relative(front);
+-        let inserted = self.insert_item(
+-            ctx,
+-            target,
+-            ItemInsertion {
+-                item_id: &output_item,
+-                count: output_count,
+-                face: Some(front.opposite()),
+-                components: None,
+-                source: Some(pos),
+-            },
+-        );
+-        if inserted < output_count {
+-            spawn_item(ctx.world, target, output_item, output_count - inserted);
++        for mut stack in outputs {
++            let inserted = self.insert_item(
++                ctx,
++                target,
++                ItemInsertion {
++                    item_id: &stack.item_id,
++                    count: stack.count,
++                    face: Some(front.opposite()),
++                    components: stack.components.as_ref(),
++                    source: Some(pos),
++                },
++            );
++            stack.count -= inserted;
++            spawn_item_stack(ctx.world, target, stack);
+         }
+         let crafting = self.changed_state(state.id, "crafting", "true")?;
+         self.set_state_and_notify(ctx, pos, crafting, "crafter_craft", None)?;
++        set_block_entity_i64(ctx, pos, "crafting_ticks_remaining", 6);
+         self.refresh_comparators_near(ctx, pos)?;
+         self.refresh_comparators_near(ctx, target)?;
+-        ctx.schedule_tick(pos, state.kind, 1, TickPriority::Normal);
+         *self
+             .event_counts
+             .entry("crafter_craft".to_owned())
+@@ -658,6 +709,8 @@ fn default_container_slot_count(kind: &str) -> Option<u32> {
+         | "minecraft:trapped_chest"
+         | "minecraft:barrel"
+         | "minecraft:chest_minecart" => Some(27),
++        "minecraft:shelf" => Some(3),
++        value if value.ends_with("copper_chest") => Some(27),
+         value if value.ends_with("_shulker_box") || value == "minecraft:shulker_box" => Some(27),
+         _ => None,
+     }
+@@ -723,6 +776,8 @@ fn is_container(world: &SparseWorld, pos: BlockPos) -> bool {
+     };
+     data.fields.contains_key("inventory")
+         || data.fields.contains_key("capacity")
++        || data.kind.ends_with("copper_chest")
++        || data.kind == "minecraft:shelf"
+         || data.kind.ends_with("_shulker_box")
+         || matches!(
+             data.kind.as_str(),
+@@ -741,19 +796,6 @@ fn is_container(world: &SparseWorld, pos: BlockPos) -> bool {
+         )
+ }
+ 
+-fn spawn_item(world: &mut SparseWorld, pos: BlockPos, item_id: String, count: i64) {
+-    spawn_item_stack(
+-        world,
+-        pos,
+-        ItemStack {
+-            slot: 0,
+-            item_id,
+-            count,
+-            components: None,
+-        },
+-    );
+-}
+-
+ fn spawn_item_stack(world: &mut SparseWorld, pos: BlockPos, stack: ItemStack) {
+     if stack.count <= 0 {
+         return;
+@@ -799,7 +841,8 @@ enum DispenserBehavior {
+     Projectile,
+     PrimeTnt,
+     Minecart,
+-    DefaultEject,
++    Boat,
++    ArmorStand,
+ }
+ 
+ fn dispenser_behavior(item: &str) -> Option<DispenserBehavior> {
+@@ -825,9 +868,8 @@ fn dispenser_behavior(item: &str) -> Option<DispenserBehavior> {
+         | "minecraft:tnt_minecart"
+         | "minecraft:hopper_minecart"
+         | "minecraft:command_block_minecart" => Some(DispenserBehavior::Minecart),
+-        item if item.ends_with("_boat") || item.ends_with("_raft") => {
+-            Some(DispenserBehavior::DefaultEject)
+-        }
++        "minecraft:armor_stand" => Some(DispenserBehavior::ArmorStand),
++        item if item.ends_with("_boat") || item.ends_with("_raft") => Some(DispenserBehavior::Boat),
+         _ => None,
+     }
+ }
+@@ -896,7 +938,7 @@ fn rail_is_slope(rules: &Java26Rules, state: redstone_core::BlockStateId) -> boo
+     })
+ }
+ 
+-fn direction_name(direction: Direction) -> &'static str {
++pub(super) fn direction_name(direction: Direction) -> &'static str {
+     match direction {
+         Direction::West => "west",
+         Direction::East => "east",
+diff --git a/crates/redstone-java-26/src/rules/inventory/crafting.rs b/crates/redstone-java-26/src/rules/inventory/crafting.rs
+new file mode 100644
+index 0000000..f01de6f
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/inventory/crafting.rs
+@@ -0,0 +1,228 @@
++use super::*;
++use serde::Deserialize;
++use std::sync::LazyLock;
++
++#[derive(Deserialize)]
++struct Recipes {
++    cooking: BTreeMap<String, BTreeMap<String, (Product, i64)>>,
++    fuels: BTreeMap<String, i64>,
++    groups: Vec<Vec<String>>,
++    recipes: Vec<(usize, Vec<Option<usize>>, Product)>,
++}
++
++#[derive(Deserialize)]
++struct Product {
++    id: String,
++    count: Option<i64>,
++    components: Option<Value>,
++}
++
++static RECIPES: LazyLock<Recipes> = LazyLock::new(|| {
++    serde_json::from_str(include_str!("../../../data/26.1.2/crafting.json"))
++        .expect("generated crafting data")
++});
++
++impl Recipes {
++    fn accepts(&self, group: usize, item: &str) -> bool {
++        self.groups[group]
++            .binary_search_by(|name| name.as_str().cmp(item))
++            .is_ok()
++    }
++
++    // Ingredients may overlap (a tag and an exact item). Find a matching
++    // assignment for the at most nine slots, independent of inventory order.
++    fn shapeless(&self, ingredients: &[Option<usize>], stacks: &[ItemStack], used: u16) -> bool {
++        let Some((first, rest)) = ingredients.split_first() else {
++            return true;
++        };
++        stacks.iter().enumerate().any(|(index, stack)| {
++            let bit = 1 << index;
++            used & bit == 0
++                && self.accepts(first.unwrap(), &stack.item_id)
++                && self.shapeless(rest, stacks, used | bit)
++        })
++    }
++
++    fn find(&self, stacks: &[ItemStack]) -> Option<&Product> {
++        if stacks.is_empty() || stacks.iter().any(|s| s.slot >= 9) {
++            return None;
++        }
++        let mut grid = [None; 9];
++        let (mut left, mut top, mut right, mut bottom) = (2, 2, 0, 0);
++        for stack in stacks {
++            let slot = stack.slot as usize;
++            grid[slot] = Some(stack.item_id.as_str());
++            left = left.min(slot % 3);
++            top = top.min(slot / 3);
++            right = right.max(slot % 3);
++            bottom = bottom.max(slot / 3);
++        }
++        let width = right - left + 1;
++        let height = bottom - top + 1;
++        self.recipes
++            .iter()
++            .find_map(|(recipe_width, slots, product)| {
++                let matches = if *recipe_width == 0 {
++                    slots.len() == stacks.len() && self.shapeless(slots, stacks, 0)
++                } else {
++                    *recipe_width == width
++                        && slots.len() == width * height
++                        && [false, true].into_iter().any(|mirror| {
++                            slots.iter().enumerate().all(|(i, group)| {
++                                let column = if mirror {
++                                    width - 1 - i % width
++                                } else {
++                                    i % width
++                                };
++                                match (group, grid[(top + i / width) * 3 + left + column]) {
++                                    (Some(group), Some(item)) => self.accepts(*group, item),
++                                    (None, None) => true,
++                                    _ => false,
++                                }
++                            })
++                        })
++                };
++                matches.then_some(product)
++            })
++    }
++}
++
++pub(super) fn craft(ctx: &mut EventContext<'_>, pos: BlockPos) -> Option<Vec<ItemStack>> {
++    let mut stacks = inventory(ctx.world, pos);
++    let product = RECIPES.find(&stacks)?;
++    let mut outputs = vec![ItemStack {
++        slot: 0,
++        item_id: product.id.clone(),
++        count: product.count.unwrap_or(1),
++        components: product.components.clone(),
++    }];
++    for stack in &mut stacks {
++        stack.count -= 1;
++        let remainder = match stack.item_id.as_str() {
++            "minecraft:water_bucket" | "minecraft:lava_bucket" | "minecraft:milk_bucket" => {
++                "minecraft:bucket"
++            }
++            "minecraft:honey_bottle" | "minecraft:dragon_breath" => "minecraft:glass_bottle",
++            _ => continue,
++        };
++        outputs.push(ItemStack {
++            slot: 0,
++            item_id: remainder.into(),
++            count: 1,
++            components: None,
++        });
++    }
++    stacks.retain(|s| s.count > 0);
++    write_inventory(ctx, pos, stacks);
++    Some(outputs)
++}
++impl Java26Rules {
++    pub(in crate::rules) fn tick_furnace(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        state: &StateDefinition,
++    ) -> Result<(), RulesError> {
++        let counter = |key, legacy| {
++            block_entity_i64(ctx.world, pos, key)
++                .or_else(|| block_entity_i64(ctx.world, pos, legacy))
++                .unwrap_or(0)
++        };
++        let previous_lit = counter("lit_time_remaining", "BurnTime");
++        let previous_time = counter("cooking_time_spent", "CookTime");
++        let mut remaining = (previous_lit - 1).max(0);
++        let mut elapsed = previous_time;
++        let mut total = counter("cooking_total_time", "CookTimeTotal");
++        let mut slots = inventory(ctx.world, pos);
++        let original = slots.clone();
++        let category = match state.name.as_ref() {
++            "minecraft:blast_furnace" => "blasting",
++            "minecraft:smoker" => "smoking",
++            _ => "smelting",
++        };
++        let input = slots.iter().find(|s| s.slot == 0);
++        let fuel = slots.iter().position(|s| s.slot == 1);
++        let wet_sponge = input.is_some_and(|s| s.item_id == "minecraft:wet_sponge");
++        let recipe = input.and_then(|input| RECIPES.cooking[category].get(&input.item_id));
++        let has_ingredients = input.is_some();
++        if remaining > 0 || fuel.is_some() && has_ingredients {
++            if let Some((product, duration)) = recipe {
++                let amount = product.count.unwrap_or(1);
++                let output = slots.iter().position(|s| s.slot == 2);
++                let fits = output.is_none_or(|i| {
++                    slots[i].item_id == product.id
++                        && slots[i].components == product.components
++                        && slots[i].count + amount <= item_stack_limit(None, 2, &product.id)
++                });
++                if fits
++                    && remaining == 0
++                    && let Some(i) = fuel
++                {
++                    remaining = RECIPES.fuels.get(&slots[i].item_id).copied().unwrap_or(0)
++                        / if category == "smelting" { 1 } else { 2 };
++                    if remaining > 0 {
++                        set_block_entity_i64(ctx, pos, "lit_total_time", remaining);
++                        slots[i].count -= 1;
++                        if slots[i].count == 0 && slots[i].item_id == "minecraft:lava_bucket" {
++                            slots[i] = ItemStack {
++                                slot: 1,
++                                item_id: "minecraft:bucket".into(),
++                                count: 1,
++                                components: None,
++                            };
++                        }
++                    }
++                }
++                if remaining > 0 && fits {
++                    if total <= 0 {
++                        total = *duration;
++                    }
++                    elapsed += 1;
++                    if elapsed >= total {
++                        elapsed = 0;
++                        total = *duration;
++                        slots.iter_mut().find(|s| s.slot == 0).unwrap().count -= 1;
++                        if let Some(i) = output {
++                            slots[i].count += amount;
++                        } else {
++                            slots.push(ItemStack {
++                                slot: 2,
++                                item_id: product.id.clone(),
++                                count: amount,
++                                components: product.components.clone(),
++                            });
++                        }
++                        if let Some(i) = fuel
++                            && wet_sponge
++                            && slots[i].item_id == "minecraft:bucket"
++                        {
++                            slots[i].item_id = "minecraft:water_bucket".into();
++                        }
++                    }
++                } else {
++                    elapsed = 0;
++                }
++            } else if !has_ingredients {
++                elapsed = 0;
++            }
++        } else {
++            elapsed = (elapsed - 2).max(0);
++        }
++        if original != slots {
++            write_inventory(ctx, pos, slots);
++            self.refresh_comparators_near(ctx, pos)?;
++        }
++        if previous_lit != remaining {
++            set_block_entity_i64(ctx, pos, "lit_time_remaining", remaining);
++        }
++        if elapsed != previous_time {
++            set_block_entity_i64(ctx, pos, "cooking_time_spent", elapsed);
++            set_block_entity_i64(ctx, pos, "cooking_total_time", total);
++        }
++        if (remaining > 0) != state.lit {
++            let next = self.changed_state(state.id, "lit", (remaining > 0).to_string())?;
++            self.set_state_and_notify(ctx, pos, next, "furnace_burn", None)?;
++        }
++        Ok(())
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/inventory/hopper.rs b/crates/redstone-java-26/src/rules/inventory/hopper.rs
+index 764bcf5..67edcd1 100644
+--- a/crates/redstone-java-26/src/rules/inventory/hopper.rs
++++ b/crates/redstone-java-26/src/rules/inventory/hopper.rs
+@@ -1017,7 +1017,11 @@ impl Java26Rules {
+                 ctx.unsupported(pos, "container_loot_table");
+                 return Some(ContainerRef::Unsupported(pos));
+             }
+-            if matches!(data.kind.as_str(), "minecraft:chest" | "minecraft:trapped_chest")
++            if (data.kind.ends_with("copper_chest")
++                || matches!(
++                    data.kind.as_str(),
++                    "minecraft:chest" | "minecraft:trapped_chest"
++                ))
+                 && let Some((first, second)) = double_chest(ctx.world, self, pos, &state)
+             {
+                 return Some(ContainerRef::DoubleChest { first, second });
+diff --git a/crates/redstone-java-26/src/rules/inventory/hopper/support.rs b/crates/redstone-java-26/src/rules/inventory/hopper/support.rs
+index a5f23a2..920a246 100644
+--- a/crates/redstone-java-26/src/rules/inventory/hopper/support.rs
++++ b/crates/redstone-java-26/src/rules/inventory/hopper/support.rs
+@@ -140,7 +140,9 @@ pub(super) fn changed_slot(before: &[ItemStack], after: &[ItemStack]) -> Option<
+ }
+ 
+ pub(super) fn is_block_container(data: &BlockEntityData) -> bool {
+-    data.fields.contains_key("inventory")
++    data.kind.ends_with("copper_chest")
++        || data.kind == "minecraft:shelf"
++        || data.fields.contains_key("inventory")
+         || data.fields.contains_key("capacity")
+         || data.kind.ends_with("_shulker_box")
+         || matches!(
+@@ -164,7 +166,9 @@ pub(super) fn is_block_container(data: &BlockEntityData) -> bool {
+ }
+ 
+ pub(super) fn is_container_entity(entity: &EntityData) -> bool {
+-    entity.fields.contains_key("inventory")
++    entity.kind.ends_with("_chest_boat")
++        || entity.kind.ends_with("_chest_raft")
++        || entity.fields.contains_key("inventory")
+         || entity.fields.contains_key("capacity")
+         || matches!(
+             entity.kind.as_str(),
+@@ -186,6 +190,14 @@ pub(super) fn default_slots(kind: &str) -> Option<u32> {
+         | "minecraft:chest_minecart"
+         | "minecraft:chest_boat"
+         | "minecraft:chest_raft" => Some(27),
++        value
++            if value.ends_with("copper_chest")
++                || value.ends_with("_chest_boat")
++                || value.ends_with("_chest_raft") =>
++        {
++            Some(27)
++        }
++        "minecraft:shelf" => Some(3),
+         "minecraft:jukebox" | "minecraft:decorated_pot" => Some(1),
+         "minecraft:chiseled_bookshelf" => Some(6),
+         value if value.ends_with("_shulker_box") || value == "minecraft:shulker_box" => Some(27),
+@@ -211,7 +223,7 @@ pub(super) fn double_chest(
+     };
+     let partner_pos = pos.relative(partner_direction);
+     let partner = rules.state(world.get_block(partner_pos)).ok()?;
+-    if partner.name != state.name
++    if !super::super::super::comparator::chests_connect(&partner.name, &state.name)
+         || partner.facing != Some(facing)
+         || partner.property("type") == Some(chest_type)
+         || world.block_entity(partner_pos).is_none()
+diff --git a/crates/redstone-java-26/src/rules/ore.rs b/crates/redstone-java-26/src/rules/ore.rs
+new file mode 100644
+index 0000000..473c722
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/ore.rs
+@@ -0,0 +1,61 @@
++use super::*;
++
++// Random ticks pick three local coordinates per active 16³ section at the
++// default Java randomTickSpeed. Only lit redstone ore consumes those ticks here.
++#[derive(Default)]
++pub(super) struct OreTicks {
++    sections: BTreeMap<BlockPos, usize>,
++    position_seed: Option<u32>,
++}
++
++impl OreTicks {
++    pub(super) fn track(&mut self, pos: BlockPos, old: &StateDefinition, new: &StateDefinition) {
++        let lit_ore = |s: &StateDefinition| s.behavior == BlockBehavior::RedstoneOre && s.lit;
++        if lit_ore(old) == lit_ore(new) {
++            return;
++        }
++        let section = BlockPos::new(pos.x >> 4, pos.y >> 4, pos.z >> 4);
++        if lit_ore(new) {
++            *self.sections.entry(section).or_default() += 1;
++        } else if let Some(count) = self.sections.get_mut(&section) {
++            *count -= 1;
++            if *count == 0 {
++                self.sections.remove(&section);
++            }
++        }
++    }
++}
++
++impl Java26Rules {
++    pub(super) fn tick_redstone_ore(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++    ) -> Result<(), RulesError> {
++        if self.ore.sections.is_empty() {
++            return Ok(());
++        }
++        let sections: Vec<_> = self.ore.sections.keys().copied().collect();
++        let mut seed = self
++            .ore
++            .position_seed
++            .unwrap_or_else(|| ctx.random_bounded(i32::MAX as u32));
++        for section in sections {
++            for _ in 0..3 {
++                seed = seed.wrapping_mul(3).wrapping_add(1013904223);
++                let bits = seed >> 2;
++                let pos = BlockPos::new(
++                    (section.x << 4) + (bits & 15) as i32,
++                    (section.y << 4) + ((bits >> 16) & 15) as i32,
++                    (section.z << 4) + ((bits >> 8) & 15) as i32,
++                );
++                let state = self.state(ctx.world.get_block(pos))?;
++                if state.behavior == BlockBehavior::RedstoneOre && state.lit {
++                    let next = self.changed_state(state.id, "lit", "false")?;
++                    self.set_state_and_notify(ctx, pos, next, "redstone_ore_random_tick", None)?;
++                }
++            }
++        }
++        self.ore.position_seed = Some(seed);
++        Ok(())
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/physics.rs b/crates/redstone-java-26/src/rules/physics.rs
+new file mode 100644
+index 0000000..a802137
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/physics.rs
+@@ -0,0 +1,398 @@
++use super::*;
++use redstone_core::EntityData;
++use serde::Deserialize;
++use serde_json::{Value, json};
++use std::collections::BTreeSet;
++use std::sync::LazyLock;
++
++#[derive(Deserialize)]
++struct Shapes {
++    living: BTreeSet<String>,
++    states: Vec<usize>,
++    boxes: Vec<Vec<[f64; 6]>>,
++    resistance: Vec<f32>,
++}
++
++static SHAPES: LazyLock<Shapes> = LazyLock::new(|| {
++    serde_json::from_str(include_str!("../../data/26.1.2/physics.json"))
++        .expect("validated Java collision table")
++});
++
++pub(super) fn triggers_plate(entity: &EntityData, detects_items: bool) -> bool {
++    let truth = |key| {
++        entity
++            .fields
++            .get(key)
++            .is_some_and(|v| v.as_i64() == Some(1) || v.as_bool() == Some(true))
++    };
++    !truth("Marker")
++        && !truth("Spectator")
++        && (detects_items || SHAPES.living.contains(&entity.kind))
++}
++
++fn random(ctx: &mut EventContext<'_>) -> f64 {
++    f64::from(ctx.random_bounded(1 << 24)) / f64::from(1 << 24)
++}
++
++pub(super) fn motion(entity: &EntityData) -> [f64; 3] {
++    let values = entity
++        .fields
++        .get("Motion")
++        .or_else(|| entity.fields.get("motion"))
++        .and_then(Value::as_array);
++    std::array::from_fn(|i| {
++        values
++            .and_then(|a| a.get(i))
++            .and_then(Value::as_f64)
++            .filter(|v| v.abs() <= 10.0)
++            .unwrap_or(0.0)
++    })
++}
++
++fn boxes_in(
++    world: &SparseWorld,
++    min: [f64; 3],
++    max: [f64; 3],
++    mut visit: impl FnMut(BlockPos, [f64; 6]),
++) {
++    for x in min[0].floor() as i32..=max[0].floor() as i32 {
++        // Fences and walls have collision boxes taller than their own voxel.
++        for y in (min[1].floor() as i32).saturating_sub(1)..=max[1].floor() as i32 {
++            for z in min[2].floor() as i32..=max[2].floor() as i32 {
++                let pos = BlockPos::new(x, y, z);
++                let id = world.get_block(pos);
++                if id == world.air() {
++                    continue;
++                }
++                let offsets = [x as f64, y as f64, z as f64];
++                for shape in &SHAPES.boxes[SHAPES.states[id.0 as usize]] {
++                    visit(pos, std::array::from_fn(|i| shape[i] + offsets[i % 3]));
++                }
++            }
++        }
++    }
++}
++
++pub(super) fn swept_entity(
++    world: &SparseWorld,
++    position: [f64; 3],
++    movement: [f64; 3],
++    width: f64,
++    height: f64,
++) -> ([f64; 3], [bool; 3]) {
++    let half = width / 2.0;
++    let mut low = [position[0] - half, position[1], position[2] - half];
++    let mut high = [position[0] + half, position[1] + height, position[2] + half];
++    let mut obstacles = Vec::new();
++    boxes_in(
++        world,
++        std::array::from_fn(|i| low[i] + movement[i].min(0.0)),
++        std::array::from_fn(|i| high[i] + movement[i].max(0.0)),
++        |_, b| obstacles.push(b),
++    );
++    let order = if movement[0].abs() < movement[2].abs() {
++        [1, 2, 0]
++    } else {
++        [1, 0, 2]
++    };
++    let mut clipped = movement;
++    for axis in order {
++        for b in &obstacles {
++            if (0..3).any(|i| i != axis && (high[i] <= b[i] + 1e-7 || low[i] >= b[i + 3] - 1e-7)) {
++                continue;
++            }
++            if clipped[axis] > 0.0 && high[axis] <= b[axis] + 1e-7 {
++                clipped[axis] = clipped[axis].min((b[axis] - high[axis]).max(0.0));
++            }
++            if clipped[axis] < 0.0 && low[axis] >= b[axis + 3] - 1e-7 {
++                clipped[axis] = clipped[axis].max((b[axis + 3] - low[axis]).min(0.0));
++            }
++        }
++        low[axis] += clipped[axis];
++        high[axis] += clipped[axis];
++    }
++    (
++        std::array::from_fn(|i| position[i] + clipped[i]),
++        std::array::from_fn(|i| (movement[i] - clipped[i]).abs() > 1e-7),
++    )
++}
++
++fn ray_hit(
++    world: &SparseWorld,
++    start: [f64; 3],
++    motion: [f64; 3],
++) -> Option<(BlockPos, Direction, [f64; 3], bool)> {
++    let mut hit = None;
++    let mut closest = 1.0_f64;
++    boxes_in(
++        world,
++        std::array::from_fn(|i| start[i] + motion[i].min(0.0)),
++        std::array::from_fn(|i| start[i] + motion[i].max(0.0)),
++        |pos, b| {
++            let inside = (0..3).all(|i| start[i] >= b[i] && start[i] < b[i + 3]);
++            let mut enter = 0.0_f64;
++            let mut leave = closest;
++            let mut face = Direction::Up;
++            for i in 0..3 {
++                if motion[i].abs() < 1e-10 {
++                    if start[i] < b[i] || start[i] > b[i + 3] {
++                        return;
++                    }
++                    continue;
++                }
++                let a = (b[i] - start[i]) / motion[i];
++                let z = (b[i + 3] - start[i]) / motion[i];
++                if a.min(z) >= enter {
++                    enter = a.min(z);
++                    face = if motion[i] > 0.0 {
++                        [Direction::West, Direction::Down, Direction::North][i]
++                    } else {
++                        [Direction::East, Direction::Up, Direction::South][i]
++                    };
++                }
++                leave = leave.min(a.max(z));
++                if enter > leave {
++                    return;
++                }
++            }
++            if enter < closest {
++                closest = enter;
++                hit = Some((
++                    pos,
++                    face,
++                    std::array::from_fn(|i| start[i] + motion[i] * enter),
++                    inside,
++                ));
++            }
++        },
++    );
++    hit
++}
++
++impl Java26Rules {
++    pub(super) fn prime_tnt(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        fuse: i64,
++        cause: &str,
++    ) {
++        let angle = random(ctx) * std::f64::consts::TAU;
++        ctx.world.spawn_entity(EntityData {
++            kind: "minecraft:tnt".into(),
++            position: [pos.x as f64 + 0.5, pos.y as f64, pos.z as f64 + 0.5],
++            fields: BTreeMap::from([
++                ("fuse".into(), json!(fuse)),
++                ("explosion_power".into(), json!(4)),
++                ("ignited_by".into(), json!(cause)),
++                (
++                    "Motion".into(),
++                    json!([-angle.sin() * 0.02, 0.2, -angle.cos() * 0.02]),
++                ),
++            ]),
++        });
++        self.vibrate(ctx, pos, 10, false);
++    }
++
++    pub(super) fn move_tnt(&mut self, ctx: &mut EventContext<'_>, id: EntityId) {
++        let entity = ctx.world.entity(id).unwrap();
++        let mut delta = motion(entity);
++        delta[1] -= 0.04;
++        let (point, blocked) = swept_entity(ctx.world, entity.position, delta, 0.98, 0.98);
++        delta = delta.map(|v| v * 0.98);
++        if blocked[0] {
++            delta[0] = 0.0;
++        }
++        if blocked[2] {
++            delta[2] = 0.0;
++        }
++        if blocked[1] && delta[1] < 0.0 {
++            delta[0] *= 0.7;
++            delta[1] *= -0.5;
++            delta[2] *= 0.7;
++        }
++        ctx.world.move_entity(id, point);
++        ctx.world
++            .entity_fields_mut(id)
++            .unwrap()
++            .insert("Motion".into(), json!(delta));
++    }
++
++    pub(super) fn explode_tnt(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        entity: &EntityData,
++    ) -> Result<(), RulesError> {
++        let mut center = entity.position;
++        let cart = entity.kind == "minecraft:tnt_minecart";
++        if !cart {
++            center[1] += 0.98 * 0.0625;
++        }
++        self.vibrate(ctx, entity_block_pos(center), 15, false);
++        let mut radius = entity
++            .fields
++            .get("explosion_power")
++            .and_then(Value::as_f64)
++            .unwrap_or(4.0)
++            .clamp(0.0, 128.0) as f32;
++        if cart {
++            let velocity = motion(entity);
++            let factor = entity
++                .fields
++                .get("explosion_speed_factor")
++                .and_then(Value::as_f64)
++                .unwrap_or(1.0)
++                .clamp(0.0, 128.0);
++            radius += (factor * random(ctx) * 1.5 * velocity[0].hypot(velocity[2]).min(5.0)) as f32;
++        }
++        let mut affected = BTreeSet::new();
++        for x in 0..16 {
++            for y in 0..16 {
++                for z in 0..16 {
++                    if [x, y, z].iter().all(|&v| v != 0 && v != 15) {
++                        continue;
++                    }
++                    let dir = [x, y, z].map(|v| f64::from(v as f32 / 15.0 * 2.0 - 1.0));
++                    let length = dir.iter().map(|v| v * v).sum::<f64>().sqrt();
++                    let step = dir.map(|v| v / length * f64::from(0.3_f32));
++                    let mut power = radius * (0.7 + random(ctx) as f32 * 0.6);
++                    let mut point = center;
++                    while power > 0.0 {
++                        let pos = entity_block_pos(point);
++                        let id = ctx.world.get_block(pos);
++                        if id != ctx.world.air() {
++                            let state = self.state(id)?;
++                            let mut resistance = SHAPES.resistance[id.0 as usize];
++                            if cart && super::rail_cart::is_track_or_support(self, ctx.world, pos) {
++                                point = std::array::from_fn(|i| point[i] + step[i]);
++                                power -= 0.22500001;
++                                continue;
++                            }
++                            if state.bool_property("waterlogged") {
++                                resistance = resistance.max(100.0);
++                            }
++                            power -= (resistance + 0.3) * 0.3;
++                            if power > 0.0 {
++                                affected.insert(pos);
++                            }
++                        }
++                        for i in 0..3 {
++                            point[i] += step[i];
++                        }
++                        power -= 0.22500001;
++                    }
++                }
++            }
++        }
++        let mut positions: Vec<_> = affected.into_iter().collect();
++        for i in (1..positions.len()).rev() {
++            positions.swap(i, ctx.random_bounded((i + 1) as u32) as usize);
++        }
++        for pos in positions {
++            let state = self.state(ctx.world.get_block(pos))?.clone();
++            if state.behavior == BlockBehavior::Tnt {
++                let fuse = 10 + i64::from(ctx.random_bounded(20));
++                self.prime_tnt(ctx, pos, fuse, "explosion");
++            }
++            self.set_state_and_notify(ctx, pos, self.registry.air_state(), "tnt_explosion", None)?;
++        }
++        Ok(())
++    }
++
++    pub(super) fn launch_projectile(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        dir: Direction,
++        item: String,
++    ) {
++        let (dx, dy, dz) = dir.step();
++        let direction = [dx, dy, dz].map(f64::from);
++        let delta = direction
++            .map(|v| (v + (random(ctx) - random(ctx)) * 0.0172275 * 6.0) * f64::from(1.1_f32));
++        let center = [pos.x as f64 + 0.5, pos.y as f64 + 0.6, pos.z as f64 + 0.5];
++        ctx.world.spawn_entity(EntityData {
++            kind: match item.as_str() {
++                "minecraft:tipped_arrow" => "minecraft:arrow",
++                "minecraft:blue_egg" | "minecraft:brown_egg" => "minecraft:egg",
++                name => name,
++            }
++            .into(),
++            position: std::array::from_fn(|i| center[i] + 0.7 * direction[i]),
++            fields: BTreeMap::from([
++                ("source_item".into(), json!(item)),
++                (
++                    "facing".into(),
++                    json!(super::inventory::direction_name(dir)),
++                ),
++                ("Motion".into(), json!(delta)),
++            ]),
++        });
++        self.vibrate(ctx, pos, 3, false);
++    }
++
++    pub(super) fn tick_projectile(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        id: EntityId,
++    ) -> Result<(), RulesError> {
++        let entity = ctx.world.entity(id).unwrap();
++        if entity
++            .fields
++            .get("in_ground")
++            .is_some_and(|v| v.as_bool() == Some(true) || v.as_i64() == Some(1))
++        {
++            return Ok(());
++        }
++        let start = entity.position;
++        let arrow = matches!(
++            entity.kind.as_str(),
++            "minecraft:arrow" | "minecraft:spectral_arrow"
++        );
++        let water = self.state(ctx.world.get_block(entity_block_pos(start)))?;
++        let drag = if water.name.as_ref() == "minecraft:water" || water.bool_property("waterlogged")
++        {
++            if arrow { 0.6_f32 } else { 0.8_f32 }
++        } else {
++            0.99_f32
++        };
++        let mut motion = motion(entity);
++        if !arrow {
++            motion[1] -= 0.03;
++            motion = motion.map(|v| v * f64::from(drag));
++        }
++        if let Some((pos, face, hit, inside)) = ray_hit(ctx.world, start, motion) {
++            let state = self.state(ctx.world.get_block(pos))?.clone();
++            if !inside || !arrow {
++                if state.behavior == BlockBehavior::Target {
++                    self.hit_target(ctx, pos, face, hit, arrow)?;
++                }
++                if state.behavior == BlockBehavior::BigDripleaf {
++                    self.tilt_dripleaf(ctx, pos, &state, "full", 100)?;
++                }
++                self.vibrate(ctx, pos, 2, false);
++            }
++            if !arrow {
++                ctx.world.remove_entity(id);
++                return Ok(());
++            }
++            ctx.world.move_entity(id, hit);
++            let fields = ctx.world.entity_fields_mut(id).unwrap();
++            fields.insert("in_ground".into(), true.into());
++            fields.insert("Motion".into(), json!([0, 0, 0]));
++        } else {
++            let point = std::array::from_fn(|i| start[i] + motion[i]);
++            let mut delta = motion;
++            if arrow {
++                delta = motion.map(|v| v * f64::from(drag));
++                delta[1] -= 0.05;
++            }
++            ctx.world.move_entity(id, point);
++            ctx.world
++                .entity_fields_mut(id)
++                .unwrap()
++                .insert("Motion".into(), json!(delta));
++        }
++        Ok(())
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/piston.rs b/crates/redstone-java-26/src/rules/piston.rs
+index f4b0a6b..07d3a2e 100644
+--- a/crates/redstone-java-26/src/rules/piston.rs
++++ b/crates/redstone-java-26/src/rules/piston.rs
+@@ -159,6 +159,7 @@ impl Java26Rules {
+             )? {
+                 return Ok(false);
+             }
++            self.vibrate(ctx, pos, 10, false);
+             let extended = self.changed_state(state_id, "extended", "true")?;
+             ctx.set_block_and_update_neighbors_after_neighbors(
+                 pos,
+@@ -376,6 +377,7 @@ impl Java26Rules {
+         let head_propagates = self
+             .state(ctx.world.get_block(head_pos))
+             .is_ok_and(|head| head.name.as_ref() == "minecraft:piston_head");
++        self.vibrate(ctx, pos, 9, false);
+         let retracted = self.changed_state(state_id, "extended", "false")?;
+         let moving_base = self
+             .registry
+diff --git a/crates/redstone-java-26/src/rules/rail_cart.rs b/crates/redstone-java-26/src/rules/rail_cart.rs
+new file mode 100644
+index 0000000..fa74bbe
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/rail_cart.rs
+@@ -0,0 +1,262 @@
++use super::physics::{motion, swept_entity};
++use super::*;
++use serde_json::{Value, json};
++
++struct Rail {
++    pos: BlockPos,
++    a: [i32; 3],
++    b: [i32; 3],
++    state: BlockStateId,
++}
++
++pub(super) fn is_track_or_support(rules: &Java26Rules, world: &SparseWorld, pos: BlockPos) -> bool {
++    [pos, pos.relative(Direction::Up)].into_iter().any(|p| {
++        rules
++            .registry
++            .state(world.get_block(p))
++            .is_some_and(|s| s.name.as_ref() == "minecraft:rail" || s.name.ends_with("_rail"))
++    })
++}
++
++impl Rail {
++    fn at(rules: &Java26Rules, world: &SparseWorld, point: [f64; 3]) -> Option<Self> {
++        let cell = entity_block_pos(point);
++        for pos in [cell.relative(Direction::Down), cell] {
++            let id = world.get_block(pos);
++            let state = rules.registry.state(id)?;
++            if !(state.name.as_ref() == "minecraft:rail" || state.name.ends_with("_rail")) {
++                continue;
++            }
++            let (a, b) = match state.property("shape")? {
++                "north_south" => ([0, 0, -1], [0, 0, 1]),
++                "east_west" => ([-1, 0, 0], [1, 0, 0]),
++                "ascending_east" => ([-1, -1, 0], [1, 0, 0]),
++                "ascending_west" => ([-1, 0, 0], [1, -1, 0]),
++                "ascending_north" => ([0, 0, -1], [0, -1, 1]),
++                "ascending_south" => ([0, -1, -1], [0, 0, 1]),
++                "south_east" => ([0, 0, 1], [1, 0, 0]),
++                "south_west" => ([0, 0, 1], [-1, 0, 0]),
++                "north_west" => ([0, 0, -1], [-1, 0, 0]),
++                "north_east" => ([0, 0, -1], [1, 0, 0]),
++                _ => return None,
++            };
++            return Some(Self {
++                pos,
++                a,
++                b,
++                state: id,
++            });
++        }
++        None
++    }
++
++    fn project(&self, p: [f64; 3]) -> [f64; 3] {
++        let x0 = f64::from(self.pos.x) + 0.5 + 0.5 * f64::from(self.a[0]);
++        let z0 = f64::from(self.pos.z) + 0.5 + 0.5 * f64::from(self.a[2]);
++        let dx = f64::from(self.b[0] - self.a[0]) * 0.5;
++        let dz = f64::from(self.b[2] - self.a[2]) * 0.5;
++        let dy = f64::from(self.b[1] - self.a[1]);
++        let progress = ((p[0] - x0) * dx + (p[2] - z0) * dz) / (dx * dx + dz * dz);
++        [
++            x0 + progress * dx,
++            f64::from(self.pos.y)
++                + 0.0625
++                + 0.5 * f64::from(self.a[1])
++                + dy * progress
++                + if dy < 0.0 {
++                    1.0
++                } else if dy > 0.0 {
++                    0.5
++                } else {
++                    0.0
++                },
++            z0 + progress * dz,
++        ]
++    }
++}
++
++impl Java26Rules {
++    pub(super) fn move_cart(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        id: EntityId,
++    ) -> Result<(), RulesError> {
++        let cart = ctx.world.entity(id).unwrap().clone();
++        let Some(rail) = Rail::at(self, ctx.world, cart.position) else {
++            return Ok(());
++        };
++        let state = self.state(rail.state)?.clone();
++        let mut delta = motion(&cart);
++        let water = state.bool_property("waterlogged");
++        let slide = if water { 0.0078125 * 0.2 } else { 0.0078125 };
++        for end in [rail.a, rail.b] {
++            if end[1] < 0 {
++                delta[0] += slide * f64::from(end[0]);
++                delta[2] += slide * f64::from(end[2]);
++            }
++        }
++        let dx = f64::from(rail.b[0] - rail.a[0]);
++        let dz = f64::from(rail.b[2] - rail.a[2]);
++        let speed = delta[0].hypot(delta[2]).min(2.0) / dx.hypot(dz)
++            * if delta[0] * dx + delta[2] * dz < 0.0 {
++                -1.0
++            } else {
++                1.0
++            };
++        delta = [speed * dx, 0.0, speed * dz];
++        let powered_rail = state.name.as_ref() == "minecraft:powered_rail";
++        if powered_rail && !state.powered {
++            let factor = if speed.abs() * dx.hypot(dz) < 0.03 {
++                0.0
++            } else {
++                0.5
++            };
++            delta = delta.map(|v| v * factor);
++        }
++        let furnace = cart.kind == "minecraft:furnace_minecart";
++        let max: f64 = if water { 0.2 } else { 0.4 }
++            * if furnace {
++                if water { 0.75 } else { 0.5 }
++            } else {
++                1.0
++            };
++        let old = rail.project(cart.position);
++        let climb = rail.a[1] != rail.b[1];
++        let start = [
++            old[0],
++            f64::from(rail.pos.y) + if climb { 1.0 } else { 0.0 },
++            old[2],
++        ];
++        let (mut point, blocked) = swept_entity(
++            ctx.world,
++            start,
++            delta.map(|v| v.clamp(-max, max)),
++            0.98,
++            0.7,
++        );
++        for end in [rail.a, rail.b] {
++            if end[1] != 0
++                && point[0].floor() as i32 - rail.pos.x == end[0]
++                && point[2].floor() as i32 - rail.pos.z == end[2]
++            {
++                point[1] += f64::from(end[1]);
++            }
++        }
++        let mut drag = 0.96;
++        if cart.kind == "minecraft:chest_minecart" || cart.kind == "minecraft:hopper_minecart" {
++            let fill = super::inventory::container_signal_from_fields(&cart.kind, &cart.fields);
++            drag = 0.98 + f64::from(15 - fill) * 0.001;
++        } else if furnace {
++            let fields = ctx.world.entity_fields_mut(id).unwrap();
++            let fuel = cart.fields.get("Fuel").and_then(Value::as_i64).unwrap_or(0);
++            let push = |field| {
++                cart.fields
++                    .get(field)
++                    .and_then(Value::as_f64)
++                    .unwrap_or(0.0)
++            };
++            let (mut px, mut pz) = (push("PushX"), push("PushZ"));
++            if fuel > 0 && px.hypot(pz) > 1e-4 {
++                let length = delta[0].hypot(delta[2]);
++                if length * length > 0.001 && px.hypot(pz).powi(2) > 1e-4 {
++                    let scale = px.hypot(pz) / length
++                        * if px * delta[0] + pz * delta[2] < 0.0 {
++                            -1.0
++                        } else {
++                            1.0
++                        };
++                    px = delta[0] * scale;
++                    pz = delta[2] * scale;
++                }
++                delta[0] = delta[0] * 0.8 + px;
++                delta[2] = delta[2] * 0.8 + pz;
++                if water {
++                    delta = delta.map(|v| v * 0.1);
++                }
++            } else {
++                delta = delta.map(|v| v * 0.98);
++            }
++            if fuel > 0 {
++                fields.insert("Fuel".into(), json!(fuel - 1));
++            }
++            if fuel <= 1 {
++                px = 0.0;
++                pz = 0.0;
++            }
++            if cart.fields.contains_key("PushX") {
++                fields.insert("PushX".into(), json!(px));
++            }
++            if cart.fields.contains_key("PushZ") {
++                fields.insert("PushZ".into(), json!(pz));
++            }
++        }
++        if water {
++            drag *= 0.95;
++        }
++        delta = delta.map(|v| v * drag);
++        if let Some(next) = Rail::at(self, ctx.world, point) {
++            let new = next.project(point);
++            let speed = delta[0].hypot(delta[2]);
++            if speed > 0.0 {
++                let scale = 1.0 + (old[1] - new[1]) * 0.05 / speed;
++                delta[0] *= scale;
++                delta[2] *= scale;
++            }
++            point[1] = new[1];
++        }
++        let next = entity_block_pos(point);
++        if next.x != rail.pos.x || next.z != rail.pos.z {
++            let speed = delta[0].hypot(delta[2]);
++            delta[0] = speed * f64::from(next.x - rail.pos.x);
++            delta[2] = speed * f64::from(next.z - rail.pos.z);
++        }
++        if powered_rail && state.powered {
++            let speed = delta[0].hypot(delta[2]);
++            if speed > 0.01 {
++                delta[0] += delta[0] * 0.06 / speed;
++                delta[2] += delta[2] * 0.06 / speed;
++            } else if let Some((axis, from, to)) = match state.property("shape") {
++                Some("east_west") => Some((0, Direction::West, Direction::East)),
++                Some("north_south") => Some((2, Direction::North, Direction::South)),
++                _ => None,
++            } {
++                let solid = |dir| {
++                    self.registry
++                        .state(ctx.world.get_block(rail.pos.relative(dir)))
++                        .unwrap()
++                        .redstone_conductor
++                };
++                if solid(from) {
++                    delta[axis] = 0.02;
++                } else if solid(to) {
++                    delta[axis] = -0.02;
++                }
++            }
++        }
++        if cart.position != point {
++            ctx.world.move_entity(id, point);
++        }
++        let fields = ctx.world.entity_fields_mut(id).unwrap();
++        if delta != [0.0; 3] || fields.contains_key("Motion") {
++            fields.insert("Motion".into(), json!(delta));
++        }
++        if cart.kind == "minecraft:tnt_minecart" {
++            let mut fuse = cart
++                .fields
++                .get("fuse")
++                .or_else(|| cart.fields.get("TNTFuse"))
++                .and_then(Value::as_i64)
++                .unwrap_or(-1);
++            if fuse < 0 && state.name.as_ref() == "minecraft:activator_rail" && state.powered {
++                fuse = 80;
++            }
++            if fuse == 0 || (blocked[0] || blocked[2]) && delta[0].hypot(delta[2]) >= 0.1 {
++                let cart = ctx.world.remove_entity(id).unwrap();
++                self.explode_tnt(ctx, &cart)?;
++            } else if fuse > 0 {
++                fields.insert("fuse".into(), json!(fuse - 1));
++            }
++        }
++        Ok(())
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/shape.rs b/crates/redstone-java-26/src/rules/shape.rs
+index c1ca969..d146dc7 100644
+--- a/crates/redstone-java-26/src/rules/shape.rs
++++ b/crates/redstone-java-26/src/rules/shape.rs
+@@ -969,6 +969,8 @@ fn is_signal_source(behavior: &BlockBehavior) -> bool {
+             | BlockBehavior::Button { .. }
+             | BlockBehavior::RedstoneBlock
+             | BlockBehavior::Torch { .. }
++            | BlockBehavior::LightningRod
++            | BlockBehavior::SculkSensor
+             | BlockBehavior::Target
+             | BlockBehavior::PressurePlate { .. }
+             | BlockBehavior::TripwireHook
+diff --git a/crates/redstone-java-26/src/rules/shelf.rs b/crates/redstone-java-26/src/rules/shelf.rs
+new file mode 100644
+index 0000000..9b6a7c7
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/shelf.rs
+@@ -0,0 +1,95 @@
++use super::*;
++
++fn connections(state: &StateDefinition) -> (bool, bool) {
++    match state.property("side_chain") {
++        Some("left") => (false, true),
++        Some("right") => (true, false),
++        Some("center") => (true, true),
++        _ => (false, false),
++    }
++}
++
++impl Java26Rules {
++    fn connect_shelf(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        left: bool,
++        right: bool,
++    ) -> Result<(), RulesError> {
++        let part = match (left, right) {
++            (true, true) => "center",
++            (true, false) => "right",
++            (false, true) => "left",
++            (false, false) => "unconnected",
++        };
++        let next = self.changed_state(ctx.world.get_block(pos), "side_chain", part)?;
++        self.set_state_and_notify(ctx, pos, next, "shelf_connection", None)?;
++        Ok(())
++    }
++
++    pub(super) fn refresh_shelf(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        state: &StateDefinition,
++        powered: bool,
++    ) -> Result<(), RulesError> {
++        if state.powered == powered {
++            return Ok(());
++        }
++        let facing = state.facing.unwrap();
++        let mut next = self.changed_state(state.id, "powered", powered.to_string())?;
++        next = self.changed_state(next, "side_chain", "unconnected")?;
++        self.set_state_and_notify(ctx, pos, next, "shelf_power", None)?;
++        self.vibrate(ctx, pos, if powered { 10 } else { 9 }, false);
++        let mut length = 1;
++        let mut joins = [false; 2];
++        for (side, direction) in [facing.clockwise(), facing.counter_clockwise()]
++            .into_iter()
++            .enumerate()
++        {
++            let adjacent = pos.relative(direction);
++            let neighbor = self.state(ctx.world.get_block(adjacent))?.clone();
++            if neighbor.behavior != BlockBehavior::Shelf
++                || neighbor.facing != Some(facing)
++                || !neighbor.powered
++            {
++                continue;
++            }
++            let (left, right) = connections(&neighbor);
++            if !powered {
++                self.connect_shelf(ctx, adjacent, left && side == 0, right && side == 1)?;
++                continue;
++            }
++            let mut chain_length = 1;
++            let mut cursor = adjacent;
++            let mut current = &neighbor;
++            while chain_length < 3 {
++                let connections = connections(current);
++                if !(if side == 0 {
++                    connections.0
++                } else {
++                    connections.1
++                }) {
++                    break;
++                }
++                cursor = cursor.relative(direction);
++                current = self.state(ctx.world.get_block(cursor))?;
++                if current.behavior != BlockBehavior::Shelf
++                    || current.facing != Some(facing)
++                    || !current.powered
++                {
++                    break;
++                }
++                chain_length += 1;
++            }
++            if length + chain_length <= 3 {
++                self.connect_shelf(ctx, adjacent, left || side == 1, right || side == 0)?;
++                length += chain_length;
++                joins[side] = true;
++            }
++        }
++        self.connect_shelf(ctx, pos, joins[0], joins[1])
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/vibration.rs b/crates/redstone-java-26/src/rules/vibration.rs
+new file mode 100644
+index 0000000..9fccbbb
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/vibration.rs
+@@ -0,0 +1,239 @@
++use super::*;
++use std::collections::BTreeSet;
++
++#[derive(Clone, Copy)]
++struct Candidate {
++    tick: u64,
++    distance_squared: i64,
++    frequency: u8,
++    player: bool,
++}
++
++#[derive(Default)]
++pub(super) struct Listeners {
++    positions: BTreeSet<BlockPos>,
++    incoming: BTreeMap<BlockPos, Candidate>,
++}
++
++fn is_listener(behavior: BlockBehavior) -> bool {
++    matches!(
++        behavior,
++        BlockBehavior::SculkSensor | BlockBehavior::Shrieker
++    )
++}
++
++impl Java26Rules {
++    pub(super) fn load_listeners(&mut self, world: &SparseWorld) {
++        self.listeners = Listeners::default();
++        for (pos, id) in world.iter_blocks() {
++            if self
++                .registry
++                .state(id)
++                .is_some_and(|s| is_listener(s.behavior))
++            {
++                self.listeners.positions.insert(pos);
++            }
++        }
++    }
++
++    pub(super) fn replace_listener(&mut self, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
++        let old = self.registry.state(old).unwrap();
++        let new = self.registry.state(new).unwrap();
++        if old.kind != new.kind {
++            if is_listener(old.behavior) {
++                self.listeners.incoming.remove(&pos);
++                self.listeners.positions.remove(&pos);
++            }
++            if is_listener(new.behavior) {
++                self.listeners.positions.insert(pos);
++            }
++        }
++    }
++
++    pub fn pending_vibrations(&self) -> usize {
++        self.listeners.incoming.len()
++    }
++
++    // A frequency of zero denotes tendrils clicking, which only shriekers listen to.
++    pub(super) fn vibrate(
++        &mut self,
++        ctx: &EventContext<'_>,
++        source: BlockPos,
++        frequency: u8,
++        player: bool,
++    ) {
++        for &pos in &self.listeners.positions {
++            let dx = i64::from(source.x) - i64::from(pos.x);
++            let dy = i64::from(source.y) - i64::from(pos.y);
++            let dz = i64::from(source.z) - i64::from(pos.z);
++            if dx.abs().max(dy.abs()).max(dz.abs()) > 16 {
++                continue;
++            }
++            let distance_squared = dx * dx + dy * dy + dz * dz;
++            let state = self.registry.state(ctx.world.get_block(pos)).unwrap();
++            let calibrated = state.behavior == BlockBehavior::SculkSensor && state.facing.is_some();
++            let radius = if calibrated { 16 } else { 8 };
++            if distance_squared > radius * radius {
++                continue;
++            }
++            match state.behavior {
++                BlockBehavior::SculkSensor
++                    if frequency != 0
++                        && state.property("sculk_sensor_phase") == Some("inactive") =>
++                {
++                    if let Some(back) = state.facing.map(Direction::opposite) {
++                        let input = self.signal(ctx.world, pos.relative(back), back);
++                        if input != 0 && input != frequency {
++                            continue;
++                        }
++                    }
++                }
++                BlockBehavior::Shrieker
++                    if frequency == 0 && player && !state.bool_property("shrieking") =>
++                {
++                    ()
++                }
++                _ => continue,
++            }
++            if self.listeners.incoming.get(&pos).is_some_and(|old| {
++                old.tick != ctx.tick.0
++                    || old.distance_squared < distance_squared
++                    || old.distance_squared == distance_squared && old.frequency >= frequency
++            }) {
++                continue;
++            }
++            if source != pos && occluded(&self.registry, ctx.world, source, pos) {
++                continue;
++            }
++            self.listeners.incoming.insert(
++                pos,
++                Candidate {
++                    tick: ctx.tick.0,
++                    distance_squared,
++                    frequency,
++                    player,
++                },
++            );
++        }
++    }
++
++    pub(super) fn receive_vibrations(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++    ) -> Result<(), RulesError> {
++        let due: Vec<_> = self
++            .listeners
++            .incoming
++            .iter()
++            .filter_map(|(&pos, &event)| {
++                let distance = (event.distance_squared as f64).sqrt();
++                (ctx.tick.0 >= event.tick + (distance as u64).max(1))
++                    .then_some((pos, distance, event))
++            })
++            .collect();
++        for (pos, distance, event) in due {
++            self.listeners.incoming.remove(&pos);
++            let state = self.state(ctx.world.get_block(pos))?.clone();
++            if state.behavior == BlockBehavior::Shrieker {
++                self.shriek(ctx, pos, &state)?;
++            } else if state.property("sculk_sensor_phase") == Some("inactive") {
++                let (radius, active) = if state.facing.is_some() {
++                    (16.0, 10)
++                } else {
++                    (8.0, 30)
++                };
++                let power = (15 - (15.0 * distance / radius).floor() as i32).max(1);
++                let mut data =
++                    ctx.world
++                        .block_entity(pos)
++                        .cloned()
++                        .unwrap_or_else(|| BlockEntityData {
++                            kind: state.name.to_string(),
++                            fields: BTreeMap::new(),
++                        });
++                data.fields
++                    .insert("last_vibration_frequency".into(), event.frequency.into());
++                ctx.set_block_entity(pos, data);
++                let next = self.changed_state(state.id, "power", power.to_string())?;
++                let next = self.changed_state(next, "sculk_sensor_phase", "active")?;
++                self.set_state_and_notify(ctx, pos, next, "sculk_activate", None)?;
++                ctx.update_neighbors(pos.relative(Direction::Down), state.kind, None, None);
++                ctx.schedule_tick(pos, state.kind, active, TickPriority::Normal);
++                for dir in Direction::UPDATE_ORDER {
++                    let neighbor = pos.relative(dir);
++                    if self.state(ctx.world.get_block(neighbor))?.name.as_ref()
++                        == "minecraft:amethyst_block"
++                    {
++                        self.vibrate(ctx, neighbor, event.frequency, event.player);
++                    }
++                }
++                self.vibrate(ctx, pos, 0, event.player);
++            }
++        }
++        Ok(())
++    }
++
++    pub(super) fn shriek(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        state: &StateDefinition,
++    ) -> Result<(), RulesError> {
++        if !state.bool_property("shrieking") {
++            let next = self.changed_state(state.id, "shrieking", "true")?;
++            self.set_state_and_notify(ctx, pos, next, "sculk_shriek", None)?;
++            ctx.schedule_tick(pos, state.kind, 90, TickPriority::Normal);
++        }
++        Ok(())
++    }
++}
++
++// Java traces six slightly offset rays. A single unobstructed ray is enough at
++// a wool edge or corner. Ties in voxel traversal are resolved Z, then Y, then X.
++fn occluded(
++    registry: &Java26Registry,
++    world: &SparseWorld,
++    source: BlockPos,
++    dest: BlockPos,
++) -> bool {
++    Direction::UPDATE_ORDER.into_iter().all(|direction| {
++        let (x, y, z) = direction.step();
++        let nudge = [x, y, z];
++        let start = [source.x, source.y, source.z];
++        let end = [dest.x, dest.y, dest.z];
++        let mut cell = start;
++        let mut steps = [0; 3];
++        let mut stride = [f64::INFINITY; 3];
++        let mut next = [f64::INFINITY; 3];
++        for axis in 0..3 {
++            let offset = f64::from(nudge[axis]) * 1e-5;
++            let delta = f64::from(end[axis] - start[axis]) - offset;
++            if delta != 0.0 {
++                steps[axis] = if delta > 0.0 { 1 } else { -1 };
++                stride[axis] = 1.0 / delta.abs();
++                next[axis] = (0.5 - f64::from(steps[axis]) * offset) * stride[axis];
++            }
++        }
++        loop {
++            let id = world.get_block(BlockPos::new(cell[0], cell[1], cell[2]));
++            if registry
++                .state(id)
++                .is_some_and(|s| s.name.ends_with("_wool"))
++            {
++                return true;
++            }
++            if cell == end {
++                return false;
++            }
++            let axis = if next[0] < next[1] && next[0] < next[2] {
++                0
++            } else if next[1] < next[2] {
++                1
++            } else {
++                2
++            };
++            next[axis] += stride[axis];
++            cell[axis] += steps[axis];
++        }
++    })
++}
+diff --git a/crates/redstone-java-26/tests/compiled.rs b/crates/redstone-java-26/tests/compiled.rs
+index 07bca5c..39d22f0 100644
+--- a/crates/redstone-java-26/tests/compiled.rs
++++ b/crates/redstone-java-26/tests/compiled.rs
+@@ -1233,6 +1233,8 @@ fn action_pos(action: &Action) -> Option<BlockPos> {
+         | Action::PressButton { pos }
+         | Action::PullLever { pos }
+         | Action::SetBlockEntity { pos, .. }
++        | Action::StepOnBlock { pos }
++        | Action::StrikeLightningRod { pos }
+         | Action::HitTarget { pos, .. } => Some(*pos),
+         Action::SpawnEntity { .. }
+         | Action::MoveEntity { .. }
+diff --git a/crates/redstone-java-26/tests/components.rs b/crates/redstone-java-26/tests/components.rs
+index d6ed8cc..d59c2e2 100644
+--- a/crates/redstone-java-26/tests/components.rs
++++ b/crates/redstone-java-26/tests/components.rs
+@@ -1618,9 +1618,7 @@ fn crafter_emits_output_and_clears_its_crafting_pulse() {
+         .unwrap();
+     simulation.initialize().unwrap();
+ 
+-    simulation
+-        .run_until(redstone_core::GameTick(6))
+-        .unwrap();
++    simulation.run_until(redstone_core::GameTick(10)).unwrap();
+ 
+     assert_eq!(
+         simulation
+@@ -3198,3 +3196,67 @@ fn piston_rejects_a_sticky_structure_larger_than_twelve_blocks() {
+     );
+     assert_eq!(simulation.world().get_block(BlockPos::new(1, 0, 0)), slime);
+ }
++
++#[test]
++fn honey_bottle_crafting_sends_the_block_and_four_bottles_to_the_chest() {
++    let mut registry = Java26Registry::new();
++    let crafter = state(
++        &mut registry,
++        "minecraft:crafter",
++        &[
++            ("crafting", "false"),
++            ("orientation", "east_up"),
++            ("triggered", "false"),
++        ],
++    );
++    let chest = state(
++        &mut registry,
++        "minecraft:chest",
++        &[
++            ("facing", "north"),
++            ("waterlogged", "false"),
++            ("type", "single"),
++        ],
++    );
++    let power = state(&mut registry, "minecraft:redstone_block", &[]);
++    let target = BlockPos::new(1, 0, 0);
++    let mut world = SparseWorld::new(registry.air_state());
++    world.set_block(BlockPos::ZERO, crafter).unwrap();
++    world.set_block(target, chest).unwrap();
++    world.set_block(BlockPos::new(0, 1, 0), power).unwrap();
++    let mut data = container("minecraft:crafter", &[("minecraft:honey_bottle", 1); 4]);
++    for (item, slot) in data.fields.get_mut("inventory").unwrap()
++        .as_array_mut()
++        .unwrap()
++        .iter_mut()
++        .zip([0, 1, 3, 4])
++    {
++        item["slot"] = slot.into();
++    }
++    world.set_block_entity(BlockPos::ZERO, data);
++    world.set_block_entity(target, container("minecraft:chest", &[]));
++    let mut simulation = Simulation::load(
++        Java26Rules::new(registry),
++        world,
++        SimulationConfig::default(),
++    )
++    .unwrap();
++    simulation.initialize().unwrap();
++    simulation.run_until(redstone_core::GameTick(12)).unwrap();
++    let output = simulation.world().block_entity(target).unwrap();
++    assert_eq!(
++        output.fields["inventory"],
++        serde_json::json!([
++            {"slot":0,"item_id":"minecraft:honey_block","count":1},
++            {"slot":1,"item_id":"minecraft:glass_bottle","count":4}
++        ])
++    );
++    assert_eq!(
++        simulation
++            .world()
++            .block_entity(BlockPos::ZERO)
++            .unwrap()
++            .fields["item_count"],
++        0
++    );
++}
+diff --git a/crates/redstone-java-26/tests/dispenser.rs b/crates/redstone-java-26/tests/dispenser.rs
+index e4f3e15..181fe8f 100644
+--- a/crates/redstone-java-26/tests/dispenser.rs
++++ b/crates/redstone-java-26/tests/dispenser.rs
+@@ -76,7 +76,8 @@ fn projectile_entity_records_the_original_dispensed_item() {
+     assert_eq!(entity.kind, "minecraft:arrow");
+     assert_eq!(entity.fields["source_item"], "minecraft:tipped_arrow");
+     assert_eq!(entity.fields["facing"], "east");
+-    assert_eq!(entity.fields["velocity"], serde_json::json!([1, 0, 0]));
++    assert!(entity.fields["Motion"][0].as_f64().unwrap() > 0.8);
++    assert!(entity.position[0] > 2.0);
+ }
+ 
+ #[test]
+@@ -87,7 +88,8 @@ fn minecart_spawns_on_a_rail_and_falls_back_to_an_item_without_one() {
+ 
+     let minecart = on_rail.world().entities().next().unwrap().1;
+     assert_eq!(minecart.kind, "minecraft:hopper_minecart");
+-    assert_eq!(minecart.position, [1.5, 0.1, 0.5]);
++    // After spawning, OldMinecartBehavior snaps the cart to the rail surface.
++    assert_eq!(minecart.position, [1.5, 0.0625, 0.5]);
+ 
+     let mut fallback = dispenser_world("minecraft:hopper_minecart", false);
+     fallback.run_until(GameTick(5)).unwrap();
+@@ -97,7 +99,7 @@ fn minecart_spawns_on_a_rail_and_falls_back_to_an_item_without_one() {
+ }
+ 
+ #[test]
+-fn dispensed_tnt_counts_down_and_records_an_unsupported_explosion() {
++fn dispensed_tnt_counts_down_and_explodes() {
+     let mut simulation = dispenser_world("minecraft:tnt", false);
+     simulation.set_trace_enabled(true).unwrap();
+ 
+@@ -115,7 +117,7 @@ fn dispensed_tnt_counts_down_and_records_an_unsupported_explosion() {
+             .entities()
+             .all(|(_, entity)| entity.kind != "minecraft:tnt")
+     );
+-    assert!(simulation.trace().events().iter().any(|event| {
++    assert!(!simulation.trace().events().iter().any(|event| {
+         matches!(
+             &event.kind,
+             TraceKind::UnsupportedTrigger { behavior, .. } if behavior == "tnt_explosion"
+diff --git a/docs/impl.md b/docs/impl.md
+index 83889a6..c4d511e 100644
+--- a/docs/impl.md
++++ b/docs/impl.md
+@@ -442,3 +442,11 @@ wire 有序传播使用 `Compiled`, `Interpreted` 和 `FellBack` 三种内部结
+ - 结构格式与世界: `crates/redstone-io/tests/structure_*.rs`.
+ - CLI 场景, paste, inspect, convert, Replay 和 oracle: `crates/redstone-cli/tests`.
+ - Replay 协议和归档: `crates/redstone-replay-26/src` 中的单元测试.
++
++## Litemora 原理图中的红石元件
++
++解释执行器增加了幽匿振动候选、羊毛遮挡、校频、紫水晶共振、尖啸体、避雷针、垂滴叶和红石矿石的状态更新。陈列架按供电连接。铜箱和运输船按容器容量参与比较器和漏斗操作。合成器和熔炉按本版本生成的数据表处理输入、燃料、输出和余物。
++
++标准矿车沿轨道移动并触发探测、激活和供电铁轨。箭、鸡蛋、雪球使用方块碰撞形状检测命中；标靶按击中的位置计算强度。点燃的 TNT 计时、移动，并按射线经过的方块和液体抗性计算爆炸。模拟覆盖方块电路和库存，尚未覆盖实体间碰撞、载人、流体传播、爆炸掉落及全部特殊发射行为。
++
++原版结构及 Litematic 的方块列表可读取旧版 Name、Properties，以及 26.3 的 id、properties 和默认状态的方块名简写。

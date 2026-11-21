@@ -1,0 +1,963 @@
+diff --git a/crates/redstone-core/src/rules.rs b/crates/redstone-core/src/rules.rs
+index dc4cd3c5bce41d1c246628fe962e7d8505d003b8..70beed58d72ad0d55bd8553fdbea4859f834e126 100644
+--- a/crates/redstone-core/src/rules.rs
++++ b/crates/redstone-core/src/rules.rs
+@@ -359,6 +359,12 @@ impl<'a> EventContext<'a> {
+         self.scheduled_ticks.contains(pos, block)
+     }
+ 
++    /// Whether a collected tick is still waiting to run in the current batch.
++    /// This excludes future ticks and the callback that is currently executing.
++    pub fn will_tick_this_tick(&self, pos: BlockPos, block: BlockKindId) -> bool {
++        self.scheduled_ticks.will_tick_this_tick(pos, block)
++    }
++
+     pub fn schedule_tick_after_neighbors(
+         &mut self,
+         pos: BlockPos,
+diff --git a/crates/redstone-core/src/scheduler.rs b/crates/redstone-core/src/scheduler.rs
+index b2a05c1c982dcd656a2c661950e9085e552312f7..34509b7a57b18d0b8d4c87cb4a2cd35001548518 100644
+--- a/crates/redstone-core/src/scheduler.rs
++++ b/crates/redstone-core/src/scheduler.rs
+@@ -1,7 +1,7 @@
+ use std::array;
+ use std::collections::{BTreeMap, VecDeque};
+ 
+-use rustc_hash::FxHashSet;
++use rustc_hash::{FxHashMap, FxHashSet};
+ 
+ use crate::{BlockKindId, BlockPos, GameTick, ScheduledTick, TickPriority};
+ 
+@@ -32,6 +32,10 @@ pub(crate) struct ScheduledTickQueue {
+     wheel: Vec<WheelSlot>,
+     overflow: BTreeMap<GameTick, TickQueues>,
+     keys: FxHashSet<(BlockPos, BlockKindId)>,
++    // Collected ticks remain owned here until their callback starts. Errors leave
++    // the unexecuted suffix available for the next batch, outside future keys.
++    ready: VecDeque<ScheduledTick>,
++    collected: FxHashMap<(BlockPos, BlockKindId), usize>,
+     len: usize,
+ }
+ 
+@@ -41,12 +45,14 @@ impl ScheduledTickQueue {
+             wheel: (0..WHEEL_SIZE).map(|_| WheelSlot::new()).collect(),
+             overflow: BTreeMap::new(),
+             keys: FxHashSet::default(),
++            ready: VecDeque::new(),
++            collected: FxHashMap::default(),
+             len: 0,
+         }
+     }
+ 
+     pub(crate) fn len(&self) -> usize {
+-        self.len
++        self.len + self.ready.len()
+     }
+ 
+     pub(crate) fn contains(&self, pos: BlockPos, block: BlockKindId) -> bool {
+@@ -60,6 +66,7 @@ impl ScheduledTickQueue {
+             .flat_map(|slot| slot.queues.iter())
+             .chain(self.overflow.values().flat_map(|queues| queues.iter()))
+             .flat_map(|queue| queue.iter().copied())
++            .chain(self.ready.iter().copied())
+             .collect::<Vec<_>>();
+         ticks.sort_unstable();
+         ticks
+@@ -123,7 +130,58 @@ impl ScheduledTickQueue {
+         (due, has_more)
+     }
+ 
++    pub(crate) fn collect_due_batch(
++        &mut self,
++        current_tick: GameTick,
++        limit: usize,
++    ) -> (Vec<ScheduledTick>, bool) {
++        // Resume an interrupted batch before collecting new future ticks. Both
++        // share the same limit, even if they contain ticks for the same key.
++        let available = limit.saturating_sub(self.ready.len());
++        let (new_due, has_more) = self.due_batch(current_tick, available);
++        for tick in new_due {
++            self.remove_pending(tick);
++            self.ready.push_back(tick);
++        }
++        let due = self.ready.iter().take(limit).copied().collect::<Vec<_>>();
++        self.collected.clear();
++        // LevelTicks collects the entire batch before any block callback runs.
++        // These keys no longer deduplicate future ticks. A recovered tick and a
++        // new tick may share a key, so current-batch presence needs a count.
++        for tick in &due {
++            *self.collected.entry((tick.pos, tick.block)).or_default() += 1;
++        }
++        (due, has_more || self.ready.len() > limit)
++    }
++
++    pub(crate) fn will_tick_this_tick(&self, pos: BlockPos, block: BlockKindId) -> bool {
++        self.collected.contains_key(&(pos, block))
++    }
++
+     pub(crate) fn start_execution(&mut self, tick: ScheduledTick) {
++        let queued = self
++            .ready
++            .pop_front()
++            .expect("执行的计划刻必须仍在已收集队列中");
++        assert_eq!(queued, tick, "已收集计划刻必须保持执行顺序");
++        let key = (tick.pos, tick.block);
++        let remaining = self
++            .collected
++            .get_mut(&key)
++            .expect("执行的计划刻必须属于当前批次");
++        *remaining -= 1;
++        if *remaining == 0 {
++            self.collected.remove(&key);
++        }
++    }
++
++    pub(crate) fn finish_batch(&mut self) {
++        // Keep any unexecuted ready ticks on error, but never expose a stale
++        // will_tick_this_tick result between batches.
++        self.collected.clear();
++    }
++
++    fn remove_pending(&mut self, tick: ScheduledTick) {
+         let index = wheel_index(tick.trigger_tick);
+         let use_wheel = self.wheel[index].tick == Some(tick.trigger_tick);
+         let queues = if use_wheel {
+@@ -325,7 +383,7 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn keeps_snapshot_ticks_queued_until_execution_starts() {
++    fn keeps_snapshot_ticks_queued_until_they_are_collected() {
+         let mut queue = ScheduledTickQueue::new();
+         let first = tick(1, 0, TickPriority::Normal, 0);
+         let second = tick(2, 0, TickPriority::Normal, 1);
+@@ -334,7 +392,7 @@ mod tests {
+ 
+         let (due, _) = queue.due_batch(GameTick(0), usize::MAX);
+         assert!(!queue.insert(tick(1, 0, TickPriority::Normal, 2)));
+-        queue.start_execution(due[0]);
++        queue.remove_pending(due[0]);
+         let rescheduled = tick(1, 0, TickPriority::Normal, 2);
+         assert!(queue.insert(rescheduled));
+ 
+@@ -355,7 +413,7 @@ mod tests {
+ 
+         let (early, _) = queue.due_batch(GameTick(1), usize::MAX);
+         assert_eq!(early, [first]);
+-        queue.start_execution(first);
++        queue.remove_pending(first);
+         let (late, _) = queue.due_batch(GameTick(257), usize::MAX);
+         assert_eq!(late, [second]);
+     }
+@@ -371,11 +429,81 @@ mod tests {
+         let (due, has_more) = queue.due_batch(GameTick(1), 1);
+         assert_eq!(due, [first]);
+         assert!(has_more);
+-        queue.start_execution(first);
++        queue.remove_pending(first);
+         let (remaining, _) = queue.due_batch(GameTick(1), usize::MAX);
+         assert_eq!(remaining, [second]);
+     }
+ 
++    #[test]
++    fn interrupted_batch_is_pending_but_not_current_or_future() {
++        let mut queue = ScheduledTickQueue::new();
++        let first = tick(1, 1, TickPriority::Normal, 0);
++        let second = tick(2, 1, TickPriority::Normal, 1);
++        assert!(queue.insert(first));
++        assert!(queue.insert(second));
++        assert_eq!(
++            queue.collect_due_batch(GameTick(1), 2),
++            (vec![first, second], false)
++        );
++        assert_eq!(queue.len(), 2);
++        assert!(queue.will_tick_this_tick(second.pos, second.block));
++        assert!(!queue.contains(second.pos, second.block));
++
++        queue.start_execution(first);
++        queue.finish_batch(); // Simulate the first callback returning an error.
++        assert_eq!(queue.len(), 1);
++        assert_eq!(queue.snapshot(), [second]);
++        assert!(!queue.will_tick_this_tick(second.pos, second.block));
++        assert!(!queue.contains(second.pos, second.block));
++
++        assert_eq!(queue.collect_due_batch(GameTick(2), 1), (vec![second], false));
++        assert!(queue.will_tick_this_tick(second.pos, second.block));
++        queue.start_execution(second);
++        assert!(!queue.will_tick_this_tick(second.pos, second.block));
++        queue.finish_batch();
++        assert_eq!(queue.len(), 0);
++    }
++
++    #[test]
++    fn interrupted_batch_shares_the_cap_with_future_ticks() {
++        let mut queue = ScheduledTickQueue::new();
++        let first = tick(1, 1, TickPriority::Normal, 0);
++        let second = tick(2, 1, TickPriority::Normal, 1);
++        let third = tick(3, 1, TickPriority::Normal, 2);
++        for tick in [first, second, third] {
++            assert!(queue.insert(tick));
++        }
++        queue.collect_due_batch(GameTick(1), 3);
++        queue.start_execution(first);
++        let new_second = tick(2, 1, TickPriority::Normal, 3);
++        assert!(queue.insert(new_second));
++        queue.finish_batch();
++
++        assert_eq!(queue.collect_due_batch(GameTick(2), 1), (vec![second], true));
++        assert!(!queue.will_tick_this_tick(third.pos, third.block));
++        assert!(queue.contains(second.pos, second.block));
++        assert!(!queue.insert(tick(2, 2, TickPriority::High, 4)));
++        queue.start_execution(second);
++        queue.finish_batch();
++        assert_eq!(queue.len(), 2);
++
++        assert_eq!(queue.collect_due_batch(GameTick(3), 0), (vec![], true));
++        assert!(!queue.will_tick_this_tick(third.pos, third.block));
++        queue.finish_batch();
++        assert_eq!(queue.len(), 2);
++        assert_eq!(queue.collect_due_batch(GameTick(4), 1), (vec![third], true));
++        queue.start_execution(third);
++        queue.finish_batch();
++        assert_eq!(
++            queue.collect_due_batch(GameTick(5), 1),
++            (vec![new_second], false)
++        );
++        assert!(!queue.contains(new_second.pos, new_second.block));
++        queue.start_execution(new_second);
++        queue.finish_batch();
++        assert_eq!(queue.len(), 0);
++    }
++
+     #[test]
+     fn snapshot_is_sorted_and_does_not_consume_ticks() {
+         let mut queue = ScheduledTickQueue::new();
+diff --git a/crates/redstone-core/src/simulation.rs b/crates/redstone-core/src/simulation.rs
+index 91b71a13139ffe6a083d13d596f485de68ed4e1a..6ac98deb3d098da1835f6703c5b926f2f918e7c1 100644
+--- a/crates/redstone-core/src/simulation.rs
++++ b/crates/redstone-core/src/simulation.rs
+@@ -535,10 +535,14 @@ impl<R: BlockRules> Simulation<R> {
+         normalized_execution_report(&self.rules, &self.config, self.execution_prepared)
+     }
+ 
++    /// Future ticks plus collected ticks whose callbacks have not started,
++    /// including the retained remainder of an interrupted scheduled-tick phase.
+     pub fn pending_scheduled_ticks(&self) -> usize {
+         self.scheduled_ticks.len()
+     }
+ 
++    /// All pending entries, including interrupted batches, sorted by tick order.
++    /// Recovery executes the retained batch before collecting new future ticks.
+     pub fn pending_scheduled_tick_entries(&self) -> Vec<crate::ScheduledTick> {
+         self.scheduled_ticks.snapshot()
+     }
+@@ -549,7 +553,7 @@ impl<R: BlockRules> Simulation<R> {
+     ) -> Result<(), SimulationError> {
+         let due = self
+             .scheduled_ticks
+-            .due_batch(self.tick, self.config.max_scheduled_ticks_per_tick);
++            .collect_due_batch(self.tick, self.config.max_scheduled_ticks_per_tick);
+         let (due, has_more_due) = due;
+         if has_more_due {
+             warn!(
+@@ -558,27 +562,31 @@ impl<R: BlockRules> Simulation<R> {
+                 "计划方块刻达到单刻上限"
+             );
+         }
+-        for tick in due {
+-            self.scheduled_ticks.start_execution(tick);
+-            self.push_trace(
+-                SimulationPhase::ScheduledTicks,
+-                TraceKind::ScheduledTickExecuted {
+-                    pos: tick.pos,
+-                    block: tick.block,
+-                },
+-            );
+-            let tasks = self.with_context_and_changes(
+-                SimulationPhase::ScheduledTicks,
+-                changes,
+-                |rules, ctx| rules.on_scheduled_tick(ctx, tick),
+-            )?;
+-            self.process_neighbor_tasks_with_changes(
+-                tasks,
+-                SimulationPhase::ScheduledTicks,
+-                changes,
+-            )?;
+-        }
+-        Ok(())
++        let result = (|| {
++            for tick in due {
++                self.scheduled_ticks.start_execution(tick);
++                self.push_trace(
++                    SimulationPhase::ScheduledTicks,
++                    TraceKind::ScheduledTickExecuted {
++                        pos: tick.pos,
++                        block: tick.block,
++                    },
++                );
++                let tasks = self.with_context_and_changes(
++                    SimulationPhase::ScheduledTicks,
++                    changes,
++                    |rules, ctx| rules.on_scheduled_tick(ctx, tick),
++                )?;
++                self.process_neighbor_tasks_with_changes(
++                    tasks,
++                    SimulationPhase::ScheduledTicks,
++                    changes,
++                )?;
++            }
++            Ok(())
++        })();
++        self.scheduled_ticks.finish_batch();
++        result
+     }
+ 
+     fn run_block_events(&mut self, changes: &mut Vec<WorldEvent>) -> Result<(), SimulationError> {
+diff --git a/crates/redstone-core/tests/engine.rs b/crates/redstone-core/tests/engine.rs
+index 18fadf1bef0bcc9a988cb0f26d559d73784cb75f..239b33ffa8443dfe7318c131f9640e86ae5ab84e 100644
+--- a/crates/redstone-core/tests/engine.rs
++++ b/crates/redstone-core/tests/engine.rs
+@@ -22,6 +22,12 @@ const KIND: BlockKindId = BlockKindId(1);
+ struct MockRules {
+     scheduled_executions: usize,
+     scheduled_results: Vec<bool>,
++    scheduled_presence: Vec<bool>,
++    collected_presence: Vec<bool>,
++    executing_presence: Vec<bool>,
++    scheduled_callbacks: Vec<(u64, BlockPos, bool, bool)>,
++    fail_first_scheduled_tick: bool,
++    reschedule_neighbor_before_failure: bool,
+     neighbor_positions: Vec<BlockPos>,
+     block_entity_order: Vec<(&'static str, BlockPos)>,
+     execute_block_events: bool,
+@@ -269,6 +275,8 @@ impl BlockRules for MockRules {
+             });
+         }
+         if update.source_pos == BlockPos::new(99, 0, 0) {
++            self.scheduled_presence.push(ctx.has_scheduled_tick(update.pos, KIND));
++            self.collected_presence.push(ctx.will_tick_this_tick(update.pos, KIND));
+             self.scheduled_results.push(ctx.schedule_tick(
+                 update.pos,
+                 KIND,
+@@ -316,6 +324,24 @@ impl BlockRules for MockRules {
+         tick: ScheduledTick,
+     ) -> Result<(), RulesError> {
+         self.scheduled_executions += 1;
++        self.executing_presence.push(ctx.will_tick_this_tick(tick.pos, tick.block));
++        self.scheduled_callbacks.push((
++            ctx.tick.0,
++            tick.pos,
++            ctx.has_scheduled_tick(tick.pos, tick.block),
++            ctx.will_tick_this_tick(tick.pos, tick.block),
++        ));
++        if self.scheduled_executions == 1 && self.fail_first_scheduled_tick {
++            if self.reschedule_neighbor_before_failure {
++                ctx.schedule_tick(
++                    tick.pos.relative(redstone_core::Direction::East),
++                    tick.block,
++                    0,
++                    TickPriority::Normal,
++                );
++            }
++            return Err(RulesError::Message("test scheduled tick failure".to_owned()));
++        }
+         if self.scheduled_executions == 1 {
+             ctx.schedule_tick(tick.pos, tick.block, 0, TickPriority::Normal);
+             let neighbor = tick.pos.relative(redstone_core::Direction::East);
+@@ -531,7 +557,71 @@ fn scheduled_ticks_added_during_execution_wait_for_next_game_tick() {
+ }
+ 
+ #[test]
+-fn scheduled_tick_remains_deduplicated_until_its_execution_starts() {
++fn scheduled_tick_batch_is_removed_before_callbacks_begin() {
++    let neighbor = BlockPos::ZERO.relative(redstone_core::Direction::East);
++    let mut world = SparseWorld::new(AIR);
++    world.set_block(BlockPos::ZERO, BLOCK).unwrap();
++    world.set_block(neighbor, BLOCK).unwrap();
++    let mut simulation =
++        Simulation::load(MockRules::default(), world, SimulationConfig::default()).unwrap();
++
++    simulation
++        .step_with_actions(&[
++            Action::UseBlock {
++                pos: BlockPos::ZERO,
++            },
++            Action::UseBlock { pos: neighbor },
++        ])
++        .unwrap();
++
++    assert_eq!(simulation.rules().scheduled_executions, 2);
++    assert_eq!(simulation.rules().scheduled_presence, vec![false]);
++    assert_eq!(simulation.rules().collected_presence, vec![true]);
++    assert_eq!(simulation.rules().scheduled_results, vec![true]);
++    assert_eq!(simulation.pending_scheduled_ticks(), 2);
++
++    // The neighbor's already-collected callback must not remove its new tick.
++    simulation.step().unwrap();
++    assert_eq!(simulation.rules().scheduled_executions, 3);
++    assert_eq!(simulation.pending_scheduled_tick_entries()[0].pos, neighbor);
++    simulation.step().unwrap();
++    assert_eq!(simulation.rules().scheduled_executions, 4);
++    assert_eq!(simulation.rules().executing_presence, vec![false; 4]);
++    assert_eq!(simulation.pending_scheduled_ticks(), 0);
++}
++
++#[test]
++fn future_scheduled_ticks_remain_deduplicated_during_execution() {
++    let neighbor = BlockPos::ZERO.relative(redstone_core::Direction::East);
++    let mut world = SparseWorld::new(AIR);
++    world.set_block(BlockPos::ZERO, BLOCK).unwrap();
++    world.set_block(neighbor, BLOCK).unwrap();
++    let mut simulation =
++        Simulation::load(MockRules::default(), world, SimulationConfig::default()).unwrap();
++
++    simulation
++        .step_with_actions(&[
++            Action::PressButton { pos: neighbor }, // Scheduled for tick 3.
++            Action::UseBlock {
++                pos: BlockPos::ZERO,
++            },
++        ])
++        .unwrap();
++
++    assert_eq!(simulation.rules().scheduled_executions, 1);
++    assert_eq!(simulation.rules().scheduled_presence, vec![true]);
++    assert_eq!(simulation.rules().collected_presence, vec![false]);
++    assert_eq!(simulation.rules().scheduled_results, vec![false]);
++    assert_eq!(simulation.pending_scheduled_ticks(), 2);
++    simulation.step().unwrap();
++    assert_eq!(simulation.rules().scheduled_executions, 2);
++    simulation.step().unwrap();
++    assert_eq!(simulation.rules().scheduled_executions, 3);
++    assert_eq!(simulation.pending_scheduled_ticks(), 0);
++}
++
++#[test]
++fn scheduled_tick_cap_keeps_uncollected_ticks_deduplicated() {
+     let neighbor = BlockPos::ZERO.relative(redstone_core::Direction::East);
+     let mut world = SparseWorld::new(AIR);
+     world.set_block(BlockPos::ZERO, BLOCK).unwrap();
+@@ -539,7 +629,11 @@ fn scheduled_tick_remains_deduplicated_until_its_execution_starts() {
+     let mut simulation = Simulation::load(
+         MockRules::default(),
+         world,
+-        SimulationConfig::default(),
++        SimulationConfig {
++            max_scheduled_ticks_per_tick: 1,
++            trace: true,
++            ..SimulationConfig::default()
++        },
+     )
+     .unwrap();
+ 
+@@ -552,9 +646,123 @@ fn scheduled_tick_remains_deduplicated_until_its_execution_starts() {
+         ])
+         .unwrap();
+ 
+-    assert_eq!(simulation.rules().scheduled_executions, 2);
++    assert_eq!(simulation.rules().scheduled_executions, 1);
++    assert_eq!(simulation.rules().scheduled_presence, vec![true]);
++    assert_eq!(simulation.rules().collected_presence, vec![false]);
+     assert_eq!(simulation.rules().scheduled_results, vec![false]);
++    assert_eq!(simulation.pending_scheduled_ticks(), 2);
++    simulation.step().unwrap();
++    assert_eq!(simulation.rules().scheduled_executions, 2);
++    simulation.step().unwrap();
++    assert_eq!(simulation.rules().scheduled_executions, 3);
++    assert_eq!(simulation.pending_scheduled_ticks(), 0);
++    let executed = simulation
++        .trace()
++        .events()
++        .iter()
++        .filter_map(|event| {
++            if let TraceKind::ScheduledTickExecuted { pos, .. } = event.kind {
++                Some((event.tick.0, pos))
++            } else {
++                None
++            }
++        })
++        .collect::<Vec<_>>();
++    assert_eq!(
++        executed,
++        vec![(1, BlockPos::ZERO), (2, neighbor), (3, BlockPos::ZERO)]
++    );
++}
++
++#[test]
++fn scheduled_tick_error_preserves_the_unexecuted_batch() {
++    let first = BlockPos::ZERO;
++    let second = first.relative(redstone_core::Direction::East);
++    let mut world = SparseWorld::new(AIR);
++    world.set_block(first, BLOCK).unwrap();
++    world.set_block(second, BLOCK).unwrap();
++    let mut simulation = Simulation::load(
++        MockRules {
++            fail_first_scheduled_tick: true,
++            ..MockRules::default()
++        },
++        world,
++        SimulationConfig::default(),
++    )
++    .unwrap();
++
++    let result = simulation.step_with_actions(&[
++        Action::UseBlock { pos: first },
++        Action::UseBlock { pos: second },
++    ]);
++    assert!(matches!(
++        result,
++        Err(SimulationError::Rules(RulesError::Message(message)))
++            if message == "test scheduled tick failure"
++    ));
++    assert_eq!(simulation.current_tick().0, 1);
+     assert_eq!(simulation.pending_scheduled_ticks(), 1);
++    let pending = simulation.pending_scheduled_tick_entries();
++    assert_eq!(pending.len(), 1);
++    assert_eq!(pending[0].pos, second);
++    assert_eq!(pending[0].trigger_tick.0, 1);
++    assert_eq!(pending[0].sub_tick_order, 1);
++
++    simulation.step().unwrap();
++    assert_eq!(simulation.pending_scheduled_ticks(), 0);
++    assert_eq!(
++        simulation.rules().scheduled_callbacks,
++        vec![(1, first, false, false), (2, second, false, false)]
++    );
++}
++
++#[test]
++fn scheduled_tick_error_preserves_both_recovery_and_new_future_tick() {
++    let first = BlockPos::ZERO;
++    let second = first.relative(redstone_core::Direction::East);
++    let mut world = SparseWorld::new(AIR);
++    world.set_block(first, BLOCK).unwrap();
++    world.set_block(second, BLOCK).unwrap();
++    let mut simulation = Simulation::load(
++        MockRules {
++            fail_first_scheduled_tick: true,
++            reschedule_neighbor_before_failure: true,
++            ..MockRules::default()
++        },
++        world,
++        SimulationConfig::default(),
++    )
++    .unwrap();
++
++    assert!(
++        simulation
++            .step_with_actions(&[
++                Action::UseBlock { pos: first },
++                Action::UseBlock { pos: second },
++            ])
++            .is_err()
++    );
++    assert_eq!(simulation.pending_scheduled_ticks(), 2);
++    let pending = simulation.pending_scheduled_tick_entries();
++    assert_eq!(
++        pending.iter().map(|tick| tick.pos).collect::<Vec<_>>(),
++        [second; 2]
++    );
++    assert_eq!(
++        pending.iter().map(|tick| tick.sub_tick_order).collect::<Vec<_>>(),
++        [1, 2]
++    );
++
++    simulation.step().unwrap();
++    assert_eq!(simulation.pending_scheduled_ticks(), 0);
++    assert_eq!(
++        simulation.rules().scheduled_callbacks,
++        vec![
++            (1, first, false, false),
++            (2, second, false, true),
++            (2, second, false, false),
++        ]
++    );
+ }
+ 
+ #[test]
+diff --git a/crates/redstone-java-26/src/rules.rs b/crates/redstone-java-26/src/rules.rs
+index cf6eef97e4c768805ab1ae51d9c4484b880bed0f..22275916a2c252021017dfbbdb5986e79a9986dd 100644
+--- a/crates/redstone-java-26/src/rules.rs
++++ b/crates/redstone-java-26/src/rules.rs
+@@ -925,7 +925,7 @@ impl Java26Rules {
+         state_id: BlockStateId,
+     ) -> Result<(), RulesError> {
+         let state = self.state(state_id)?;
+-        if ctx.has_scheduled_tick(pos, state.kind) {
++        if ctx.will_tick_this_tick(pos, state.kind) {
+             return Ok(());
+         }
+         let attached = attached_block(pos, state);
+@@ -947,7 +947,7 @@ impl Java26Rules {
+             return self.refresh_torch(ctx, pos, state_id);
+         };
+         let state = self.state(state_id)?;
+-        if ctx.has_scheduled_tick(pos, state.kind) {
++        if ctx.will_tick_this_tick(pos, state.kind) {
+             return Ok(());
+         }
+         let should_be_lit = input.default == 0;
+@@ -964,7 +964,7 @@ impl Java26Rules {
+         state_id: BlockStateId,
+     ) -> Result<(), RulesError> {
+         let state = self.state(state_id)?;
+-        if ctx.has_scheduled_tick(pos, state.kind) {
++        if ctx.will_tick_this_tick(pos, state.kind) {
+             return Ok(());
+         }
+         if self.repeater_locked(ctx.world, pos, state) {
+@@ -996,7 +996,7 @@ impl Java26Rules {
+             return self.refresh_repeater(ctx, pos, state_id);
+         };
+         let state = self.state(state_id)?;
+-        if ctx.has_scheduled_tick(pos, state.kind) || input.side > 0 {
++        if ctx.will_tick_this_tick(pos, state.kind) || input.side > 0 {
+             return Ok(());
+         }
+         let should_power = input.default > 0;
+@@ -1155,7 +1155,7 @@ impl Java26Rules {
+         state_id: BlockStateId,
+     ) -> Result<(), RulesError> {
+         let state = self.state(state_id)?;
+-        if ctx.has_scheduled_tick(pos, state.kind) {
++        if ctx.will_tick_this_tick(pos, state.kind) {
+             return Ok(());
+         }
+         let output = self.comparator_output(ctx.world, pos, state);
+diff --git a/crates/redstone-java-26/src/rules/consumer.rs b/crates/redstone-java-26/src/rules/consumer.rs
+index 51e8dc7fe2654719822c1eec842cddb6db7f4141..8c31178426bd2629ee5707b63dfb5ea760cf0a90 100644
+--- a/crates/redstone-java-26/src/rules/consumer.rs
++++ b/crates/redstone-java-26/src/rules/consumer.rs
+@@ -59,6 +59,11 @@ impl Java26Rules {
+         if powered != state.bool_property("powered") {
+             let next = self.changed_state(state_id, "powered", powered.to_string())?;
+             self.set_state_and_notify(ctx, pos, next, "powered_rail", None)?;
++            // PoweredRailBlock.updateState also reaches rails across a height change.
++            ctx.update_neighbors(pos.relative(Direction::Down), state.kind, None, None);
++            if state.property("shape").is_some_and(|shape| shape.starts_with("ascending_")) {
++                ctx.update_neighbors(pos.relative(Direction::Up), state.kind, None, None);
++            }
+         }
+         Ok(())
+     }
+diff --git a/crates/redstone-java-26/tests/components.rs b/crates/redstone-java-26/tests/components.rs
+index 8d606225d25189b981b04c7bdf7397d836802e56..d6ed8cce10153dd611636b04efe55883719bf51b 100644
+--- a/crates/redstone-java-26/tests/components.rs
++++ b/crates/redstone-java-26/tests/components.rs
+@@ -675,6 +675,178 @@ fn moved_observer_schedules_an_air_update_after_settling() {
+     );
+ }
+ 
++#[test]
++fn piston_started_observer_clock_repeats_every_four_game_ticks() {
++    let mut registry = Java26Registry::new();
++    let fixed = state(
++        &mut registry,
++        "minecraft:observer",
++        &[("facing", "south"), ("powered", "false")],
++    );
++    let moved = state(
++        &mut registry,
++        "minecraft:observer",
++        &[("facing", "north"), ("powered", "false")],
++    );
++    let piston = state(
++        &mut registry,
++        "minecraft:piston",
++        &[("facing", "down"), ("extended", "false")],
++    );
++    let source = state(&mut registry, "minecraft:redstone_block", &[]);
++    let fixed_pos = BlockPos::new(1, 2, 0);
++    let moved_pos = BlockPos::new(1, 2, 1);
++    let source_pos = BlockPos::new(1, 4, 0);
++    let mut world = SparseWorld::new(registry.air_state());
++    world.set_block(fixed_pos, fixed).unwrap();
++    world.set_block(BlockPos::new(1, 3, 1), moved).unwrap();
++    world.set_block(BlockPos::new(1, 4, 1), piston).unwrap();
++    let mut simulation = Simulation::load(
++        Java26Rules::new(registry),
++        world,
++        SimulationConfig::default(),
++    )
++    .unwrap();
++    let mut fixed_rises = Vec::new();
++    let mut moved_rises = Vec::new();
++    for tick in 1..=50 {
++        let actions = match tick {
++            20 => vec![Action::SetBlock {
++                pos: source_pos,
++                state: source,
++            }],
++            24 => vec![Action::BreakBlock { pos: source_pos }],
++            _ => Vec::new(),
++        };
++        let delta = simulation.step_with_actions(&actions).unwrap();
++        for event in delta.events {
++            let WorldEvent::Block { change } = event else {
++                continue;
++            };
++            if change.pos != fixed_pos && change.pos != moved_pos {
++                continue;
++            }
++            let state = simulation
++                .rules()
++                .registry()
++                .state(change.new_state)
++                .unwrap();
++            if state.name.as_ref() == "minecraft:observer"
++                && state.property("powered") == Some("true")
++            {
++                if change.pos == fixed_pos {
++                    fixed_rises.push(tick);
++                } else {
++                    moved_rises.push(tick);
++                }
++            }
++        }
++    }
++    // At tick 24 the fixed observer turns off before the moved observer turns on.
++    // Both due ticks have already left the pending set, so the shape update can
++    // schedule the moved observer again for tick 26, preserving a four-tick clock.
++    assert_eq!(fixed_rises, vec![22, 26, 30, 34, 38, 42, 46, 50]);
++    assert_eq!(moved_rises, vec![24, 28, 32, 36, 40, 44, 48]);
++}
++
++#[test]
++fn diodes_do_not_reschedule_ticks_still_in_the_current_batch() {
++    for mode in [
++        redstone_core::ExecutionMode::Interpreted,
++        redstone_core::ExecutionMode::Compiled,
++    ] {
++        for target_name in ["minecraft:repeater", "minecraft:comparator"] {
++            let mut registry = Java26Registry::new();
++            let first = state(
++                &mut registry,
++                "minecraft:repeater",
++                &[
++                    ("facing", "east"),
++                    ("powered", "false"),
++                    ("locked", "false"),
++                    ("delay", "1"),
++                ],
++            );
++            let target = if target_name == "minecraft:repeater" {
++                state(
++                    &mut registry,
++                    target_name,
++                    &[
++                        ("facing", "north"),
++                        ("powered", "false"),
++                        ("locked", "false"),
++                        ("delay", "1"),
++                    ],
++                )
++            } else {
++                state(
++                    &mut registry,
++                    target_name,
++                    &[
++                        ("facing", "north"),
++                        ("powered", "false"),
++                        ("mode", "compare"),
++                    ],
++                )
++            };
++            let source = state(&mut registry, "minecraft:redstone_block", &[]);
++            let stone = state(&mut registry, "minecraft:stone", &[]);
++            let target_pos = BlockPos::new(0, 1, 0);
++            let mut world = SparseWorld::new(registry.air_state());
++            for pos in [
++                BlockPos::new(0, 0, 0),
++                BlockPos::new(1, 0, 1),
++                BlockPos::new(0, 1, 1),
++            ] {
++                world.set_block(pos, stone).unwrap();
++            }
++            world.set_block(BlockPos::new(1, 1, 1), first).unwrap();
++            world.set_block(target_pos, target).unwrap();
++            let mut simulation = Simulation::load(
++                Java26Rules::new(registry),
++                world,
++                SimulationConfig {
++                    execution_mode: mode,
++                    ..SimulationConfig::default()
++                },
++            )
++            .unwrap();
++            simulation
++                .step_with_actions(&[
++                    Action::SetBlock {
++                        pos: BlockPos::new(2, 1, 1),
++                        state: source,
++                    },
++                    Action::SetBlock {
++                        pos: BlockPos::new(0, 1, -1),
++                        state: source,
++                    },
++                ])
++                .unwrap();
++            assert_eq!(simulation.pending_scheduled_ticks(), 2);
++            simulation.step().unwrap();
++            simulation.step().unwrap();
++
++            // The first repeater broadcasts around its output at (0,1,1),
++            // refreshing the target before its already-collected tick runs.
++            assert_eq!(
++                simulation
++                    .rules()
++                    .registry()
++                    .state(simulation.world().get_block(target_pos),)
++                    .unwrap()
++                    .property("powered"),
++                Some("true")
++            );
++            assert_eq!(
++                simulation.pending_scheduled_ticks(),
++                0,
++                "{target_name}, {mode:?}"
++            );
++        }
++    }
++}
++
+ #[test]
+ fn observer_detects_piston_base_extension() {
+     let mut registry = Java26Registry::new();
+diff --git a/crates/redstone-java-26/tests/consumers.rs b/crates/redstone-java-26/tests/consumers.rs
+index 26aaa3bacea8c400482f755f5e946a4962b9a41f..c9acd0962d0d5b28cd58de7a6d762129766224f2 100644
+--- a/crates/redstone-java-26/tests/consumers.rs
++++ b/crates/redstone-java-26/tests/consumers.rs
+@@ -93,9 +93,13 @@ fn powered_rail_signal_stops_after_eight_connected_rails() {
+         ],
+     );
+     let source = state(&mut registry, "minecraft:redstone_block", &[]);
++    let stone = state(&mut registry, "minecraft:stone", &[]);
+     let mut world = SparseWorld::new(registry.air_state());
+     world.set_block(BlockPos::new(0, -1, 0), source).unwrap();
+     for x in 0..=9 {
++        if x > 0 {
++            world.set_block(BlockPos::new(x, -1, 0), stone).unwrap();
++        }
+         world.set_block(BlockPos::new(x, 0, 0), rail).unwrap();
+     }
+     let rules = Java26Rules::new(registry);
+@@ -120,6 +124,95 @@ fn powered_rail_signal_stops_after_eight_connected_rails() {
+     assert_eq!(ninth.property("powered"), Some("false"));
+ }
+ 
++fn assert_rail_slope_power_change(initially_powered: bool) {
++    for rail_name in ["minecraft:powered_rail", "minecraft:activator_rail"] {
++        for from_high_end in [true, false] {
++            let mut registry = Java26Registry::new();
++            let powered = if initially_powered { "true" } else { "false" };
++            let flat = state(
++                &mut registry,
++                rail_name,
++                &[
++                    ("powered", powered),
++                    ("shape", "north_south"),
++                    ("waterlogged", "false"),
++                ],
++            );
++            let slope = state(
++                &mut registry,
++                rail_name,
++                &[
++                    ("powered", powered),
++                    ("shape", "ascending_north"),
++                    ("waterlogged", "false"),
++                ],
++            );
++            let stone = state(&mut registry, "minecraft:stone", &[]);
++            let source = state(&mut registry, "minecraft:redstone_block", &[]);
++            let rails = [
++                (BlockPos::new(0, 2, 0), flat),
++                (BlockPos::new(0, 1, 1), slope),
++                (BlockPos::new(0, 1, 2), flat),
++            ];
++            let source_pos = if from_high_end {
++                BlockPos::new(0, 2, -1)
++            } else {
++                BlockPos::new(0, 1, 3)
++            };
++            let mut world = SparseWorld::new(registry.air_state());
++            for (pos, rail) in rails {
++                world
++                    .set_block(pos.relative(Direction::Down), stone)
++                    .unwrap();
++                world.set_block(pos, rail).unwrap();
++            }
++            if initially_powered {
++                world.set_block(source_pos, source).unwrap();
++            }
++            let mut simulation = Simulation::load(
++                Java26Rules::new(registry),
++                world,
++                SimulationConfig::default(),
++            )
++            .unwrap();
++
++            // Do not initialize every rail: one source update must cross the slope.
++            let action = if initially_powered {
++                Action::BreakBlock { pos: source_pos }
++            } else {
++                Action::SetBlock {
++                    pos: source_pos,
++                    state: source,
++                }
++            };
++            simulation.step_with_actions(&[action]).unwrap();
++
++            for (pos, _) in rails {
++                let rail = simulation
++                    .rules()
++                    .registry()
++                    .state(simulation.world().get_block(pos))
++                    .unwrap();
++                assert_eq!(
++                    rail.property("powered"),
++                    Some(if initially_powered { "false" } else { "true" }),
++                    "{rail_name} at {pos:?}, from_high_end={from_high_end}",
++                );
++            }
++        }
++    }
++}
++
++#[test]
++fn powered_rails_propagate_power_on_across_a_slope_in_both_directions() {
++    assert_rail_slope_power_change(false);
++}
++
++#[test]
++fn powered_rails_propagate_power_off_across_a_slope_in_both_directions() {
++    assert_rail_slope_power_change(true);
++}
++
+ #[test]
+ fn note_block_and_bell_emit_events_only_on_rising_edges() {
+     let mut registry = Java26Registry::new();
+diff --git a/docs/impl.md b/docs/impl.md
+index b4287c79064fbdcdaee2c97aba1bc5c7a4139559..93df8f11b391ead04f4e383e8061d067e7c53634 100644
+--- a/docs/impl.md
++++ b/docs/impl.md
+@@ -48,7 +48,9 @@
+ 具体顺序特性:
+ 
+ - 计划刻按 `trigger_tick`, 优先级, `sub_tick_order`, 坐标和方块类型排序.
+-- 同一位置和方块类型的计划刻在执行开始前去重. 计划刻执行中新增的同 tick 任务留到下一个游戏 tick.
++- 同一位置和方块类型的待执行计划刻去重. 每个 tick 先按上限收集到期批次并整体移出待执行集合, 再执行回调; 未入批次和未来的计划刻继续参与去重. 回调为当前批次的位置重新排刻不会被旧任务阻挡, 新增的同 tick 任务留到下一个游戏 tick.
++- 计划刻查询区分未来队列 (`has_scheduled_tick`) 和当前尚未执行的批次 (`will_tick_this_tick`). 观察者使用前者, 中继器, 比较器和红石火把使用后者; 当前回调和已完成回调均不属于尚未执行批次.
++- 计划刻回调, 其同步屏障或邻居链返回错误时, 已开始的回调不重试, 已产生的世界变化不回滚; 尚未开始的批次条目保留在独立队列, 下次 `step` 的计划刻阶段优先恢复, 与新收集条目共享单 tick 上限. 它们可与同位置和类型的新未来刻并存, 不重新插入未来去重集合. 错误返回后 `will_tick_this_tick` 清空, `has_scheduled_tick` 仍只查询未来队列; `pending_scheduled_ticks` 和 `pending_scheduled_tick_entries` 包含未来队列及保留的未执行条目. 若同键的恢复刻与新刻都入当前批次, 第一次回调期间仍能查询到第二次尚未执行的刻.
+ - 计划刻使用 256 槽环形时间轮和远期 overflow 队列. 时间轮保留 7 级优先级, `sub_tick_order`, 去重和同 tick 延迟语义.
+ - 方块事件使用有序队列和集合去重. 成功执行的方块事件在该事件产生的世界变化之前进入 delta.
+ - 邻居更新使用显式任务栈, 不依赖 Rust 调用栈递归. 嵌套更新会在外层六方向广播继续前抢占执行, 固定方向顺序为 west, east, down, up, north, south.
+@@ -142,7 +144,7 @@ wire 有序传播使用 `Compiled`, `Interpreted` 和 `FellBack` 三种内部结
+ - 红石灯通电立即点亮, 断电延迟 4 tick 熄灭.
+ - 铜灯泡仅在上升沿翻转 `lit`, 同步维护 `powered`. 点亮状态可被比较器读取.
+ - 活板门和栅栏门根据输入维护打开状态. 门同时检查上下两半并同步 `open` 和 `powered`.
+-- 动力铁轨和激活铁轨沿相同铁轨类型和轴向传播供电, 最远检查 8 段.
++- 动力铁轨和激活铁轨沿相同铁轨类型和轴向传播供电, 最远检查 8 段. 供电变化额外广播下方邻居, 斜轨还广播上方邻居, 保证接电和断电均能跨越高低轨道.
+ - 音符盒和钟仅在上升沿记录播放或敲响事件. 使用音符盒会让 note 在 `0..24` 间循环. 当前不模拟声音传播和乐器音色.
+ - 标靶根据命中面内离中心的距离输出 `1..15`. 普通命中保持 8 tick, 箭命中保持 20 tick.
+ - TNT 方块受电后被移除并记录 `tnt_primed`. 生成的 TNT 实体只倒数引信, 爆炸本身只记录 unsupported 事件.

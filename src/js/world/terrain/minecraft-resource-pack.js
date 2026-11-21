@@ -1,6 +1,6 @@
 import { loadMinecraftResourcePack } from './minecraft-resource-pack-storage.js'
 
-const DEFAULT_RESOURCE_PACK_URL = '/minecraft-default-pack.pack'
+const DEFAULT_RESOURCE_PACK_URL = '/minecraft-default-pack.pack?v=26.1.2-redstone'
 
 export const BUNDLED_MINECRAFT_RESOURCE_PACK_NAME = 'litemora-default-pack'
 const BUNDLED_MINECRAFT_RESOURCE_PACK_URL = DEFAULT_RESOURCE_PACK_URL

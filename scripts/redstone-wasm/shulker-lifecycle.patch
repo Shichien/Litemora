@@ -1,0 +1,1207 @@
+diff --git a/crates/redstone-java-26/src/registry.rs b/crates/redstone-java-26/src/registry.rs
+index 3739302..3118f38 100644
+--- a/crates/redstone-java-26/src/registry.rs
++++ b/crates/redstone-java-26/src/registry.rs
+@@ -685,7 +685,9 @@ fn piston_push_reaction(path: &str, extended_piston: bool) -> PushReaction {
+         PushReaction::Block
+     } else if path.ends_with("_glazed_terracotta") {
+         PushReaction::PushOnly
+-    } else if path.ends_with("_torch")
++    } else if path.ends_with("_shulker_box")
++        || path == "shulker_box"
++        || path.ends_with("_torch")
+         || path == "redstone_wire"
+         || path.ends_with("_button")
+         || path.ends_with("_pressure_plate")
+diff --git a/crates/redstone-java-26/src/rules.rs b/crates/redstone-java-26/src/rules.rs
+index cf6eef9..775af27 100644
+--- a/crates/redstone-java-26/src/rules.rs
++++ b/crates/redstone-java-26/src/rules.rs
+@@ -1621,6 +1621,7 @@ impl BlockRules for Java26Rules {
+                 self.repair_shape(ctx, *pos, true)?;
+             }
+             Action::BreakBlock { pos } => {
++                self.drop_shulker_box(ctx, *pos)?;
+                 self.set_state_and_notify(
+                     ctx,
+                     *pos,
+diff --git a/crates/redstone-java-26/src/rules/inventory.rs b/crates/redstone-java-26/src/rules/inventory.rs
+index 38fcf87..fc1177d 100644
+--- a/crates/redstone-java-26/src/rules/inventory.rs
++++ b/crates/redstone-java-26/src/rules/inventory.rs
+@@ -8,6 +8,7 @@ use serde_json::{Map, Value};
+ use super::{BlockBehavior, Java26Rules, StateDefinition};
+ 
+ mod hopper;
++mod shulker;
+ 
+ const DEFAULT_STACK_SIZE: i64 = 64;
+ 
+@@ -54,15 +55,15 @@ impl Java26Rules {
+         };
+         let facing = state.facing.unwrap_or(Direction::North);
+         let target = pos.relative(facing);
+-        let item = inventory(ctx.world, pos)[index].item_id.clone();
++        let stack = inventory(ctx.world, pos)[index].clone();
+         if self.insert_item(
+             ctx,
+             target,
+             ItemInsertion {
+-                item_id: &item,
++                item_id: &stack.item_id,
+                 count: 1,
+                 face: Some(facing.opposite()),
+-                components: None,
++                components: stack.components.as_ref(),
+                 source: Some(pos),
+             },
+         ) == 1
+@@ -74,8 +75,10 @@ impl Java26Rules {
+                 .or_default() += 1;
+             self.refresh_comparators_near(ctx, target)?;
+             self.refresh_comparators_near(ctx, pos)?;
+-        } else if !is_container(ctx.world, target) && take_item_at(ctx, pos, index, 1).is_some() {
+-            spawn_item(ctx.world, target, item, 1);
++        } else if !is_container(ctx.world, target)
++            && let Some(stack) = take_item_at(ctx, pos, index, 1)
++        {
++            spawn_item_stack(ctx.world, target, stack);
+             *self
+                 .event_counts
+                 .entry("dropper_eject".to_owned())
+@@ -98,6 +101,16 @@ impl Java26Rules {
+         let facing = state.facing.unwrap_or(Direction::North);
+         let target = pos.relative(facing);
+         match dispenser_behavior(&item) {
++            Some(DispenserBehavior::ShulkerBox) => {
++                let stack = inventory(ctx.world, pos)[index].clone();
++                if self.dispense_shulker_box(ctx, target, facing, &stack)? {
++                    take_item_at(ctx, pos, index, 1);
++                    *self
++                        .event_counts
++                        .entry("dispenser_shulker_box".to_owned())
++                        .or_default() += 1;
++                }
++            }
+             Some(DispenserBehavior::Projectile) => {
+                 if take_item_at(ctx, pos, index, 1).is_some() {
+                     let velocity = facing.step();
+@@ -159,8 +172,8 @@ impl Java26Rules {
+                             .entry("dispenser_minecart".to_owned())
+                             .or_default() += 1;
+                     }
+-                } else if take_item_at(ctx, pos, index, 1).is_some() {
+-                    spawn_item(ctx.world, target, item, 1);
++                } else if let Some(stack) = take_item_at(ctx, pos, index, 1) {
++                    spawn_item_stack(ctx.world, target, stack);
+                     *self
+                         .event_counts
+                         .entry("dispenser_eject".to_owned())
+@@ -168,8 +181,8 @@ impl Java26Rules {
+                 }
+             }
+             Some(DispenserBehavior::DefaultEject) => {
+-                if take_item_at(ctx, pos, index, 1).is_some() {
+-                    spawn_item(ctx.world, target, item, 1);
++                if let Some(stack) = take_item_at(ctx, pos, index, 1) {
++                    spawn_item_stack(ctx.world, target, stack);
+                     *self
+                         .event_counts
+                         .entry("dispenser_eject".to_owned())
+@@ -511,7 +524,7 @@ fn inventory(world: &SparseWorld, pos: BlockPos) -> Vec<ItemStack> {
+             slot: 0,
+             item_id: item_id.to_owned(),
+             count,
+-            components: None,
++            components: data.fields.get("item_components").cloned(),
+         });
+     }
+     stacks.sort_by_key(|stack| stack.slot);
+@@ -690,7 +703,18 @@ fn is_shulker_box_container(kind: &str) -> bool {
+ }
+ 
+ fn is_shulker_box_item(item_id: &str) -> bool {
+-    item_id == "minecraft:shulker_box" || item_id.ends_with("_shulker_box")
++    let Some(path) = item_id.strip_prefix("minecraft:") else {
++        return false;
++    };
++    path == "shulker_box"
++        || path.strip_suffix("_shulker_box").is_some_and(|color| {
++            matches!(
++                color,
++                "white" | "orange" | "magenta" | "light_blue" | "yellow" | "lime" | "pink"
++                    | "gray" | "light_gray" | "cyan" | "purple" | "blue" | "brown" | "green"
++                    | "red" | "black"
++            )
++        })
+ }
+ 
+ fn is_container(world: &SparseWorld, pos: BlockPos) -> bool {
+@@ -718,15 +742,31 @@ fn is_container(world: &SparseWorld, pos: BlockPos) -> bool {
+ }
+ 
+ fn spawn_item(world: &mut SparseWorld, pos: BlockPos, item_id: String, count: i64) {
+-    if count <= 0 {
++    spawn_item_stack(
++        world,
++        pos,
++        ItemStack {
++            slot: 0,
++            item_id,
++            count,
++            components: None,
++        },
++    );
++}
++
++fn spawn_item_stack(world: &mut SparseWorld, pos: BlockPos, stack: ItemStack) {
++    if stack.count <= 0 {
+         return;
+     }
+-    let fields = BTreeMap::from([
+-        ("item_id".to_owned(), Value::String(item_id)),
+-        ("item_count".to_owned(), Value::from(count)),
++    let mut fields = BTreeMap::from([
++        ("item_id".to_owned(), Value::String(stack.item_id)),
++        ("item_count".to_owned(), Value::from(stack.count)),
+         ("age".to_owned(), Value::from(0)),
+         ("pickup_delay".to_owned(), Value::from(10)),
+     ]);
++    if let Some(components) = stack.components {
++        fields.insert("item_components".to_owned(), components);
++    }
+     world.spawn_entity(EntityData {
+         kind: "minecraft:item".to_owned(),
+         position: block_center(pos),
+@@ -755,6 +795,7 @@ fn crafter_front(state: &StateDefinition) -> Direction {
+ }
+ 
+ enum DispenserBehavior {
++    ShulkerBox,
+     Projectile,
+     PrimeTnt,
+     Minecart,
+@@ -763,6 +804,7 @@ enum DispenserBehavior {
+ 
+ fn dispenser_behavior(item: &str) -> Option<DispenserBehavior> {
+     match item {
++        item if is_shulker_box_item(item) => Some(DispenserBehavior::ShulkerBox),
+         "minecraft:arrow"
+         | "minecraft:tipped_arrow"
+         | "minecraft:spectral_arrow"
+diff --git a/crates/redstone-java-26/src/rules/inventory/shulker.rs b/crates/redstone-java-26/src/rules/inventory/shulker.rs
+new file mode 100644
+index 0000000..3f3002b
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/inventory/shulker.rs
+@@ -0,0 +1,284 @@
++use std::collections::BTreeMap;
++
++use redstone_core::{BlockEntityData, BlockPos, Direction, EventContext, RulesError};
++use serde_json::{Map, Value};
++
++use super::{
++    ItemStack, direction_name, inventory, is_shulker_box_item, spawn_item_stack, write_inventory,
++};
++use crate::rules::{BlockBehavior, Java26Rules, StateDefinition};
++
++impl Java26Rules {
++    pub(super) fn dispense_shulker_box(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        target: BlockPos,
++        dispenser_facing: Direction,
++        stack: &ItemStack,
++    ) -> Result<bool, RulesError> {
++        // DirectionalPlaceContext never searches another position when this one is occupied.
++        if !can_replace_with_shulker(self.state(ctx.world.get_block(target))?) {
++            return Ok(false);
++        }
++        let components = match stack.components.as_ref() {
++            None => Map::new(),
++            Some(Value::Object(components)) => components.clone(),
++            Some(_) => {
++                ctx.unsupported(target, "shulker_box_components");
++                return Ok(false);
++            }
++        };
++        let Some(contents) = container_contents(components.get("minecraft:container")) else {
++            ctx.unsupported(target, "shulker_box_container_component");
++            return Ok(false);
++        };
++        // ShulkerBoxDispenseBehavior uses isEmptyBlock, not a support-face test.
++        let below = self.state(ctx.world.get_block(target.relative(Direction::Down)))?;
++        let facing = if matches!(below.behavior, BlockBehavior::Air) {
++            dispenser_facing
++        } else {
++            Direction::Up
++        };
++        let placed = self
++            .registry
++            .state_by_name(&stack.item_id, [("facing", direction_name(facing))])
++            .map_err(|error| RulesError::Message(error.to_string()))?;
++        if !self.set_state_and_notify(ctx, target, placed, "dispenser_shulker_box", None)? {
++            return Ok(false);
++        }
++        // BlockItem applies BLOCK_STATE after its initial placement. Invalid properties are ignored.
++        if let Some(facing) = components
++            .get("minecraft:block_state")
++            .and_then(|value| value.get("facing"))
++            .and_then(Value::as_str)
++            .filter(|value| matches!(*value, "down" | "up" | "north" | "south" | "west" | "east"))
++        {
++            let state = self.changed_state(placed, "facing", facing)?;
++            self.set_block(ctx, target, state, "shulker_box_block_state_component")?;
++        }
++        let mut fields = BTreeMap::from([
++            ("slot_count".to_owned(), Value::from(27)),
++            ("capacity".to_owned(), Value::from(27 * 64)),
++        ]);
++        // BaseContainerBlockEntity.applyImplicitComponents replaces name/lock/Items from the
++        // custom block entity tag, even when the item component is absent. LootTable survives.
++        if let Some(tag) = components
++            .get("minecraft:block_entity_data")
++            .and_then(Value::as_object)
++            .filter(|tag| tag.get("id").and_then(Value::as_str) == Some("minecraft:shulker_box"))
++        {
++            for key in ["LootTable", "LootTableSeed"] {
++                if let Some(value) = tag.get(key) {
++                    fields.insert(key.to_owned(), value.clone());
++                }
++            }
++        }
++        for (component, field) in [
++            ("minecraft:custom_name", "CustomName"),
++            ("minecraft:lock", "lock"),
++        ] {
++            if let Some(value) = components.get(component) {
++                fields.insert(field.to_owned(), value.clone());
++            }
++        }
++        if let Some(loot) = components.get("minecraft:container_loot") {
++            if let Some(table) = loot.get("loot_table") {
++                fields.insert("LootTable".to_owned(), table.clone());
++                fields.insert(
++                    "LootTableSeed".to_owned(),
++                    loot.get("seed").cloned().unwrap_or(Value::from(0)),
++                );
++            }
++        }
++        let retained = components
++            .into_iter()
++            .filter(|(key, _)| {
++                !key.starts_with('!')
++                    && !matches!(
++                        key.as_str(),
++                        "minecraft:container"
++                            | "minecraft:custom_name"
++                            | "minecraft:lock"
++                            | "minecraft:container_loot"
++                            | "minecraft:block_entity_data"
++                            | "minecraft:block_state"
++                    )
++            })
++            .collect::<Map<_, _>>();
++        if !retained.is_empty() {
++            fields.insert("components".to_owned(), Value::Object(retained));
++        }
++        ctx.set_block_entity(
++            target,
++            BlockEntityData {
++                kind: "minecraft:shulker_box".to_owned(),
++                fields,
++            },
++        );
++        write_inventory(ctx, target, contents);
++        // The state notification happens before the item components are installed in vanilla too.
++        self.refresh_comparators_near(ctx, target)?;
++        Ok(true)
++    }
++
++    pub(in crate::rules) fn drop_shulker_box(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++    ) -> Result<(), RulesError> {
++        let state = self.state(ctx.world.get_block(pos))?;
++        if !is_shulker_box_item(&state.name) {
++            return Ok(());
++        }
++        let item_id = state.name.to_string();
++        let mut components = Map::new();
++        if let Some(data) = ctx.world.block_entity(pos) {
++            for (field, component) in [
++                ("CustomName", "minecraft:custom_name"),
++                ("lock", "minecraft:lock"),
++            ] {
++                if let Some(value) = data.fields.get(field) {
++                    components.insert(component.to_owned(), value.clone());
++                }
++            }
++            if let Some(table) = data
++                .fields
++                .get("LootTable")
++                .or_else(|| data.fields.get("loot_table"))
++            {
++                components.insert(
++                    "minecraft:container_loot".to_owned(),
++                    serde_json::json!({
++                        "loot_table": table,
++                        "seed": data.fields.get("LootTableSeed").cloned().unwrap_or(Value::from(0)),
++                    }),
++                );
++            }
++        }
++        // The official block loot table copies only these four components, not every component
++        // retained on the block entity. Nested item components are part of CONTAINER itself.
++        let contents = inventory(ctx.world, pos)
++            .into_iter()
++            .map(|stack| {
++                let mut item = Map::from_iter([
++                    ("id".to_owned(), Value::String(stack.item_id)),
++                    ("count".to_owned(), Value::from(stack.count)),
++                ]);
++                if let Some(components) = stack.components {
++                    item.insert("components".to_owned(), components);
++                }
++                serde_json::json!({"slot": stack.slot, "item": item})
++            })
++            .collect::<Vec<_>>();
++        components.insert("minecraft:container".to_owned(), Value::Array(contents));
++        spawn_item_stack(
++            ctx.world,
++            pos,
++            ItemStack {
++                slot: 0,
++                item_id,
++                count: 1,
++                components: Some(Value::Object(components)),
++            },
++        );
++        Ok(())
++    }
++}
++
++fn container_contents(value: Option<&Value>) -> Option<Vec<ItemStack>> {
++    let Some(value) = value else {
++        return Some(Vec::new());
++    };
++    let entries = value.as_array()?;
++    if entries.len() > 256 {
++        return None;
++    }
++    let mut slots = BTreeMap::new();
++    for entry in entries {
++        let slot: u32 = entry.get("slot")?.as_u64()?.try_into().ok()?;
++        if slot >= 256 {
++            return None;
++        }
++        // ItemStackTemplate.CODEC also accepts an item id string with count one.
++        let (item_id, count, components) = match entry.get("item")? {
++            Value::String(id) => (id.as_str(), 1, None),
++            Value::Object(item) => {
++                let count = match item.get("count") {
++                    Some(value) => value.as_i64()?,
++                    None => 1,
++                };
++                let components = item.get("components");
++                if components.is_some_and(|value| !value.is_object()) {
++                    return None;
++                }
++                (item.get("id")?.as_str()?, count, components.cloned())
++            }
++            _ => return None,
++        };
++        if !(1..=99).contains(&count) || item_id.is_empty() {
++            return None;
++        }
++        let item_id = if item_id.contains(':') {
++            item_id.to_owned()
++        } else {
++            format!("minecraft:{item_id}")
++        };
++        if item_id == "minecraft:air" {
++            return None;
++        }
++        // ItemContainerContents.copyInto copies the 27 destination slots; duplicate slots use
++        // the last value in the component, and entries beyond the destination are not copied.
++        if slot < 27 {
++            slots.insert(
++                slot,
++                ItemStack {
++                    slot,
++                    item_id,
++                    count,
++                    components,
++                },
++            );
++        }
++    }
++    Some(slots.into_values().collect())
++}
++
++fn can_replace_with_shulker(state: &StateDefinition) -> bool {
++    // 26.1.2 Blocks properties plus canBeReplaced overrides. Solidity and piston DESTROY are
++    // not replacement tests: rails, carpets, flowers and redstone components stay in place.
++    match state.name.as_ref() {
++        "minecraft:snow" => state.int_property("layers") == Some(1),
++        "minecraft:vine" => ["up", "north", "south", "west", "east"]
++            .into_iter()
++            .any(|face| !state.bool_property(face)),
++        "minecraft:air"
++        | "minecraft:cave_air"
++        | "minecraft:void_air"
++        | "minecraft:water"
++        | "minecraft:lava"
++        | "minecraft:bubble_column"
++        | "minecraft:short_grass"
++        | "minecraft:fern"
++        | "minecraft:dead_bush"
++        | "minecraft:bush"
++        | "minecraft:short_dry_grass"
++        | "minecraft:tall_dry_grass"
++        | "minecraft:seagrass"
++        | "minecraft:tall_seagrass"
++        | "minecraft:tall_grass"
++        | "minecraft:large_fern"
++        | "minecraft:fire"
++        | "minecraft:soul_fire"
++        | "minecraft:glow_lichen"
++        | "minecraft:resin_clump"
++        | "minecraft:sculk_vein"
++        | "minecraft:light"
++        | "minecraft:structure_void"
++        | "minecraft:warped_roots"
++        | "minecraft:nether_sprouts"
++        | "minecraft:crimson_roots"
++        | "minecraft:leaf_litter"
++        | "minecraft:hanging_roots" => true,
++        _ => false,
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/piston.rs b/crates/redstone-java-26/src/rules/piston.rs
+index 45f0d73..f4b0a6b 100644
+--- a/crates/redstone-java-26/src/rules/piston.rs
++++ b/crates/redstone-java-26/src/rules/piston.rs
+@@ -237,6 +237,9 @@ impl Java26Rules {
+             .map(|(source, _, _, _)| *source)
+             .collect::<Vec<_>>();
+         for (source, reaction, _, _) in snapshots.iter().rev() {
++            if *reaction == PushReaction::Destroy {
++                self.drop_shulker_box(ctx, *source)?;
++            }
+             ctx.remove_block_entity(*source);
+             if *reaction != PushReaction::Destroy {
+                 continue;
+@@ -340,6 +343,9 @@ impl Java26Rules {
+             }
+             let state = self.state(*source_state)?.clone();
+             self.affect_neighbors_after_removal(ctx, *source, &state, false)?;
++            if super::comparator::has_analog_output(&state) {
++                self.refresh_comparators_near(ctx, *source)?;
++            }
+             self.update_indirect_neighbor_shapes(ctx, *source, &state)?;
+             ctx.update_neighbors(*source, state.kind, None, orientation);
+         }
+diff --git a/crates/redstone-java-26/tests/shulker.rs b/crates/redstone-java-26/tests/shulker.rs
+new file mode 100644
+index 0000000..678767c
+--- /dev/null
++++ b/crates/redstone-java-26/tests/shulker.rs
+@@ -0,0 +1,657 @@
++use std::collections::BTreeMap;
++
++use redstone_core::{
++    Action, BlockEntityData, BlockPos, BlockStateId, Direction, GameTick, Simulation,
++    SimulationConfig, SparseWorld, TraceKind,
++};
++use redstone_java_26::{Java26Registry, Java26Rules, StateResolver};
++use serde_json::{Value, json};
++
++fn state(registry: &mut Java26Registry, name: &str, properties: &[(&str, &str)]) -> BlockStateId {
++    let properties = registry
++        .complete_state_properties(
++            name,
++            &properties
++                .iter()
++                .map(|(k, v)| (k.to_string(), v.to_string()))
++                .collect(),
++        )
++        .unwrap();
++    registry.resolve_state(name, &properties).unwrap()
++}
++
++fn container(kind: &str, slots: i64, inventory: Value) -> BlockEntityData {
++    let count: i64 = inventory
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|stack| stack["count"].as_i64().unwrap())
++        .sum();
++    BlockEntityData {
++        kind: kind.to_owned(),
++        fields: BTreeMap::from([
++            ("inventory".to_owned(), inventory),
++            ("item_count".to_owned(), count.into()),
++            ("slot_count".to_owned(), slots.into()),
++            ("capacity".to_owned(), (slots * 64).into()),
++        ]),
++    }
++}
++
++fn stack(item: &str, count: i64, components: Value) -> Value {
++    json!({"slot": 0, "item_id": item, "count": count, "components": components})
++}
++
++fn filled_components() -> Value {
++    json!({
++        "minecraft:custom_name": {"text": "Cargo"},
++        "minecraft:lock": {"components": {"minecraft:custom_name": "Key"}},
++        "minecraft:container": (0..27).map(|slot| json!({"slot": slot, "item": {
++            "id": "minecraft:stone", "count": 64,
++            "components": {"minecraft:custom_name": {"text": format!("Batch {slot}")}, "minecraft:custom_data": {"batch": slot}}
++        }})).collect::<Vec<_>>()
++    })
++}
++
++fn simulation(registry: Java26Registry, world: SparseWorld) -> Simulation<Java26Rules> {
++    let mut sim = Simulation::load(
++        Java26Rules::new(registry),
++        world,
++        SimulationConfig::default(),
++    )
++    .unwrap();
++    sim.set_trace_enabled(true).unwrap();
++    sim.initialize().unwrap();
++    sim
++}
++
++fn count(sim: &Simulation<Java26Rules>, pos: BlockPos) -> i64 {
++    sim.world().block_entity(pos).unwrap().fields["item_count"]
++        .as_i64()
++        .unwrap()
++}
++
++fn placement(
++    item: &str,
++    components: Value,
++    facing: Direction,
++    target_block: &str,
++    target_properties: &[(&str, &str)],
++    below_block: &str,
++) -> (Simulation<Java26Rules>, BlockPos) {
++    let mut registry = Java26Registry::new();
++    let facing_name = match facing {
++        Direction::Down => "down",
++        Direction::Up => "up",
++        Direction::North => "north",
++        Direction::South => "south",
++        Direction::West => "west",
++        Direction::East => "east",
++    };
++    let dispenser = state(
++        &mut registry,
++        "minecraft:dispenser",
++        &[("facing", facing_name)],
++    );
++    let power = state(&mut registry, "minecraft:redstone_block", &[]);
++    let target_state = state(&mut registry, target_block, target_properties);
++    let below = state(&mut registry, below_block, &[]);
++    let target = BlockPos::ZERO.relative(facing);
++    let power_pos = BlockPos::ZERO.relative(if facing == Direction::North {
++        Direction::South
++    } else {
++        Direction::North
++    });
++    let mut world = SparseWorld::new(registry.air_state());
++    world.set_block(BlockPos::ZERO, dispenser).unwrap();
++    world.set_block(power_pos, power).unwrap();
++    world.set_block(target, target_state).unwrap();
++    if target.relative(Direction::Down) != BlockPos::ZERO {
++        world
++            .set_block(target.relative(Direction::Down), below)
++            .unwrap();
++    }
++    world.set_block_entity(
++        BlockPos::ZERO,
++        container(
++            "minecraft:dispenser",
++            9,
++            json!([stack(item, 1, components)]),
++        ),
++    );
++    (simulation(registry, world), target)
++}
++
++#[test]
++fn shulker_dispenser_places_every_color_with_twenty_seven_empty_slots() {
++    for color in [
++        "",
++        "white_",
++        "orange_",
++        "magenta_",
++        "light_blue_",
++        "yellow_",
++        "lime_",
++        "pink_",
++        "gray_",
++        "light_gray_",
++        "cyan_",
++        "purple_",
++        "blue_",
++        "brown_",
++        "green_",
++        "red_",
++        "black_",
++    ] {
++        let item = format!("minecraft:{color}shulker_box");
++        let (mut sim, target) = placement(
++            &item,
++            json!({}),
++            Direction::East,
++            "minecraft:air",
++            &[],
++            "minecraft:air",
++        );
++        sim.run_until(GameTick(5)).unwrap();
++        let placed = sim
++            .rules()
++            .registry()
++            .state(sim.world().get_block(target))
++            .unwrap();
++        assert_eq!(placed.name.as_ref(), item);
++        let data = sim.world().block_entity(target).unwrap();
++        assert_eq!(data.kind, "minecraft:shulker_box");
++        assert_eq!(data.fields["slot_count"], 27);
++        assert_eq!(data.fields["inventory"], json!([]));
++        assert_eq!(count(&sim, BlockPos::ZERO), 0);
++        assert_eq!(sim.world().entities().count(), 0);
++        assert!(!sim.trace().events().iter().any(|event| matches!(&event.kind, TraceKind::UnsupportedTrigger { behavior, .. } if behavior.starts_with("dispenser_item:"))));
++    }
++}
++
++#[test]
++fn shulker_dispenser_uses_clicked_face_and_non_air_below_in_all_six_directions() {
++    for facing in [
++        Direction::Down,
++        Direction::Up,
++        Direction::North,
++        Direction::South,
++        Direction::West,
++        Direction::East,
++    ] {
++        for below in [
++            "minecraft:air",
++            "minecraft:cave_air",
++            "minecraft:void_air",
++            "minecraft:stone",
++            "minecraft:water",
++            "minecraft:glass",
++        ] {
++            let (mut sim, target) = placement(
++                "minecraft:shulker_box",
++                json!({}),
++                facing,
++                "minecraft:air",
++                &[],
++                below,
++            );
++            sim.run_until(GameTick(5)).unwrap();
++            let placed = sim
++                .rules()
++                .registry()
++                .state(sim.world().get_block(target))
++                .unwrap();
++            let expected = if below.ends_with("air") {
++                facing
++            } else {
++                Direction::Up
++            };
++            assert_eq!(
++                placed.facing,
++                Some(expected),
++                "facing={facing:?}, below={below}"
++            );
++        }
++    }
++}
++
++#[test]
++fn shulker_replacement_checks_do_not_confuse_non_solid_and_replaceable() {
++    for (block, properties, replaceable) in [
++        ("minecraft:water", vec![], true),
++        ("minecraft:lava", vec![], true),
++        ("minecraft:short_grass", vec![], true),
++        ("minecraft:snow", vec![("layers", "1")], true),
++        ("minecraft:snow", vec![("layers", "2")], false),
++        ("minecraft:snow", vec![("layers", "8")], false),
++        ("minecraft:stone", vec![], false),
++        ("minecraft:glass", vec![], false),
++        ("minecraft:rail", vec![], false),
++        ("minecraft:red_carpet", vec![], false),
++        ("minecraft:redstone_wire", vec![], false),
++        ("minecraft:dandelion", vec![], false),
++        ("minecraft:shulker_box", vec![], false),
++    ] {
++        let components = filled_components();
++        let (mut sim, target) = placement(
++            "minecraft:gray_shulker_box",
++            components.clone(),
++            Direction::East,
++            block,
++            &properties,
++            "minecraft:stone",
++        );
++        let before = sim.world().block_entity(BlockPos::ZERO).unwrap().clone();
++        sim.run_until(GameTick(5)).unwrap();
++        let actual = sim
++            .rules()
++            .registry()
++            .state(sim.world().get_block(target))
++            .unwrap();
++        if replaceable {
++            assert_eq!(
++                actual.name.as_ref(),
++                "minecraft:gray_shulker_box",
++                "{block}"
++            );
++            assert_eq!(count(&sim, BlockPos::ZERO), 0);
++        } else {
++            assert_eq!(actual.name.as_ref(), block);
++            assert_eq!(
++                sim.world().block_entity(BlockPos::ZERO).unwrap(),
++                &before,
++                "{block}"
++            );
++        }
++        assert_eq!(sim.world().entities().count(), 0, "{block}");
++    }
++}
++
++#[test]
++fn shulker_placement_applies_components_and_break_serializes_current_inventory() {
++    let mut components = filled_components();
++    components["minecraft:block_state"] = json!({"facing": "west"});
++    components["minecraft:custom_data"] = json!({"stored_on_block_only": true});
++    let (mut sim, target) = placement(
++        "minecraft:blue_shulker_box",
++        components,
++        Direction::East,
++        "minecraft:air",
++        &[],
++        "minecraft:stone",
++    );
++    sim.run_until(GameTick(5)).unwrap();
++    assert_eq!(
++        sim.rules()
++            .registry()
++            .state(sim.world().get_block(target))
++            .unwrap()
++            .facing,
++        Some(Direction::West)
++    );
++    assert_eq!(count(&sim, target), 1728);
++    let mut data = sim.world().block_entity(target).unwrap().clone();
++    assert_eq!(
++        data.fields["components"]["minecraft:custom_data"],
++        json!({"stored_on_block_only": true})
++    );
++    data.fields.get_mut("inventory").unwrap()[26]["count"] = json!(63);
++    data.fields.insert("item_count".to_owned(), json!(1727));
++    sim.apply(Action::SetBlockEntity { pos: target, data })
++        .unwrap();
++    sim.apply(Action::BreakBlock { pos: target }).unwrap();
++    assert!(sim.world().block_entity(target).is_none());
++    let item = sim.world().entities().next().unwrap().1;
++    assert_eq!(item.fields["item_id"], "minecraft:blue_shulker_box");
++    assert_eq!(item.fields["item_count"], 1);
++    let mut expected = filled_components();
++    expected["minecraft:container"][26]["item"]["count"] = json!(63);
++    assert_eq!(item.fields["item_components"], expected);
++    sim.apply(Action::BreakBlock { pos: target }).unwrap();
++    assert_eq!(sim.world().entities().count(), 1);
++}
++
++#[test]
++fn shulker_block_entity_tag_does_not_override_item_container_or_name() {
++    let (mut sim, target) = placement(
++        "minecraft:shulker_box",
++        json!({
++            "minecraft:block_entity_data": {"id": "minecraft:shulker_box", "CustomName": "Ignored", "Items": [{"Slot": 0, "id": "minecraft:diamond", "count": 64}], "LootTable": "minecraft:chests/simple_dungeon", "LootTableSeed": 7},
++            "minecraft:container": [{"slot": 4, "item": {"id": "minecraft:stone", "components": {"minecraft:custom_data": {"a": 1}}}}]
++        }),
++        Direction::East,
++        "minecraft:air",
++        &[],
++        "minecraft:air",
++    );
++    sim.run_until(GameTick(5)).unwrap();
++    let data = sim.world().block_entity(target).unwrap();
++    assert_eq!(count(&sim, target), 1);
++    assert!(!data.fields.contains_key("CustomName"));
++    assert_eq!(data.fields["inventory"][0]["slot"], 4);
++    assert_eq!(data.fields["LootTableSeed"], 7);
++    sim.apply(Action::BreakBlock { pos: target }).unwrap();
++    let components = &sim.world().entities().next().unwrap().1.fields["item_components"];
++    assert_eq!(
++        components["minecraft:container_loot"],
++        json!({"loot_table": "minecraft:chests/simple_dungeon", "seed": 7})
++    );
++}
++
++#[test]
++fn dropper_transfers_and_ejects_full_shulkers_and_ordinary_custom_items_without_component_loss() {
++    for (item, components) in [
++        ("minecraft:gray_shulker_box", filled_components()),
++        (
++            "minecraft:stone",
++            json!({"minecraft:custom_name": "Named", "minecraft:custom_data": {"keep": [1, 2, 3]}}),
++        ),
++    ] {
++        for into_container in [true, false] {
++            let mut registry = Java26Registry::new();
++            let dropper = state(&mut registry, "minecraft:dropper", &[("facing", "east")]);
++            let chest = state(&mut registry, "minecraft:chest", &[]);
++            let power = state(&mut registry, "minecraft:redstone_block", &[]);
++            let target = BlockPos::new(1, 0, 0);
++            let mut world = SparseWorld::new(registry.air_state());
++            world.set_block(BlockPos::ZERO, dropper).unwrap();
++            world.set_block(BlockPos::new(0, 1, 0), power).unwrap();
++            world.set_block_entity(
++                BlockPos::ZERO,
++                container(
++                    "minecraft:dropper",
++                    9,
++                    json!([stack(item, 1, components.clone())]),
++                ),
++            );
++            if into_container {
++                world.set_block(target, chest).unwrap();
++                world.set_block_entity(target, container("minecraft:chest", 27, json!([])));
++            }
++            let mut sim = simulation(registry, world);
++            sim.run_until(GameTick(5)).unwrap();
++            assert_eq!(count(&sim, BlockPos::ZERO), 0);
++            if into_container {
++                assert_eq!(
++                    sim.world().block_entity(target).unwrap().fields["inventory"][0]["components"],
++                    components
++                );
++            } else {
++                assert_eq!(
++                    sim.world().entities().next().unwrap().1.fields["item_components"],
++                    components
++                );
++            }
++        }
++    }
++}
++
++#[test]
++fn shulker_repeated_pulses_consume_only_successful_placements() {
++    let components = filled_components();
++    let (mut sim, target) = placement(
++        "minecraft:red_shulker_box",
++        components.clone(),
++        Direction::East,
++        "minecraft:air",
++        &[],
++        "minecraft:air",
++    );
++    let power_pos = BlockPos::new(0, 0, -1);
++    let power = sim.world().get_block(power_pos);
++    sim.apply(Action::SetBlockEntity {
++        pos: BlockPos::ZERO,
++        data: container(
++            "minecraft:dispenser",
++            9,
++            json!([stack("minecraft:red_shulker_box", 2, components.clone())]),
++        ),
++    })
++    .unwrap();
++    sim.run_until(GameTick(5)).unwrap();
++    assert_eq!(count(&sim, BlockPos::ZERO), 1);
++    let source = sim.world().block_entity(BlockPos::ZERO).unwrap().clone();
++    let placed = sim.world().block_entity(target).unwrap().clone();
++    sim.apply(Action::BreakBlock { pos: power_pos }).unwrap();
++    sim.apply(Action::SetBlock {
++        pos: power_pos,
++        state: power,
++    })
++    .unwrap();
++    sim.run_until(GameTick(10)).unwrap();
++    assert_eq!(sim.world().block_entity(BlockPos::ZERO).unwrap(), &source);
++    assert_eq!(sim.world().block_entity(target).unwrap(), &placed);
++    assert_eq!(sim.world().entities().count(), 0);
++    sim.apply(Action::BreakBlock { pos: target }).unwrap();
++    sim.apply(Action::BreakBlock { pos: power_pos }).unwrap();
++    sim.apply(Action::SetBlock {
++        pos: power_pos,
++        state: power,
++    })
++    .unwrap();
++    sim.run_until(GameTick(15)).unwrap();
++    assert_eq!(count(&sim, BlockPos::ZERO), 0);
++    sim.apply(Action::BreakBlock { pos: target }).unwrap();
++    assert_eq!(sim.world().entities().count(), 2);
++    for (_, item) in sim.world().entities() {
++        assert_eq!(item.fields["item_id"], "minecraft:red_shulker_box");
++        assert_eq!(item.fields["item_count"], 1);
++        assert_eq!(item.fields["item_components"], components);
++    }
++}
++
++#[test]
++fn shulker_container_codec_uses_last_duplicate_and_only_destination_slots() {
++    let (mut sim, target) = placement(
++        "minecraft:shulker_box",
++        json!({"minecraft:container": [
++            {"slot": 0, "item": "stone"},
++            {"slot": 0, "item": {"id": "minecraft:diamond", "count": 3}},
++            {"slot": 26, "item": "minecraft:iron_ingot"},
++            {"slot": 27, "item": {"id": "minecraft:gold_ingot", "count": 64}}
++        ]}),
++        Direction::East,
++        "minecraft:air",
++        &[],
++        "minecraft:air",
++    );
++    sim.run_until(GameTick(5)).unwrap();
++    assert_eq!(
++        sim.world().block_entity(target).unwrap().fields["inventory"],
++        json!([
++            {"slot": 0, "item_id": "minecraft:diamond", "count": 3},
++            {"slot": 26, "item_id": "minecraft:iron_ingot", "count": 1}
++        ])
++    );
++}
++
++#[test]
++fn shulker_invalid_container_does_not_consume_or_place() {
++    for invalid in [
++        json!({}),
++        json!([{"slot": 256, "item": {"id": "minecraft:stone"}}]),
++        json!([{"slot": 0, "item": {"id": "minecraft:stone", "count": 0}}]),
++        json!([{"slot": 0, "item": {"id": "minecraft:stone", "count": 100}}]),
++        json!([{"slot": 0, "item": {"id": "minecraft:stone", "components": []}}]),
++    ] {
++        let (mut sim, target) = placement(
++            "minecraft:shulker_box",
++            json!({"minecraft:container": invalid}),
++            Direction::East,
++            "minecraft:air",
++            &[],
++            "minecraft:air",
++        );
++        let before = sim.world().block_entity(BlockPos::ZERO).unwrap().clone();
++        sim.run_until(GameTick(5)).unwrap();
++        assert_eq!(sim.world().block_entity(BlockPos::ZERO).unwrap(), &before);
++        assert!(sim.world().block_entity(target).is_none());
++        assert_eq!(
++            sim.world().get_block(target),
++            sim.rules().registry().air_state()
++        );
++        assert_eq!(sim.world().entities().count(), 0);
++        assert!(sim.trace().events().iter().any(|event| matches!(&event.kind, TraceKind::UnsupportedTrigger { behavior, .. } if behavior == "shulker_box_container_component")));
++    }
++}
++
++#[test]
++fn shulker_placement_and_removal_update_comparator_observer_and_neighbors() {
++    let mut registry = Java26Registry::new();
++    let dispenser = state(&mut registry, "minecraft:dispenser", &[("facing", "east")]);
++    let comparator = state(
++        &mut registry,
++        "minecraft:comparator",
++        &[("facing", "north")],
++    );
++    let observer = state(&mut registry, "minecraft:observer", &[("facing", "west")]);
++    let stone = state(&mut registry, "minecraft:stone", &[]);
++    let power = state(&mut registry, "minecraft:redstone_block", &[]);
++    let target = BlockPos::new(1, 0, 0);
++    let comparator_pos = BlockPos::new(1, 0, 1);
++    let observer_pos = BlockPos::new(2, 0, 0);
++    let mut world = SparseWorld::new(registry.air_state());
++    for (pos, block) in [
++        (BlockPos::ZERO, dispenser),
++        (comparator_pos, comparator),
++        (comparator_pos.relative(Direction::Down), stone),
++        (observer_pos, observer),
++        (BlockPos::new(0, 0, -1), power),
++    ] {
++        world.set_block(pos, block).unwrap();
++    }
++    world.set_block_entity(
++        BlockPos::ZERO,
++        container(
++            "minecraft:dispenser",
++            9,
++            json!([stack("minecraft:shulker_box", 1, filled_components())]),
++        ),
++    );
++    let mut sim = simulation(registry, world);
++    sim.run_until(GameTick(7)).unwrap();
++    assert_eq!(
++        sim.rules().comparator_output_cache().get(&comparator_pos),
++        Some(&15)
++    );
++    assert!(
++        sim.rules()
++            .registry()
++            .state(sim.world().get_block(observer_pos))
++            .unwrap()
++            .bool_property("powered")
++    );
++    for direction in [
++        Direction::Down,
++        Direction::Up,
++        Direction::North,
++        Direction::South,
++        Direction::West,
++        Direction::East,
++    ] {
++        assert!(sim.trace().events().iter().any(|event| matches!(event.kind, TraceKind::NeighborUpdate { pos, source_pos, .. } if source_pos == target && pos == target.relative(direction))));
++    }
++    sim.apply(Action::BreakBlock { pos: target }).unwrap();
++    sim.run_until(GameTick(11)).unwrap();
++    assert_eq!(
++        sim.rules()
++            .comparator_output_cache()
++            .get(&comparator_pos)
++            .copied()
++            .unwrap_or(0),
++        0
++    );
++}
++
++#[test]
++fn shulker_piston_destruction_preserves_cargo_for_hopper_collection() {
++    let mut registry = Java26Registry::new();
++    let piston = state(&mut registry, "minecraft:piston", &[("facing", "west")]);
++    let box_state = state(&mut registry, "minecraft:gray_shulker_box", &[]);
++    let hopper = state(&mut registry, "minecraft:hopper", &[("facing", "down")]);
++    let comparator = state(
++        &mut registry,
++        "minecraft:comparator",
++        &[("facing", "north")],
++    );
++    let stone = state(&mut registry, "minecraft:stone", &[]);
++    let comparator_pos = BlockPos::new(0, 0, 1);
++    let power = state(&mut registry, "minecraft:redstone_block", &[]);
++    let box_pos = BlockPos::ZERO;
++    let hopper_pos = BlockPos::new(0, -1, 0);
++    let contents = filled_components();
++    let entries = contents["minecraft:container"].as_array().unwrap().iter().map(|entry| json!({
++        "slot": entry["slot"], "item_id": entry["item"]["id"], "count": entry["item"]["count"], "components": entry["item"]["components"]
++    })).collect::<Vec<_>>();
++    let mut data = container("minecraft:shulker_box", 27, json!(entries));
++    data.fields.insert(
++        "CustomName".to_owned(),
++        contents["minecraft:custom_name"].clone(),
++    );
++    data.fields
++        .insert("lock".to_owned(), contents["minecraft:lock"].clone());
++    let mut world = SparseWorld::new(registry.air_state());
++    world.set_block(box_pos, box_state).unwrap();
++    world.set_block(BlockPos::new(1, 0, 0), piston).unwrap();
++    world.set_block(comparator_pos, comparator).unwrap();
++    world
++        .set_block(comparator_pos.relative(Direction::Down), stone)
++        .unwrap();
++    world.set_block_entity(box_pos, data);
++    let mut sim = simulation(registry, world);
++    sim.run_until(GameTick(3)).unwrap();
++    assert_eq!(
++        sim.rules().comparator_output_cache().get(&comparator_pos),
++        Some(&15)
++    );
++    sim.apply(Action::SetBlock {
++        pos: BlockPos::new(2, 0, 0),
++        state: power,
++    })
++    .unwrap();
++    sim.run_until(GameTick(6)).unwrap();
++    assert_eq!(
++        sim.rules()
++            .comparator_output_cache()
++            .get(&comparator_pos)
++            .copied()
++            .unwrap_or(0),
++        0
++    );
++    assert_eq!(sim.world().entities().count(), 1);
++    assert_eq!(
++        sim.world().entities().next().unwrap().1.fields["item_components"],
++        contents
++    );
++    assert_ne!(
++        sim.rules()
++            .registry()
++            .state(sim.world().get_block(box_pos))
++            .unwrap()
++            .name
++            .as_ref(),
++        "minecraft:gray_shulker_box"
++    );
++    // Collect after the piston retracts, so the hopper has no block container above it.
++    sim.apply(Action::BreakBlock {
++        pos: BlockPos::new(2, 0, 0),
++    })
++    .unwrap();
++    sim.run_until(GameTick(9)).unwrap();
++    sim.apply(Action::SetBlock {
++        pos: hopper_pos,
++        state: hopper,
++    })
++    .unwrap();
++    sim.apply(Action::SetBlockEntity {
++        pos: hopper_pos,
++        data: container("minecraft:hopper", 5, json!([])),
++    })
++    .unwrap();
++    sim.run_until(GameTick(16)).unwrap();
++    assert_eq!(sim.world().entities().count(), 0);
++    assert_eq!(count(&sim, hopper_pos), 1);
++    let collected = &sim.world().block_entity(hopper_pos).unwrap().fields["inventory"][0];
++    assert_eq!(collected["item_id"], "minecraft:gray_shulker_box");
++    assert_eq!(collected["components"], contents);
++}
+diff --git a/crates/redstone-java-26/tests/suite.rs b/crates/redstone-java-26/tests/suite.rs
+index 25b2daa..880294a 100644
+--- a/crates/redstone-java-26/tests/suite.rs
++++ b/crates/redstone-java-26/tests/suite.rs
+@@ -22,5 +22,7 @@ mod rail_shapes;
+ mod seg7;
+ #[path = "shapes.rs"]
+ mod shapes;
++#[path = "shulker.rs"]
++mod shulker;
+ #[path = "tripple-piston-extender.rs"]
+ mod tripple_piston_extender;
+diff --git a/docs/impl.md b/docs/impl.md
+index b4287c7..7174bd4 100644
+--- a/docs/impl.md
++++ b/docs/impl.md
+@@ -192,8 +192,12 @@ wire 有序传播使用 `Compiled`, `Interpreted` 和 `FellBack` 三种内部结
+ - 燃料, 酿造原料和堆肥概率由 Java oracle 从 26.1.2 官方运行时和物品标签生成, 不再依赖规则层手写集合.
+ - 合成器跳过禁用槽, 对同种物品使用简化的槽位均衡插入.
+ - 潜影盒拒绝嵌套潜影盒.
+-- 投掷器在上升沿后 4 tick 从随机非空栈取 1 件. 面向容器时尝试插入, 面向非容器时生成物品实体, 目标容器拒绝时保留原物品.
++- 投掷器在上升沿后 4 tick 从随机非空栈取 1 件. 面向容器时尝试插入, 面向非容器时生成物品实体, 目标容器拒绝时保留原物品. 转移和掉落保留物品 components.
+ - 发射器可生成箭, 蛋, 雪球, 经验瓶, 药水, 烟花, 火焰弹和风弹等简化投射物实体, 也可点燃 TNT 和在合适铁轨上生成矿车.
++- 发射器支持全部 17 种潜影盒. 只在正前方尝试放置, 目标不可替换时不消耗也不弹出物品. 朝向采用 26.1.2 的 clicked face: 目标下方为空气时与发射器一致, 否则向上; `minecraft:block_state` 可覆盖有效 facing.
++- 潜影盒放置读取 `minecraft:container` 的 27 槽物品及嵌套 components, 应用 custom_name, lock 和 container_loot, 并保留方块实体的其余非隐式组件. 方块实体标签中的 Items, CustomName 和 lock 被对应物品组件覆盖, 标签 LootTable 在没有 container_loot 组件时保留.
++- 破坏动作和活塞销毁潜影盒时生成一个原颜色物品, 从当时的运行时库存重建 container. 按官方战利品表只复制 custom_name, container, lock 和 container_loot; 任意附加组件不会自动成为掉落物组件. 活塞移除和放置都会通知邻居与比较器, 掉落物可由漏斗回收.
++- 潜影盒替换条件依据官方属性与特殊 canBeReplaced 规则, 不以非实心作为判据. 当前没有实体阻挡放置检查, 开盖动画/碰撞, 玩家创造模式特殊掉落, 战利品表展开或掉落物随机位置和运动; 非法 container 数据保留原物品并记录 unsupported.
+ - 未进入发射器显式行为表的物品不消耗, 并记录 `dispenser_item:<id>` unsupported.
+ - 合成器是最小模型. 它在上升沿后 4 tick 消耗第一个未禁用槽中的 1 件物品, 根据 `output_item_id` 和 `output_count` 输出, 并让 `crafting` 保持 1 tick. 当前未实现配方匹配, 九宫格消耗和剩余物.
+ - 带 LootTable 的容器会显式记录 unsupported, 并作为存在但不可传输的容器阻止错误回退. 当前不会展开战利品表.
+@@ -210,7 +214,7 @@ wire 有序传播使用 `Compiled`, `Interpreted` 和 `FellBack` 三种内部结
+ - 釉陶属于 `PushOnly`, 可向前推动但不被黏性活塞拉回.
+ - 实现黏性活塞正常回拉, 伸出取消, 快速收回和 zero-tick 收回/丢块路径.
+ - 移动方块实体记录 moved state, 方向, 伸出状态, source 和 settle tick, 并在结算时恢复方块与邻居更新.
+-- 有官方方块实体类型的普通方块当前不可移动. 活塞反应也仍是项目内显式规则表, 不是完整原版 tag 体系.
++- 有官方方块实体类型的普通方块当前不可移动; 潜影盒按原版归为 `Destroy`, 伸出时销毁并保留盒内库存, 黏性回拉不会把它当作普通方块移动. 活塞反应也仍是项目内显式规则表, 不是完整原版 tag 体系.
+ 
+ 主要实现位于 `crates/redstone-java-26/src/rules/piston.rs`.
+ 

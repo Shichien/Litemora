@@ -1,0 +1,995 @@
+diff --git a/crates/redstone-java-26/data/26.1.2/entity_dimensions.json b/crates/redstone-java-26/data/26.1.2/entity_dimensions.json
+new file mode 100644
+index 0000000..9ff460c
+--- /dev/null
++++ b/crates/redstone-java-26/data/26.1.2/entity_dimensions.json
+@@ -0,0 +1 @@
++{"minecraft:acacia_boat":[1.375,0.5625],"minecraft:acacia_chest_boat":[1.375,0.5625],"minecraft:allay":[0.35,0.6],"minecraft:area_effect_cloud":[6.0,0.5],"minecraft:armadillo":[0.7,0.65],"minecraft:armor_stand":[0.5,1.975],"minecraft:arrow":[0.5,0.5],"minecraft:axolotl":[0.75,0.42],"minecraft:bamboo_chest_raft":[1.375,0.5625],"minecraft:bamboo_raft":[1.375,0.5625],"minecraft:bat":[0.5,0.9],"minecraft:bee":[0.7,0.6],"minecraft:birch_boat":[1.375,0.5625],"minecraft:birch_chest_boat":[1.375,0.5625],"minecraft:blaze":[0.6,1.8],"minecraft:block_display":[0.0,0.0],"minecraft:bogged":[0.6,1.99],"minecraft:breeze":[0.6,1.77],"minecraft:breeze_wind_charge":[0.3125,0.3125],"minecraft:camel":[1.7,2.375],"minecraft:camel_husk":[1.7,2.375],"minecraft:cat":[0.6,0.7],"minecraft:cave_spider":[0.7,0.5],"minecraft:cherry_boat":[1.375,0.5625],"minecraft:cherry_chest_boat":[1.375,0.5625],"minecraft:chest_minecart":[0.98,0.7],"minecraft:chicken":[0.4,0.7],"minecraft:cod":[0.5,0.3],"minecraft:copper_golem":[0.49,0.98],"minecraft:command_block_minecart":[0.98,0.7],"minecraft:cow":[0.9,1.4],"minecraft:creaking":[0.9,2.7],"minecraft:creeper":[0.6,1.7],"minecraft:dark_oak_boat":[1.375,0.5625],"minecraft:dark_oak_chest_boat":[1.375,0.5625],"minecraft:dolphin":[0.9,0.6],"minecraft:donkey":[1.3964844,1.5],"minecraft:dragon_fireball":[1.0,1.0],"minecraft:drowned":[0.6,1.95],"minecraft:egg":[0.25,0.25],"minecraft:elder_guardian":[1.9975,1.9975],"minecraft:enderman":[0.6,2.9],"minecraft:endermite":[0.4,0.3],"minecraft:ender_dragon":[16.0,8.0],"minecraft:ender_pearl":[0.25,0.25],"minecraft:end_crystal":[2.0,2.0],"minecraft:evoker":[0.6,1.95],"minecraft:evoker_fangs":[0.5,0.8],"minecraft:experience_bottle":[0.25,0.25],"minecraft:experience_orb":[0.5,0.5],"minecraft:eye_of_ender":[0.25,0.25],"minecraft:falling_block":[0.98,0.98],"minecraft:fireball":[1.0,1.0],"minecraft:firework_rocket":[0.25,0.25],"minecraft:fox":[0.6,0.7],"minecraft:frog":[0.5,0.5],"minecraft:furnace_minecart":[0.98,0.7],"minecraft:ghast":[4.0,4.0],"minecraft:happy_ghast":[4.0,4.0],"minecraft:giant":[3.6,12.0],"minecraft:glow_item_frame":[0.5,0.5],"minecraft:glow_squid":[0.8,0.8],"minecraft:goat":[0.9,1.3],"minecraft:guardian":[0.85,0.85],"minecraft:hoglin":[1.3964844,1.4],"minecraft:hopper_minecart":[0.98,0.7],"minecraft:horse":[1.3964844,1.6],"minecraft:husk":[0.6,1.95],"minecraft:illusioner":[0.6,1.95],"minecraft:interaction":[0.0,0.0],"minecraft:iron_golem":[1.4,2.7],"minecraft:item":[0.25,0.25],"minecraft:item_display":[0.0,0.0],"minecraft:item_frame":[0.5,0.5],"minecraft:jungle_boat":[1.375,0.5625],"minecraft:jungle_chest_boat":[1.375,0.5625],"minecraft:leash_knot":[0.375,0.5],"minecraft:lightning_bolt":[0.0,0.0],"minecraft:llama":[0.9,1.87],"minecraft:llama_spit":[0.25,0.25],"minecraft:magma_cube":[0.52,0.52],"minecraft:mangrove_boat":[1.375,0.5625],"minecraft:mangrove_chest_boat":[1.375,0.5625],"minecraft:mannequin":[0.6,1.8],"minecraft:marker":[0.0,0.0],"minecraft:minecart":[0.98,0.7],"minecraft:mooshroom":[0.9,1.4],"minecraft:mule":[1.3964844,1.6],"minecraft:nautilus":[0.875,0.95],"minecraft:oak_boat":[1.375,0.5625],"minecraft:oak_chest_boat":[1.375,0.5625],"minecraft:ocelot":[0.6,0.7],"minecraft:ominous_item_spawner":[0.25,0.25],"minecraft:painting":[0.5,0.5],"minecraft:pale_oak_boat":[1.375,0.5625],"minecraft:pale_oak_chest_boat":[1.375,0.5625],"minecraft:panda":[1.3,1.25],"minecraft:parched":[0.6,1.99],"minecraft:parrot":[0.5,0.9],"minecraft:phantom":[0.9,0.5],"minecraft:pig":[0.9,0.9],"minecraft:piglin":[0.6,1.95],"minecraft:piglin_brute":[0.6,1.95],"minecraft:pillager":[0.6,1.95],"minecraft:polar_bear":[1.4,1.4],"minecraft:splash_potion":[0.25,0.25],"minecraft:lingering_potion":[0.25,0.25],"minecraft:pufferfish":[0.7,0.7],"minecraft:rabbit":[0.49,0.6],"minecraft:ravager":[1.95,2.2],"minecraft:salmon":[0.7,0.4],"minecraft:sheep":[0.9,1.3],"minecraft:shulker":[1.0,1.0],"minecraft:shulker_bullet":[0.3125,0.3125],"minecraft:silverfish":[0.4,0.3],"minecraft:skeleton":[0.6,1.99],"minecraft:skeleton_horse":[1.3964844,1.6],"minecraft:slime":[0.52,0.52],"minecraft:small_fireball":[0.3125,0.3125],"minecraft:sniffer":[1.9,1.75],"minecraft:snowball":[0.25,0.25],"minecraft:snow_golem":[0.7,1.9],"minecraft:spawner_minecart":[0.98,0.7],"minecraft:spectral_arrow":[0.5,0.5],"minecraft:spider":[1.4,0.9],"minecraft:spruce_boat":[1.375,0.5625],"minecraft:spruce_chest_boat":[1.375,0.5625],"minecraft:squid":[0.8,0.8],"minecraft:stray":[0.6,1.99],"minecraft:strider":[0.9,1.7],"minecraft:tadpole":[0.4,0.3],"minecraft:text_display":[0.0,0.0],"minecraft:tnt":[0.98,0.98],"minecraft:tnt_minecart":[0.98,0.7],"minecraft:trader_llama":[0.9,1.87],"minecraft:trident":[0.5,0.5],"minecraft:tropical_fish":[0.5,0.4],"minecraft:turtle":[1.2,0.4],"minecraft:vex":[0.4,0.8],"minecraft:villager":[0.6,1.95],"minecraft:vindicator":[0.6,1.95],"minecraft:wandering_trader":[0.6,1.95],"minecraft:warden":[0.9,2.9],"minecraft:wind_charge":[0.3125,0.3125],"minecraft:witch":[0.6,1.95],"minecraft:wither":[0.9,3.5],"minecraft:wither_skeleton":[0.7,2.4],"minecraft:wither_skull":[0.3125,0.3125],"minecraft:wolf":[0.6,0.85],"minecraft:zoglin":[1.3964844,1.4],"minecraft:zombie":[0.6,1.95],"minecraft:zombie_horse":[1.3964844,1.6],"minecraft:zombie_nautilus":[0.875,0.95],"minecraft:zombie_villager":[0.6,1.95],"minecraft:zombified_piglin":[0.6,1.95],"minecraft:player":[0.6,1.8],"minecraft:fishing_bobber":[0.25,0.25]}
+\ No newline at end of file
+diff --git a/crates/redstone-java-26/src/rules.rs b/crates/redstone-java-26/src/rules.rs
+index a3752bf..262b10d 100644
+--- a/crates/redstone-java-26/src/rules.rs
++++ b/crates/redstone-java-26/src/rules.rs
+@@ -20,6 +20,8 @@ use crate::orientation::{Orientation, SideBias};
+ use crate::{BlockBehavior, JAVA_VERSION, Java26Registry, PushReaction, StateDefinition};
+ use crate::environment::daylight_detector_power;
+ 
++mod armor_stand;
++mod bubble_column;
+ mod comparator;
+ mod consumer;
+ mod inventory;
+@@ -1631,6 +1633,11 @@ impl BlockRules for Java26Rules {
+         for pos in positions {
+             let state_id = ctx.world.get_block(*pos);
+             let state = self.state(state_id)?.clone();
++            if tracks_entity_collisions(&state.behavior)
++                && (state.powered || state.int_property("power").unwrap_or(0) > 0)
++            {
++                self.refresh_entity_sensor(ctx, *pos, &state, true)?;
++            }
+             match state.behavior {
+                 BlockBehavior::SculkSensor
+                 | BlockBehavior::LightningRod
+@@ -1929,6 +1936,9 @@ impl BlockRules for Java26Rules {
+         if state.kind != tick.block {
+             return Ok(());
+         }
++        if bubble_column::can_occupy(&state) {
++            return self.update_bubble_column(ctx, tick.pos, &state);
++        }
+         match state.behavior {
+             BlockBehavior::Button { .. } => {
+                 if state.bool_property("powered") {
+@@ -2154,7 +2164,7 @@ impl BlockRules for Java26Rules {
+         let mut occupied_positions = ctx
+             .world
+             .entities()
+-            .map(|(_, entity)| entity_block_pos(entity.position))
++            .flat_map(|(_, entity)| physics::Bounds::entity(entity).cells())
+             .collect::<Vec<_>>();
+         occupied_positions.sort_unstable();
+         occupied_positions.dedup();
+@@ -2358,8 +2368,12 @@ impl Java26Rules {
+             let kind = ctx.world.entity(id).map(|entity| entity.kind.clone());
+             if kind.as_deref().is_some_and(|k| k.ends_with("minecart")) {
+                 self.move_cart(ctx, id)?;
++                if ctx.world.entity(id).is_some() {
++                    self.push_nearby_carts(ctx, id);
++                }
+             }
+             match kind.as_deref() {
++                Some("minecraft:armor_stand") => self.tick_armor_stand(ctx, id)?,
+                 Some("minecraft:item") => {
+                     let Some(fields) = ctx.world.entity_fields_mut(id) else {
+                         continue;
+@@ -2456,39 +2470,51 @@ impl Java26Rules {
+         state: &StateDefinition,
+         release_now: bool,
+     ) -> Result<(), RulesError> {
++        let current = state
++            .int_property("power")
++            .unwrap_or_else(|| i32::from(state.bool_property("powered")) * 15)
++            .clamp(0, 15) as u8;
++        if current > 0 && !release_now && ctx.has_scheduled_tick(pos, state.kind) {
++            return Ok(());
++        }
+         let (power, delay) = match state.behavior {
+             BlockBehavior::PressurePlate {
+                 max_weight,
+                 detects_items,
+             } => {
+-                let count = entities_on_block(ctx.world, pos, |entity| {
+-                    physics::triggers_plate(entity, detects_items)
+-                });
++                let count = plate_bounds(pos)
++                    .entities(ctx.world)
++                    .filter(|(_, e)| physics::triggers_plate(e, detects_items))
++                    .count();
+                 let power = max_weight.map_or_else(
+                     || if count > 0 { 15 } else { 0 },
+                     |max_weight| {
+                         ((count as u64 * 15).div_ceil(u64::from(max_weight))).clamp(0, 15) as u8
+                     },
+                 );
+-                (power, 20)
++                (power, if max_weight.is_some() { 10 } else { 20 })
+             }
+             BlockBehavior::DetectorRail => {
+-                let count =
+-                    entities_on_block(ctx.world, pos, |entity| entity.kind.ends_with("minecart"));
++                let count = physics::Bounds::detector(pos)
++                    .entities(ctx.world)
++                    .filter(|(_, e)| e.kind.ends_with("minecart"))
++                    .count();
+                 (if count > 0 { 15 } else { 0 }, 20)
+             }
+             BlockBehavior::Tripwire => {
+-                let count = entities_on_block(ctx.world, pos, |entity| {
+-                    physics::triggers_plate(entity, true)
+-                });
++                let (bottom, top) = if state.bool_property("attached") {
++                    (1.0 / 16.0, 2.5 / 16.0)
++                } else {
++                    (0.0, 0.5)
++                };
++                let count = physics::Bounds::at(pos, [0.0, bottom, 0.0], [1.0, top, 1.0])
++                    .entities(ctx.world)
++                    .filter(|(_, e)| physics::triggers_plate(e, true))
++                    .count();
+                 (if count > 0 { 15 } else { 0 }, 10)
+             }
+             _ => return Ok(()),
+         };
+-        let current = state
+-            .int_property("power")
+-            .unwrap_or_else(|| i32::from(state.bool_property("powered")) * 15)
+-            .clamp(0, 15) as u8;
+         if (power > 0 || release_now) && current != power {
+             let property = if state.properties.contains_key("power") {
+                 "power"
+@@ -2517,13 +2543,20 @@ impl Java26Rules {
+                     pos,
+                     if power > 0 { 10 } else { 9 },
+                     power > 0
+-                        && entities_on_block(ctx.world, pos, |e| e.kind == "minecraft:player") > 0,
++                        && plate_bounds(pos).entities(ctx.world).any(|(_, e)| {
++                            e.kind == "minecraft:player" && physics::triggers_plate(e, false)
++                        }),
+                 );
+             }
+             if matches!(state.behavior, BlockBehavior::Tripwire) {
+                 self.refresh_tripwire_hooks(ctx, pos, power > 0)?;
+             }
+         }
++        if matches!(state.behavior, BlockBehavior::DetectorRail)
++            && (current != power || release_now)
++        {
++            self.refresh_comparators_near(ctx, pos)?;
++        }
+         if power > 0 && !ctx.has_scheduled_tick(pos, state.kind) {
+             ctx.schedule_tick_after_neighbors(pos, state.kind, delay, TickPriority::Normal);
+         }
+@@ -2678,19 +2711,8 @@ fn tracks_entity_collisions(behavior: &BlockBehavior) -> bool {
+     )
+ }
+ 
+-fn entities_on_block(
+-    world: &SparseWorld,
+-    pos: BlockPos,
+-    predicate: impl Fn(&redstone_core::EntityData) -> bool,
+-) -> usize {
+-    world
+-        .entity_ids_in_aabb(
+-            [pos.x as f64, pos.y as f64, pos.z as f64],
+-            [pos.x as f64 + 1.0, pos.y as f64 + 1.0, pos.z as f64 + 1.0],
+-        )
+-        .into_iter()
+-        .filter(|id| world.entity(*id).is_some_and(&predicate))
+-        .count()
++fn plate_bounds(pos: BlockPos) -> physics::Bounds {
++    physics::Bounds::at(pos, [0.0625, 0.0, 0.0625], [0.9375, 0.25, 0.9375])
+ }
+ 
+ fn attached_block(pos: BlockPos, state: &StateDefinition) -> BlockPos {
+diff --git a/crates/redstone-java-26/src/rules/armor_stand.rs b/crates/redstone-java-26/src/rules/armor_stand.rs
+new file mode 100644
+index 0000000..45cc545
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/armor_stand.rs
+@@ -0,0 +1,109 @@
++use super::physics::{Bounds, dimensions, flag, motion, set_motion, shape_boxes, swept_entity};
++use super::*;
++
++fn has_water(state: &StateDefinition) -> bool {
++    matches!(
++        state.name.as_ref(),
++        "minecraft:water" | "minecraft:bubble_column"
++    ) || state.bool_property("waterlogged")
++}
++
++impl Java26Rules {
++    pub(super) fn tick_armor_stand(
++        &self,
++        ctx: &mut EventContext<'_>,
++        id: EntityId,
++    ) -> Result<(), RulesError> {
++        let stand = ctx.world.entity(id).unwrap();
++        if flag(stand, "Marker") || flag(stand, "NoGravity") {
++            return Ok(());
++        }
++        let pos = stand.position;
++        let [width, height] = dimensions(stand);
++        let grounded = flag(stand, "OnGround");
++        let mut velocity = motion(stand);
++        for v in &mut velocity {
++            if v.abs() < 0.003 {
++                *v = 0.0;
++            }
++        }
++        let support = |p: [f64; 3]| entity_block_pos([p[0], p[1] - 1e-5, p[2]]);
++        let initial_body = Bounds::entity(stand);
++        let in_water = initial_body.cells().any(|p| {
++            let s = self.registry.state(ctx.world.get_block(p)).unwrap();
++            has_water(s) && Bounds::at(p, [0.0; 3], [1.0; 3]).intersects(initial_body)
++        });
++        let ground_friction = match self.state(ctx.world.get_block(support(pos)))?.name.as_ref() {
++            "minecraft:ice" | "minecraft:packed_ice" | "minecraft:frosted_ice" => 0.98,
++            "minecraft:blue_ice" => 0.989,
++            "minecraft:slime_block" => 0.8,
++            _ => 0.6,
++        };
++        let (point, blocked) = swept_entity(ctx.world, pos, velocity, width, height);
++        let on_ground = blocked[1] && velocity[1] < 0.0;
++        let bounce = on_ground
++            && self
++                .state(ctx.world.get_block(support(point)))?
++                .name
++                .as_ref()
++                == "minecraft:slime_block";
++        for i in 0..3 {
++            if blocked[i] {
++                velocity[i] = if i == 1 && bounce { -velocity[i] } else { 0.0 };
++            }
++        }
++        if in_water {
++            velocity = velocity.map(|v| v * f64::from(0.8_f32));
++            velocity[1] -= 0.08 / 16.0;
++        } else {
++            let friction = f64::from(0.91_f32) * if grounded { ground_friction } else { 1.0 };
++            velocity[0] *= friction;
++            velocity[2] *= friction;
++            velocity[1] = (velocity[1] - 0.08) * f64::from(0.98_f32);
++        }
++        if pos != point {
++            ctx.world.move_entity(id, point);
++        }
++        if grounded != on_ground {
++            ctx.world
++                .entity_fields_mut(id)
++                .unwrap()
++                .insert("OnGround".into(), on_ground.into());
++        }
++        let body = Bounds::entity(ctx.world.entity(id).unwrap());
++        for cell in body.cells() {
++            let state = self.state(ctx.world.get_block(cell))?;
++            if state.name.as_ref() != "minecraft:bubble_column"
++                || !body.intersects(Bounds::at(cell, [0.0; 3], [1.0; 3]))
++            {
++                continue;
++            }
++            let above = self.state(ctx.world.get_block(cell.relative(Direction::Up)))?;
++            let surface = shape_boxes(above.id).is_empty()
++                && !has_water(above)
++                && above.name.as_ref() != "minecraft:lava";
++            velocity[1] = match (surface, state.bool_property("drag")) {
++                (true, false) => (velocity[1] + 0.1).min(1.8),
++                (true, true) => (velocity[1] - 0.03).max(-0.9),
++                (false, false) => (velocity[1] + 0.06).min(0.7),
++                (false, true) => (velocity[1] - 0.03).max(-0.3),
++            };
++        }
++        set_motion(ctx.world, id, velocity);
++        let carts = body
++            .entities(ctx.world)
++            .filter(|(_, e)| {
++                e.kind == "minecraft:minecart"
++                    && (0..3)
++                        .map(|i| (e.position[i] - point[i]).powi(2))
++                        .sum::<f64>()
++                        <= 0.2
++            })
++            .map(|(id, _)| id)
++            .collect::<Vec<_>>();
++        for cart in carts {
++            super::rail_cart::collide(ctx.world, cart, id);
++        }
++        Ok(())
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/bubble_column.rs b/crates/redstone-java-26/src/rules/bubble_column.rs
+new file mode 100644
+index 0000000..2cc5985
+--- /dev/null
++++ b/crates/redstone-java-26/src/rules/bubble_column.rs
+@@ -0,0 +1,84 @@
++use super::*;
++
++pub(super) fn can_occupy(state: &StateDefinition) -> bool {
++    state.name.as_ref() == "minecraft:bubble_column"
++        || state.name.as_ref() == "minecraft:water" && state.int_property("level") == Some(0)
++}
++
++fn drag_from(state: &StateDefinition) -> Option<bool> {
++    match state.name.as_ref() {
++        "minecraft:soul_sand" => Some(false),
++        "minecraft:magma_block" => Some(true),
++        "minecraft:bubble_column" => Some(state.bool_property("drag")),
++        _ => None,
++    }
++}
++
++impl Java26Rules {
++    pub(super) fn schedule_bubble_column(
++        &self,
++        ctx: &mut EventContext<'_>,
++        pos: BlockPos,
++        state: &StateDefinition,
++        changed: Option<Direction>,
++    ) -> Result<(), RulesError> {
++        let below = self.state(ctx.world.get_block(pos.relative(Direction::Down)))?;
++        let column = state.name.as_ref() == "minecraft:bubble_column";
++        let delay = if column {
++            let above = self.state(ctx.world.get_block(pos.relative(Direction::Up)))?;
++            let extends_up = changed.is_none_or(|d| d == Direction::Up)
++                && above.name.as_ref() == "minecraft:water"
++                && can_occupy(above);
++            if changed != Some(Direction::Down)
++                && drag_from(below) == Some(state.bool_property("drag"))
++                && !extends_up
++            {
++                return Ok(());
++            }
++            5
++        } else {
++            if changed.is_some_and(|d| d != Direction::Down)
++                || !matches!(
++                    below.name.as_ref(),
++                    "minecraft:soul_sand" | "minecraft:magma_block"
++                )
++            {
++                return Ok(());
++            }
++            20
++        };
++        if !ctx.has_scheduled_tick(pos, state.kind) {
++            ctx.schedule_tick(pos, state.kind, delay, TickPriority::Normal);
++        }
++        Ok(())
++    }
++
++    pub(super) fn update_bubble_column(
++        &mut self,
++        ctx: &mut EventContext<'_>,
++        mut pos: BlockPos,
++        state: &StateDefinition,
++    ) -> Result<(), RulesError> {
++        let below = self.state(ctx.world.get_block(pos.relative(Direction::Down)))?;
++        let target = match drag_from(below) {
++            Some(drag) => self.registry.state_by_name(
++                "minecraft:bubble_column",
++                [("drag", if drag { "true" } else { "false" })],
++            ),
++            None if state.name.as_ref() == "minecraft:bubble_column" => self
++                .registry
++                .state_by_name("minecraft:water", [("level", "0")]),
++            None => return Ok(()),
++        }
++        .map_err(|e| RulesError::Message(e.to_string()))?;
++        self.set_state_and_update_shapes(ctx, pos, target, "bubble_column")?;
++        loop {
++            pos = pos.relative(Direction::Up);
++            if !can_occupy(self.state(ctx.world.get_block(pos))?)
++                || !self.set_state_and_update_shapes(ctx, pos, target, "bubble_column")?
++            {
++                return Ok(());
++            }
++        }
++    }
++}
+diff --git a/crates/redstone-java-26/src/rules/comparator.rs b/crates/redstone-java-26/src/rules/comparator.rs
+index 7b508a0..caca468 100644
+--- a/crates/redstone-java-26/src/rules/comparator.rs
++++ b/crates/redstone-java-26/src/rules/comparator.rs
+@@ -220,13 +220,9 @@ fn detector_rail_output(world: &SparseWorld, pos: BlockPos, powered: bool) -> i3
+     if !powered {
+         return 0;
+     }
+-    let entities = world
+-        .entity_ids_in_aabb(
+-            [pos.x as f64 + 0.2, pos.y as f64, pos.z as f64 + 0.2],
+-            [pos.x as f64 + 0.8, pos.y as f64 + 0.8, pos.z as f64 + 0.8],
+-        )
+-        .into_iter()
+-        .filter_map(|id| world.entity(id))
++    let entities = super::physics::Bounds::detector(pos)
++        .entities(world)
++        .filter_map(|(_, entity)| entity.kind.ends_with("minecart").then_some(entity))
+         .collect::<Vec<_>>();
+     if let Some(command_cart) = entities
+         .iter()
+diff --git a/crates/redstone-java-26/src/rules/inventory/hopper.rs b/crates/redstone-java-26/src/rules/inventory/hopper.rs
+index 67edcd1..509f41f 100644
+--- a/crates/redstone-java-26/src/rules/inventory/hopper.rs
++++ b/crates/redstone-java-26/src/rules/inventory/hopper.rs
+@@ -165,8 +165,8 @@ impl Java26Rules {
+             entity
+                 .fields
+                 .get("enabled")
+-                .and_then(Value::as_bool)
+-                .unwrap_or(true)
++                .or_else(|| entity.fields.get("Enabled"))
++                .is_none_or(|value| value.as_bool().unwrap_or_else(|| value.as_i64() != Some(0)))
+         };
+         if let Some(fields) = ctx.world.entity_fields_mut(id) {
+             fields.insert("enabled".to_owned(), Value::Bool(enabled));
+diff --git a/crates/redstone-java-26/src/rules/physics.rs b/crates/redstone-java-26/src/rules/physics.rs
+index a802137..6130fc1 100644
+--- a/crates/redstone-java-26/src/rules/physics.rs
++++ b/crates/redstone-java-26/src/rules/physics.rs
+@@ -18,18 +18,104 @@ static SHAPES: LazyLock<Shapes> = LazyLock::new(|| {
+         .expect("validated Java collision table")
+ });
+ 
++static DIMENSIONS: LazyLock<BTreeMap<String, [f64; 2]>> = LazyLock::new(|| {
++    serde_json::from_str(include_str!("../../data/26.1.2/entity_dimensions.json"))
++        .expect("Java entity dimensions")
++});
++
+ pub(super) fn triggers_plate(entity: &EntityData, detects_items: bool) -> bool {
+-    let truth = |key| {
+-        entity
+-            .fields
+-            .get(key)
+-            .is_some_and(|v| v.as_i64() == Some(1) || v.as_bool() == Some(true))
+-    };
+-    !truth("Marker")
+-        && !truth("Spectator")
++    !(entity.kind == "minecraft:armor_stand" && flag(entity, "Marker"))
++        && !flag(entity, "Spectator")
+         && (detects_items || SHAPES.living.contains(&entity.kind))
+ }
+ 
++pub(super) fn flag(entity: &EntityData, key: &str) -> bool {
++    entity
++        .fields
++        .get(key)
++        .is_some_and(|v| v.as_bool() == Some(true) || v.as_i64() == Some(1))
++}
++
++pub(super) fn dimensions(entity: &EntityData) -> [f64; 2] {
++    let size = DIMENSIONS.get(&entity.kind).copied().unwrap_or([0.0; 2]);
++    if entity.kind == "minecraft:armor_stand" {
++        if flag(entity, "Marker") {
++            return [0.0; 2];
++        }
++        if flag(entity, "Small") {
++            return size.map(|v| v * 0.5);
++        }
++    }
++    size
++}
++
++#[derive(Clone, Copy)]
++pub(super) struct Bounds {
++    pub min: [f64; 3],
++    pub max: [f64; 3],
++}
++
++impl Bounds {
++    pub fn entity(entity: &EntityData) -> Self {
++        let [width, height] = dimensions(entity);
++        let [x, y, z] = entity.position;
++        Self {
++            min: [x - width / 2.0, y, z - width / 2.0],
++            max: [x + width / 2.0, y + height, z + width / 2.0],
++        }
++    }
++
++    pub fn intersects(self, other: Self) -> bool {
++        (0..3).all(|i| self.min[i] < other.max[i] && self.max[i] > other.min[i])
++    }
++
++    pub fn cells(self) -> impl Iterator<Item = BlockPos> {
++        let low = entity_block_pos(self.min);
++        let high = entity_block_pos(self.max);
++        (low.x..=high.x).flat_map(move |x| {
++            (low.y..=high.y)
++                .flat_map(move |y| (low.z..=high.z).map(move |z| BlockPos::new(x, y, z)))
++        })
++    }
++
++    pub fn entities(self, world: &SparseWorld) -> impl Iterator<Item = (EntityId, &EntityData)> {
++        // The section index holds entity feet. Widen the candidate query by the
++        // largest vanilla body, then intersect its actual box with the sensor.
++        static MAX_SIZE: LazyLock<[f64; 2]> = LazyLock::new(|| {
++            DIMENSIONS
++                .values()
++                .fold([0.0_f64; 2], |s, v| [s[0].max(v[0]), s[1].max(v[1])])
++        });
++        let half = MAX_SIZE[0] / 2.0;
++        world
++            .entity_ids_in_aabb(
++                [
++                    self.min[0] - half,
++                    self.min[1] - MAX_SIZE[1],
++                    self.min[2] - half,
++                ],
++                [self.max[0] + half, self.max[1], self.max[2] + half],
++            )
++            .into_iter()
++            .filter_map(move |id| {
++                let e = world.entity(id)?;
++                self.intersects(Self::entity(e)).then_some((id, e))
++            })
++    }
++
++    pub fn detector(pos: BlockPos) -> Self {
++        Self::at(pos, [0.2, 0.0, 0.2], [0.8, 0.8, 0.8])
++    }
++
++    pub fn at(pos: BlockPos, min: [f64; 3], max: [f64; 3]) -> Self {
++        let offset = [pos.x as f64, pos.y as f64, pos.z as f64];
++        Self {
++            min: std::array::from_fn(|i| offset[i] + min[i]),
++            max: std::array::from_fn(|i| offset[i] + max[i]),
++        }
++    }
++}
++
+ fn random(ctx: &mut EventContext<'_>) -> f64 {
+     f64::from(ctx.random_bounded(1 << 24)) / f64::from(1 << 24)
+ }
+@@ -49,6 +135,19 @@ pub(super) fn motion(entity: &EntityData) -> [f64; 3] {
+     })
+ }
+ 
++pub(super) fn set_motion(world: &mut SparseWorld, id: EntityId, velocity: [f64; 3]) {
++    if world.entity(id).is_some_and(|e| motion(e) != velocity) {
++        world
++            .entity_fields_mut(id)
++            .unwrap()
++            .insert("Motion".into(), json!(velocity));
++    }
++}
++
++pub(super) fn shape_boxes(id: BlockStateId) -> &'static [[f64; 6]] {
++    &SHAPES.boxes[SHAPES.states[id.0 as usize]]
++}
++
+ fn boxes_in(
+     world: &SparseWorld,
+     min: [f64; 3],
+@@ -65,7 +164,7 @@ fn boxes_in(
+                     continue;
+                 }
+                 let offsets = [x as f64, y as f64, z as f64];
+-                for shape in &SHAPES.boxes[SHAPES.states[id.0 as usize]] {
++                for shape in shape_boxes(id) {
+                     visit(pos, std::array::from_fn(|i| shape[i] + offsets[i % 3]));
+                 }
+             }
+diff --git a/crates/redstone-java-26/src/rules/rail_cart.rs b/crates/redstone-java-26/src/rules/rail_cart.rs
+index fa74bbe..607b78d 100644
+--- a/crates/redstone-java-26/src/rules/rail_cart.rs
++++ b/crates/redstone-java-26/src/rules/rail_cart.rs
+@@ -1,4 +1,4 @@
+-use super::physics::{motion, swept_entity};
++use super::physics::{Bounds, motion, set_motion, swept_entity};
+ use super::*;
+ use serde_json::{Value, json};
+ 
+@@ -235,6 +235,23 @@ impl Java26Rules {
+         }
+         if cart.position != point {
+             ctx.world.move_entity(id, point);
++            let dx = point[0] - cart.position[0];
++            let dz = point[2] - cart.position[2];
++            if dx * dx + dz * dz > 0.001 {
++                // The collision alignment test is invariant under a 180° yaw flip.
++                let old_yaw = yaw(&cart);
++                let angle = (-dz).atan2(-dx).to_degrees();
++                let angle = angle
++                    + if (angle - old_yaw).to_radians().cos() < 0.0 {
++                        180.0
++                    } else {
++                        0.0
++                    };
++                ctx.world
++                    .entity_fields_mut(id)
++                    .unwrap()
++                    .insert("Rotation".into(), json!([angle, 0.0]));
++            }
+         }
+         let fields = ctx.world.entity_fields_mut(id).unwrap();
+         if delta != [0.0; 3] || fields.contains_key("Motion") {
+@@ -259,4 +276,79 @@ impl Java26Rules {
+         }
+         Ok(())
+     }
++
++    pub(super) fn push_nearby_carts(&self, ctx: &mut EventContext<'_>, id: EntityId) {
++        let cart = ctx.world.entity(id).unwrap();
++        let mut contact_area = Bounds::entity(cart);
++        for i in [0, 2] {
++            contact_area.min[i] -= 0.2;
++            contact_area.max[i] += 0.2;
++        }
++        let neighbors = contact_area
++            .entities(ctx.world)
++            .filter(|(other, e)| *other != id && e.kind.ends_with("minecart"))
++            .map(|(other, _)| other)
++            .collect::<Vec<_>>();
++        // In default Java minecart movement it is the *other* cart that receives push(this).
++        for other in neighbors {
++            collide(ctx.world, other, id);
++        }
++    }
++}
++
++fn yaw(cart: &redstone_core::EntityData) -> f64 {
++    cart.fields
++        .get("Rotation")
++        .and_then(|r| r.get(0))
++        .and_then(Value::as_f64)
++        .unwrap_or(0.0)
++}
++
++pub(super) fn collide(world: &mut SparseWorld, receiver: EntityId, source: EntityId) {
++    let receiver_entity = world.entity(receiver).unwrap();
++    let source_entity = world.entity(source).unwrap();
++    let dx = source_entity.position[0] - receiver_entity.position[0];
++    let dz = source_entity.position[2] - receiver_entity.position[2];
++    let distance = dx.hypot(dz);
++    if distance * distance < f64::from(1e-4_f32) {
++        return;
++    }
++    let impulse = 0.5 * f64::from(0.1_f32) * (1.0 / distance).min(1.0) / distance;
++    let mut receiver_velocity = motion(receiver_entity);
++    let mut source_velocity = motion(source_entity);
++    let source_is_cart = source_entity.kind.ends_with("minecart");
++    if source_is_cart {
++        let (sin, cos) = yaw(receiver_entity).to_radians().sin_cos();
++        if ((dx * cos + dz * sin) / distance).abs() < f64::from(0.8_f32) {
++            return;
++        }
++    }
++    for (axis, impulse_along_axis) in [(0, dx * impulse), (2, dz * impulse)] {
++        if !source_is_cart {
++            receiver_velocity[axis] -= impulse_along_axis;
++            source_velocity[axis] += impulse_along_axis / 4.0;
++        } else {
++            let (receiver_speed, source_speed) = (receiver_velocity[axis], source_velocity[axis]);
++            (receiver_velocity[axis], source_velocity[axis]) =
++                match (receiver_entity.kind.as_str(), source_entity.kind.as_str()) {
++                    ("minecraft:furnace_minecart", other) if other != receiver_entity.kind => (
++                        0.95 * receiver_speed,
++                        0.2 * source_speed + receiver_speed + impulse_along_axis,
++                    ),
++                    (other, "minecraft:furnace_minecart") if other != source_entity.kind => (
++                        0.2 * receiver_speed + source_speed - impulse_along_axis,
++                        0.95 * source_speed,
++                    ),
++                    _ => (
++                        0.2 * receiver_speed + (receiver_speed + source_speed) / 2.0
++                            - impulse_along_axis,
++                        0.2 * source_speed
++                            + (receiver_speed + source_speed) / 2.0
++                            + impulse_along_axis,
++                    ),
++                };
++        }
++    }
++    set_motion(world, receiver, receiver_velocity);
++    set_motion(world, source, source_velocity);
+ }
+diff --git a/crates/redstone-java-26/src/rules/shape.rs b/crates/redstone-java-26/src/rules/shape.rs
+index d146dc7..8d25540 100644
+--- a/crates/redstone-java-26/src/rules/shape.rs
++++ b/crates/redstone-java-26/src/rules/shape.rs
+@@ -149,6 +149,9 @@ impl Java26Rules {
+     ) -> Result<BlockStateId, RulesError> {
+         let state_id = ctx.world.get_block(pos);
+         let state = self.state(state_id)?.clone();
++        if super::bubble_column::can_occupy(&state) {
++            self.schedule_bubble_column(ctx, pos, &state, direction_to_neighbor)?;
++        }
+         if self.loses_support_from_shape(ctx.world, pos, &state, direction_to_neighbor) {
+             if notify {
+                 return self.remove_block_after_support_loss(ctx, pos, "shape_support_loss");
+diff --git a/crates/redstone-java-26/tests/entity_devices.rs b/crates/redstone-java-26/tests/entity_devices.rs
+new file mode 100644
+index 0000000..4321ea5
+--- /dev/null
++++ b/crates/redstone-java-26/tests/entity_devices.rs
+@@ -0,0 +1,270 @@
++use redstone_core::{Action, BlockPos, EntityData, Simulation, SimulationConfig, SparseWorld};
++use redstone_java_26::{Java26Registry, Java26Rules};
++use serde_json::{Value, json};
++use std::collections::BTreeMap;
++
++fn block(
++    registry: &mut Java26Registry,
++    world: &mut SparseWorld,
++    pos: [i32; 3],
++    name: &str,
++    properties: &[(&str, &str)],
++) {
++    let name = format!("minecraft:{name}");
++    let properties = properties
++        .iter()
++        .map(|(k, v)| (k.to_string(), v.to_string()))
++        .collect();
++    let full = registry
++        .complete_state_properties(&name, &properties)
++        .unwrap();
++    let state = registry.state_by_name(&name, full).unwrap();
++    world
++        .set_block(BlockPos::new(pos[0], pos[1], pos[2]), state)
++        .unwrap();
++}
++
++fn entity(kind: &str, position: [f64; 3], fields: Value) -> EntityData {
++    EntityData {
++        kind: format!("minecraft:{kind}"),
++        position,
++        fields: serde_json::from_value::<BTreeMap<String, Value>>(fields).unwrap(),
++    }
++}
++
++fn sim(registry: Java26Registry, world: SparseWorld) -> Simulation<Java26Rules> {
++    let mut sim = Simulation::load(
++        Java26Rules::new(registry),
++        world,
++        SimulationConfig::default(),
++    )
++    .unwrap();
++    sim.initialize().unwrap();
++    sim
++}
++
++fn prop<'a>(sim: &'a Simulation<Java26Rules>, pos: [i32; 3], key: &str) -> Option<&'a str> {
++    let state = sim.world().get_block(BlockPos::new(pos[0], pos[1], pos[2]));
++    sim.rules().registry().state(state).unwrap().property(key)
++}
++
++#[test]
++fn falling_armor_stand_trips_high_wire_then_lands_on_plate() {
++    let mut reg = Java26Registry::new();
++    let mut world = SparseWorld::new(reg.air_state());
++    block(&mut reg, &mut world, [0, 0, 0], "stone", &[]);
++    block(&mut reg, &mut world, [0, 1, 0], "stone_pressure_plate", &[]);
++    block(&mut reg, &mut world, [0, 4, 0], "tripwire", &[]);
++    world.spawn_entity(entity("armor_stand", [0.5, 5.0, 0.5], json!({})));
++    let mut sim = sim(reg, world);
++    let mut wire = None;
++    let mut plate = None;
++    for tick in 1..=50 {
++        sim.step().unwrap();
++        if prop(&sim, [0, 4, 0], "powered") == Some("true") {
++            wire.get_or_insert(tick);
++        }
++        if prop(&sim, [0, 1, 0], "powered") == Some("true") {
++            plate.get_or_insert(tick);
++        }
++    }
++    assert!(wire.unwrap() < plate.unwrap());
++    assert_eq!(prop(&sim, [0, 4, 0], "powered"), Some("false"));
++}
++
++#[test]
++fn a_body_can_reach_the_wire_above_its_feet() {
++    for (fields, expected) in [
++        (json!({"NoGravity":1}), "true"),
++        (json!({"NoGravity":1,"Small":1}), "false"),
++        (json!({"Marker":1}), "false"),
++    ] {
++        let mut reg = Java26Registry::new();
++        let mut world = SparseWorld::new(reg.air_state());
++        block(&mut reg, &mut world, [0, 2, 0], "tripwire", &[]);
++        world.spawn_entity(entity("armor_stand", [-0.1, 1.0, 0.5], fields));
++        let mut sim = sim(reg, world);
++        sim.step().unwrap();
++        assert_eq!(prop(&sim, [0, 2, 0], "powered"), Some(expected));
++    }
++}
++
++#[test]
++fn a_furnace_cart_pushes_a_loaded_cart_to_the_detector() {
++    for has_engine in [false, true] {
++        let mut reg = Java26Registry::new();
++        let mut world = SparseWorld::new(reg.air_state());
++        for x in 0..22 {
++            block(&mut reg, &mut world, [x, 0, 0], "stone", &[]);
++            block(
++                &mut reg,
++                &mut world,
++                [x, 1, 0],
++                if x == 7 { "detector_rail" } else { "rail" },
++                &[("shape", "east_west")],
++            );
++        }
++        block(&mut reg, &mut world, [7, 1, 1], "redstone_lamp", &[]);
++        if has_engine {
++            world.spawn_entity(entity(
++                "furnace_minecart",
++                [1.5, 1.0625, 0.5],
++                json!({"Fuel":200,"PushX":1.0}),
++            ));
++        }
++        let cargo = world.spawn_entity(entity(
++            "chest_minecart",
++            [3.0, 1.0625, 0.5],
++            json!({"inventory":[{"slot":0,"item_id":"minecraft:iron_ingot","count":64}]}),
++        ));
++        let mut sim = sim(reg, world);
++        let mut saw_cargo = false;
++        for _ in 0..60 {
++            sim.step().unwrap();
++            if prop(&sim, [7, 1, 1], "lit") == Some("true")
++                && (sim.world().entity(cargo).unwrap().position[0] - 7.5).abs() < 0.8
++            {
++                saw_cargo = true;
++            }
++        }
++        assert_eq!(saw_cargo, has_engine);
++    }
++}
++
++#[test]
++fn soul_sand_grows_a_column_lifts_a_stand_and_removal_restores_water() {
++    let mut reg = Java26Registry::new();
++    let mut world = SparseWorld::new(reg.air_state());
++    block(&mut reg, &mut world, [0, 0, 0], "soul_sand", &[]);
++    for y in 1..=3 {
++        block(&mut reg, &mut world, [0, y, 0], "water", &[]);
++    }
++    block(&mut reg, &mut world, [0, 4, 0], "tripwire", &[]);
++    world.spawn_entity(entity("armor_stand", [0.5, 1.0, 0.5], json!({})));
++    let mut sim = sim(reg, world);
++    let mut tripped = false;
++    for tick in 1..=65 {
++        sim.step().unwrap();
++        if tick == 19 {
++            assert_eq!(prop(&sim, [0, 3, 0], "level"), Some("0"));
++        }
++        if tick == 20 {
++            assert_eq!(prop(&sim, [0, 3, 0], "drag"), Some("false"));
++        }
++        tripped |= prop(&sim, [0, 4, 0], "powered") == Some("true");
++    }
++    assert!(tripped);
++    sim.apply(Action::BreakBlock {
++        pos: BlockPos::ZERO,
++    })
++    .unwrap();
++    for _ in 0..6 {
++        sim.step().unwrap();
++    }
++    assert_eq!(prop(&sim, [0, 3, 0], "level"), Some("0"));
++}
++
++#[test]
++fn magma_draws_stands_down_and_flowing_water_stops_the_column() {
++    let mut reg = Java26Registry::new();
++    let mut world = SparseWorld::new(reg.air_state());
++    block(&mut reg, &mut world, [0, 0, 0], "magma_block", &[]);
++    for y in 1..=3 {
++        block(&mut reg, &mut world, [0, y, 0], "water", &[]);
++    }
++    block(&mut reg, &mut world, [0, 4, 0], "water", &[("level", "1")]);
++    block(&mut reg, &mut world, [0, 5, 0], "water", &[]);
++    let mut sim = sim(reg, world);
++    for _ in 0..20 {
++        sim.step().unwrap();
++    }
++    assert_eq!(prop(&sim, [0, 3, 0], "drag"), Some("true"));
++    assert_eq!(prop(&sim, [0, 4, 0], "level"), Some("1"));
++    assert_eq!(prop(&sim, [0, 5, 0], "level"), Some("0"));
++    let stand = redstone_core::EntityId(67);
++    sim.apply(Action::SpawnEntity {
++        id: Some(stand),
++        data: entity("armor_stand", [0.5, 2.0, 0.5], json!({})),
++    })
++    .unwrap();
++    for _ in 0..15 {
++        sim.step().unwrap();
++    }
++    assert_eq!(sim.world().entity(stand).unwrap().position[1], 1.0);
++}
++
++#[test]
++fn stationary_cargo_overhangs_a_detector_but_a_boat_cannot_supply_its_comparator() {
++    for kind in ["chest_minecart", "oak_chest_boat"] {
++        let mut reg = Java26Registry::new();
++        let mut world = SparseWorld::new(reg.air_state());
++        for x in 0..=1 {
++            block(&mut reg, &mut world, [x, 0, 0], "stone", &[]);
++            block(
++                &mut reg,
++                &mut world,
++                [x, 1, 0],
++                if x == 0 { "rail" } else { "detector_rail" },
++                &[("shape", "east_west")],
++            );
++        }
++        block(&mut reg, &mut world, [1, 0, 1], "stone", &[]);
++        block(
++            &mut reg,
++            &mut world,
++            [1, 1, 1],
++            "comparator",
++            &[("facing", "north")],
++        );
++        if kind == "oak_chest_boat" {
++            world.spawn_entity(entity("minecart", [1.5, 1.0625, 0.5], json!({})));
++        }
++        world.spawn_entity(entity(
++            kind,
++            [0.85, 1.0625, 0.5],
++            json!({"inventory":[{"slot":0,"item_id":"minecraft:iron_ingot","count":64}]}),
++        ));
++        let mut sim = sim(reg, world);
++        for _ in 0..5 {
++            sim.step().unwrap();
++        }
++        assert_eq!(prop(&sim, [1, 1, 0], "powered"), Some("true"));
++        assert_eq!(
++            prop(&sim, [1, 1, 1], "powered"),
++            Some(if kind == "chest_minecart" {
++                "true"
++            } else {
++                "false"
++            })
++        );
++    }
++}
++
++#[test]
++fn only_a_ridable_cart_is_nudged_by_an_ordinary_nearby_stand() {
++    for (kind, fields, push) in [
++        ("minecart", json!({}), true),
++        ("hopper_minecart", json!({}), false),
++        ("minecart", json!({"Marker":1}), false),
++    ] {
++        let mut reg = Java26Registry::new();
++        let mut world = SparseWorld::new(reg.air_state());
++        for x in 0..4 {
++            block(&mut reg, &mut world, [x, 0, 0], "stone", &[]);
++            block(
++                &mut reg,
++                &mut world,
++                [x, 1, 0],
++                "rail",
++                &[("shape", "east_west")],
++            );
++        }
++        let cart = world.spawn_entity(entity(kind, [1.5, 1.0625, 0.5], json!({})));
++        world.spawn_entity(entity("armor_stand", [1.2, 1.0, 0.5], fields));
++        let mut sim = sim(reg, world);
++        for _ in 0..5 {
++            sim.step().unwrap();
++        }
++        assert_eq!(sim.world().entity(cart).unwrap().position[0] > 1.5, push);
++    }
++}
+diff --git a/crates/redstone-java-26/tests/suite.rs b/crates/redstone-java-26/tests/suite.rs
+index 880294a..4ab4430 100644
+--- a/crates/redstone-java-26/tests/suite.rs
++++ b/crates/redstone-java-26/tests/suite.rs
+@@ -10,6 +10,7 @@ mod consumers;
+ mod dispenser;
+ #[path = "entities.rs"]
+ mod entities;
++mod entity_devices;
+ #[path = "execution.rs"]
+ mod execution;
+ #[path = "inventory_sides.rs"]
+diff --git a/docs/impl.md b/docs/impl.md
+index c4d511e..a205ed3 100644
+--- a/docs/impl.md
++++ b/docs/impl.md
+@@ -447,6 +447,12 @@ wire 有序传播使用 `Compiled`, `Interpreted` 和 `FellBack` 三种内部结
+ 
+ 解释执行器增加了幽匿振动候选、羊毛遮挡、校频、紫水晶共振、尖啸体、避雷针、垂滴叶和红石矿石的状态更新。陈列架按供电连接。铜箱和运输船按容器容量参与比较器和漏斗操作。合成器和熔炉按本版本生成的数据表处理输入、燃料、输出和余物。
+ 
+-标准矿车沿轨道移动并触发探测、激活和供电铁轨。箭、鸡蛋、雪球使用方块碰撞形状检测命中；标靶按击中的位置计算强度。点燃的 TNT 计时、移动，并按射线经过的方块和液体抗性计算爆炸。模拟覆盖方块电路和库存，尚未覆盖实体间碰撞、载人、流体传播、爆炸掉落及全部特殊发射行为。
++标准矿车沿轨道移动并触发探测、激活和供电铁轨。箭、鸡蛋、雪球使用方块碰撞形状检测命中；标靶按击中的位置计算强度。点燃的 TNT 计时、移动，并按射线经过的方块和液体抗性计算爆炸。模拟覆盖方块电路和库存，尚未覆盖载人、水平流体传播、爆炸掉落及全部特殊发射行为。
+ 
+ 原版结构及 Litematic 的方块列表可读取旧版 Name、Properties，以及 26.3 的 id、properties 和默认状态的方块名简写。
++
++## 矿车和盔甲架的实体机关
++
++默认矿车运动按车身接触、朝向及车种交换水平速度。动力矿车可推运输矿车。盔甲架能下落，穿过绊线，落在压力板上，并推动贴近的普通矿车。实体检测使用独立于方块碰撞形状的检测区域，探测铁轨与它的比较器读取相同的车身。测重压力板间隔 10 游戏刻重新称重。盔甲架使用存档里的 Small、Marker 和 NoGravity 标志。漏斗矿车能恢复保存的 Enabled 开关。
++
++灵魂沙或岩浆块上方的水源在 20 游戏刻后生成气泡柱。气泡柱在底座变化后 5 刻重新检查。连续水源上方的盔甲架随气泡柱升降，流动水和实体方块会截断柱体。对应规则在 Java 26.1.2 的 AbstractMinecart、OldMinecartBehavior、ArmorStand、LivingEntity、LiquidBlock、BubbleColumnBlock 与三类检测方块中核对。原生回归测试位于 crates/redstone-java-26/tests/entity_devices.rs。

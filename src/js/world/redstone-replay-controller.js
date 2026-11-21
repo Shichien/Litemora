@@ -12,8 +12,8 @@ import {
 } from './redstone-replay-data.js'
 import { loadRedstoneReplayTimeline } from './redstone-replay-loader.js'
 
-// Action targets also include scripted set_block positions. Only an initial
-// lever/button is a physical switch; never infer one from a later frame.
+import { resolveSwitchType } from './redstone-sim/switch-types.js'
+
 export function getReplaySwitches(timeline, offset = {}) {
   const initialBlocks = new Map()
   for (let index = 0; index < (timeline?.baselinePos?.length || 0); index++) {
@@ -31,8 +31,7 @@ export function getReplaySwitches(timeline, offset = {}) {
     if (![x, y, z].every(Number.isFinite)) {
       continue
     }
-    const name = String(initialBlocks.get(blockKey(x, y, z)) || '').split('[')[0]
-    const type = name === 'minecraft:lever' ? 'lever' : /^minecraft:[a-z0-9_]+_button$/.test(name) ? 'button' : ''
+    const type = resolveSwitchType(String(initialBlocks.get(blockKey(x, y, z)) || '').split('[')[0])
     if (!type) {
       continue
     }
@@ -42,7 +41,10 @@ export function getReplaySwitches(timeline, offset = {}) {
   return [...switches.values()]
 }
 
-export function validateDoorControl(control, totalTicks, switches, offset = {}) {
+// mode 'toggle'：开 / 关两段，每次操作播放其中一段并停住。
+// mode 'pulse'：只有一段，播完机器自己回到初始状态（按钮、压力板门）。
+// 手写元数据的 toggle 只接受拉杆；浏览器内模拟的结果已验证过往返，allowAnySwitch 放宽到任意开关。
+export function validateDoorControl(control, totalTicks, switches, offset = {}, { allowAnySwitch = false } = {}) {
   if (control?.type !== 'door' || !['open', 'closed'].includes(control.initialState)) {
     return null
   }
@@ -51,12 +53,14 @@ export function validateDoorControl(control, totalTicks, switches, offset = {}) 
   if (!pos || !['x', 'y', 'z'].every(axis => Number.isInteger(pos[axis]))) {
     return null
   }
+  const mode = control.mode === 'pulse' ? 'pulse' : 'toggle'
   const key = blockKey(pos.x + placement.x, pos.y + placement.y, pos.z + placement.z)
-  if (!switches.some(entry => entry.type === 'lever' && blockKey(entry.x, entry.y, entry.z) === key)) {
+  const target = switches.find(entry => blockKey(entry.x, entry.y, entry.z) === key)
+  if (!target || (mode === 'toggle' && !allowAnySwitch && target.type !== 'lever')) {
     return null
   }
   const segments = {}
-  for (const direction of ['open', 'close']) {
+  for (const direction of mode === 'pulse' ? ['pulse'] : ['open', 'close']) {
     const segment = control.segments?.[direction]
     if (!segment || !Number.isInteger(segment.fromTick) || !Number.isInteger(segment.toTick)
       || segment.fromTick < 0 || segment.toTick <= segment.fromTick || segment.toTick > totalTicks) {
@@ -64,7 +68,7 @@ export function validateDoorControl(control, totalTicks, switches, offset = {}) 
     }
     segments[direction] = { fromTick: segment.fromTick, toTick: segment.toTick }
   }
-  return { initialState: control.initialState, switchKey: key, segments }
+  return { initialState: control.initialState, switchKey: key, mode, segments }
 }
 
 const DEFAULT_SPEED = 1
@@ -473,6 +477,8 @@ export default class RedstoneReplayController {
     this._interactionBlockStrings = []
     this._commandHandler = this._handleCommand.bind(this)
     this._useBlockInterceptor = this._handleUseBlock.bind(this)
+    // 浏览器内模拟给出的门控制（格式同条目的 redstoneControl）；使用预计算回放时为 null
+    this._simulatedControl = null
     // 预处理后的时间线（见 redstone-replay-data.js 的 packRedstoneReplay）
     this._timeline = null
     this._motionCount = 0
@@ -486,6 +492,7 @@ export default class RedstoneReplayController {
     this._posKeys = []
     this._posIndexByKey = new Map()
     this._dynamicLayer = null
+    this._logicalBlockOverlay = null
     // 当前模拟状态：每个坐标最近一次的方块状态和触发的活塞运动，-1 表示没有
     this._simState = null
     this._simMotion = null
@@ -534,7 +541,16 @@ export default class RedstoneReplayController {
       this._switches = getReplaySwitches(timeline, this.offset)
       this._actionTargetPositions = this._switches.map(({ x, y, z }) => ({ x, y, z }))
       this._actionTargets = new Set(this._actionTargetPositions.map(({ x, y, z }) => blockKey(x, y, z)))
-      this._doorControl = validateDoorControl(this.world.activeProjectionContext?.item?.redstoneControl, timeline.meta.totalTicks, this._switches, this.offset)
+      this._doorControl = validateDoorControl(
+        this._simulatedControl || this.world.activeProjectionContext?.item?.redstoneControl,
+        timeline.meta.totalTicks,
+        this._switches,
+        this.offset,
+        { allowAnySwitch: !!this._simulatedControl },
+      )
+      if (this._simulatedControl?.type === 'door' && !this._doorControl) {
+        throw new Error('红石模拟结果与标记的开关不一致')
+      }
       this._doorState = this._doorControl?.initialState || 'custom'
       this._doorSegment = null
       this._doorStarting = false
@@ -562,7 +578,13 @@ export default class RedstoneReplayController {
 
     const replayUrl = resolveRedstoneReplayUrl(item, this.world.backendConfig)
     if (!replayUrl) {
-      return null
+      // 没有预计算回放：上传者标记了开关的话，用浏览器内模拟现场录一段
+      const simulated = await this.world.takeSwitchSimulation?.()
+      if (!simulated) {
+        return null
+      }
+      this._simulatedControl = simulated.control
+      return simulated.packed
     }
 
     const prefetched = this.world.takePrefetchedRedstoneReplay?.(replayUrl)
@@ -578,9 +600,8 @@ export default class RedstoneReplayController {
     this._simState.fill(-1)
     this._simMotion.fill(-1)
     this._simStateCount = 0
-    const light = this.world?.minecraftSchematicRenderLayer?._runtimeBridge?.lightRuntime
     for (let posIndex = 0; posIndex < this._posKeys.length; posIndex++) {
-      light?.setBlock(this._timeline.posX[posIndex] + this.offset.x, this._timeline.posY[posIndex] + this.offset.y, this._timeline.posZ[posIndex] + this.offset.z, AIR_BLOCK_STRING)
+      this._writeLogicalBlockState(posIndex, AIR_BLOCK_STRING)
     }
     for (let index = 0; index < baselinePos.length; index += 1) {
       this._writeSimulationState(baselinePos[index], baselineState[index], -1)
@@ -593,12 +614,17 @@ export default class RedstoneReplayController {
     }
     this._simState[posIndex] = state
     this._simMotion[posIndex] = motionIndex
-    this.world?.minecraftSchematicRenderLayer?._runtimeBridge?.lightRuntime?.setBlock(
-      this._timeline.posX[posIndex] + this.offset.x,
-      this._timeline.posY[posIndex] + this.offset.y,
-      this._timeline.posZ[posIndex] + this.offset.z,
-      this._getSettledBlockString(posIndex) || AIR_BLOCK_STRING,
-    )
+    this._writeLogicalBlockState(posIndex, this._getSettledBlockString(posIndex) || AIR_BLOCK_STRING)
+  }
+
+  _writeLogicalBlockState(posIndex, blockString) {
+    const x = this._timeline.posX[posIndex] + this.offset.x
+    const y = this._timeline.posY[posIndex] + this.offset.y
+    const z = this._timeline.posZ[posIndex] + this.offset.z
+    this.world?.minecraftSchematicRenderLayer?._runtimeBridge?.lightRuntime?.setBlock(x, y, z, blockString)
+    // Use the settled voxel shape, as lighting does. Animated piston meshes do
+    // not provide swept collision or push the player during their interpolation.
+    this._logicalBlockOverlay?.setBlock(x, y, z, blockString)
   }
 
   /** 坐标当前应显示的方块：活塞运动结束后的稳定状态优先，没有则用记录的状态 */
@@ -651,14 +677,20 @@ export default class RedstoneReplayController {
           return
         }
         this.ready = true
-        if (this.world.player?.movement && !this.world.player.movement.isFlying) {
-          this.world.player.movement.toggleFlight()
-          emitter.emit('hud:flight-mode-changed', { enabled: true })
+        // 馆藏回放是悬空的机器，进场就切到飞行并回到出生点；
+        // 用户上传的建筑只是其中有扇门，保持普通投影的行走方式和当前位置。
+        if (!this._simulatedControl) {
+          if (this.world.player?.movement && !this.world.player.movement.isFlying) {
+            this.world.player.movement.toggleFlight()
+            emitter.emit('hud:flight-mode-changed', { enabled: true })
+          }
+          this.world._applyBackendSpawn?.(this.world.backendConfig?.player, { movePlayer: true })
         }
-        this.world._applyBackendSpawn?.(this.world.backendConfig?.player, { movePlayer: true })
         this._emitState()
       })
       .catch((error) => {
+        this._logicalBlockOverlay?.dispose()
+        this._logicalBlockOverlay = null
         if (this._destroyed) {
           return
         }
@@ -722,14 +754,17 @@ export default class RedstoneReplayController {
     }
 
     const logicalLight = renderLayer._runtimeBridge?.lightRuntime
+    this._logicalBlockOverlay = renderLayer._runtimeBridge.createLogicalBlockOverlay()
     for (let posIndex = 0; posIndex < this._posKeys.length; posIndex++) {
-      const patch = this._buildWorldPatch(posIndex, this._simState[posIndex] >= 0 ? this._getSettledBlockString(posIndex) : AIR_BLOCK_STRING)
-      logicalLight?.setBlock(patch.worldX, patch.worldY, patch.worldZ, patch.blockString)
+      this._writeLogicalBlockState(posIndex, this._simState[posIndex] >= 0 ? this._getSettledBlockString(posIndex) : AIR_BLOCK_STRING)
     }
     logicalLight?.commit({ reset: true })
     const clearPatches = this._posKeys
       .map((_key, posIndex) => ({ ...this._buildWorldPatch(posIndex, AIR_BLOCK_STRING), lightRenderOnly: true }))
     const cleared = await renderLayer.setRuntimeBlocksAtWorldAsync(clearPatches)
+    if (this._destroyed) {
+      return
+    }
     if (!cleared) {
       throw new Error('无法建立独立活塞渲染层')
     }
@@ -967,8 +1002,11 @@ export default class RedstoneReplayController {
       await this.seek(0)
       return
     }
-    const direction = this._doorState === 'open' ? 'close' : 'open'
+    const pulse = this._doorControl.mode === 'pulse'
+    const direction = pulse ? 'pulse' : this._doorState === 'open' ? 'close' : 'open'
     const segment = this._doorControl.segments[direction]
+    // 脉冲段播完机器已经自己复位，门回到初始状态
+    const endState = pulse ? this._doorControl.initialState : direction === 'close' ? 'closed' : 'open'
     this._doorStarting = true
     this._emitState()
     try {
@@ -976,7 +1014,7 @@ export default class RedstoneReplayController {
       if (this._destroyed) {
         return
       }
-      this._doorSegment = { ...segment, state: direction === 'close' ? 'closed' : 'open' }
+      this._doorSegment = { ...segment, state: endState }
       this.play()
     }
     finally {
@@ -1006,11 +1044,18 @@ export default class RedstoneReplayController {
     )
     this._doorSegment = null
     if (this._doorControl) {
-      this._doorState = nextTick === 0
-        ? this._doorControl.initialState
-        : nextTick === this._doorControl.segments.close.toTick
+      const { initialState, mode, segments } = this._doorControl
+      if (nextTick === 0) {
+        this._doorState = initialState
+      }
+      else if (mode === 'pulse') {
+        this._doorState = nextTick === segments.pulse.toTick ? initialState : 'custom'
+      }
+      else {
+        this._doorState = nextTick === segments.close.toTick
           ? 'closed'
-          : nextTick === this._doorControl.segments.open.toTick ? 'open' : 'custom'
+          : nextTick === segments.open.toTick ? 'open' : 'custom'
+      }
     }
     this._resetSimulationStates()
 
@@ -1245,7 +1290,7 @@ export default class RedstoneReplayController {
   }
 
   update() {
-    if (!this.available) {
+    if (!this.available || this.error) {
       return
     }
 
@@ -1296,7 +1341,9 @@ export default class RedstoneReplayController {
       description: String(this.replay?.description || ''),
       changeCount: Number(this.replay?.changeCount || 0),
       lastChangedBlocks: this.lastChangedBlocks,
-      door: this._doorControl ? { state: this._doorState, busy: !!this._doorStarting || !!this._doorSegment || this.playing } : null,
+      door: this._doorControl ? { state: this._doorState, mode: this._doorControl.mode, busy: !!this._doorStarting || !!this._doorSegment || this.playing } : null,
+      // true：时间线由浏览器内模拟现场生成，而不是预计算回放文件
+      simulated: !!this._simulatedControl,
       switches: this._switches || [],
       hotTicks: this._hotTicks || [],
       engine: String(this.replay?.engine || ''),
@@ -1310,6 +1357,8 @@ export default class RedstoneReplayController {
     this.available = false
     emitter.off('redstone-replay:command', this._commandHandler)
     this.world.blockInteractionManager?.setUseBlockInterceptor?.(null)
+    this._logicalBlockOverlay?.dispose()
+    this._logicalBlockOverlay = null
     this._clearActiveMotions()
     this._clearDynamicBlocks()
     this._motionLayer?.destroy()

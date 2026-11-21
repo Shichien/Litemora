@@ -113,6 +113,13 @@ function normalizeFinitePosition(position = null) {
   return { x, y, z }
 }
 
+function localBlockKey(worldX, worldY, worldZ, offset) {
+  const x = Math.floor(Number(worldX) - Number(offset.x || 0))
+  const y = Math.floor(Number(worldY) - Number(offset.y || 0))
+  const z = Math.floor(Number(worldZ) - Number(offset.z || 0))
+  return [x, y, z].every(Number.isFinite) ? `${x},${y},${z}` : null
+}
+
 function clampInteger(value, min, max, fallback) {
   const normalized = Math.floor(Number(value))
   return Number.isFinite(normalized)
@@ -587,6 +594,8 @@ export default class SchematicRendererRuntimeBridge {
     this.runtimeOffset = { x: 0, y: 0, z: 0 }
     this._runtimePatchQueue = Promise.resolve()
     this._collisionProfileCache = new Map()
+    // Independent animated meshes still need logical block states for collision.
+    this._logicalBlockOverlays = new Set()
     // 合并着色材质：签名 -> vertexColors 材质；源材质数组 -> 追加了合并材质的副本
     this._tintMergedMaterials = new Map()
     this._tintMergedArrays = new WeakMap()
@@ -920,6 +929,10 @@ export default class SchematicRendererRuntimeBridge {
     this._chunkStates.clear()
     this._chunkQueue = []
     this._collisionProfileCache.clear()
+    for (const overlay of this._logicalBlockOverlays) {
+      overlay.clear()
+    }
+    this._logicalBlockOverlays.clear()
     this.runtimeOffset = { x: 0, y: 0, z: 0 }
     this.loadedSourceSignature = ''
   }
@@ -1354,6 +1367,44 @@ export default class SchematicRendererRuntimeBridge {
     }
   }
 
+  // An overlay owns only its own states. Explicit air (null) masks the static
+  // schematic; undefined means no override. Detached sources invalidate handles.
+  createLogicalBlockOverlay() {
+    const blocks = new Map()
+    this._logicalBlockOverlays.add(blocks)
+    return {
+      setBlock: (worldX, worldY, worldZ, blockString) => {
+        if (!this.schematicObject || !this._logicalBlockOverlays.has(blocks)) {
+          return false
+        }
+        const key = localBlockKey(worldX, worldY, worldZ, this.runtimeOffset)
+        if (key === null) {
+          return false
+        }
+        blocks.set(key, this._createRuntimeBlockRecord(blockString))
+        return true
+      },
+      dispose: () => {
+        this._logicalBlockOverlays.delete(blocks)
+        blocks.clear()
+      },
+    }
+  }
+
+  _getLogicalBlockOverride(worldX, worldY, worldZ, offset) {
+    if (!this._logicalBlockOverlays.size) {
+      return undefined
+    }
+    const key = localBlockKey(worldX, worldY, worldZ, offset)
+    let block
+    for (const overlay of this._logicalBlockOverlays) {
+      if (overlay.has(key)) {
+        block = overlay.get(key)
+      }
+    }
+    return block
+  }
+
   _enqueueRuntimePatch(task) {
     const next = this._runtimePatchQueue.then(task, task)
     this._runtimePatchQueue = next.catch(() => {})
@@ -1558,6 +1609,10 @@ export default class SchematicRendererRuntimeBridge {
   }
 
   getBlockWorld(worldX, worldY, worldZ, offset = this.runtimeOffset) {
+    const override = this._getLogicalBlockOverride(worldX, worldY, worldZ, offset)
+    if (override !== undefined) {
+      return override
+    }
     const schematic = this.schematicObject
     const localPosition = this._getLocalBlockCoordinates(worldX, worldY, worldZ, offset)
     if (!schematic || !localPosition) {
@@ -1584,6 +1639,11 @@ export default class SchematicRendererRuntimeBridge {
     const resultIndexes = []
     for (let index = 0; index < positions.length; index++) {
       const position = positions[index]
+      const override = this._getLogicalBlockOverride(position?.x, position?.y, position?.z, offset)
+      if (override !== undefined) {
+        results[index] = override
+        continue
+      }
       const local = this._getLocalBlockCoordinates(position?.x, position?.y, position?.z, offset)
       if (!local) {
         continue

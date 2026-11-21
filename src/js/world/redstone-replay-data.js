@@ -363,7 +363,7 @@ export function packRedstoneReplay(rawReplay) {
   for (const frame of frames) {
     for (const entry of frame.actions || []) {
       const pos = entry?.action?.pos
-      if (!pos) {
+      if (!pos || ['set_block', 'break_block', 'set_block_entity'].includes(entry.action.type)) {
         continue
       }
       const x = Math.floor(Number(pos.x))

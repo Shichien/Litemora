@@ -1,0 +1,17 @@
+[package]
+name = "redstone-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+redstone-core = { path = "../redstone-core" }
+redstone-io = { path = "../redstone-io" }
+redstone-java-26 = { path = "../redstone-java-26" }
+serde_json.workspace = true
+# 必须与生成 JS 胶水代码的 wasm-bindgen CLI 版本完全一致.
+wasm-bindgen = "=0.2.126"
