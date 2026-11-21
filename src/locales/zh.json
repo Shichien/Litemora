@@ -77,14 +77,11 @@
   },
   "home": {
     "nav": {
-      "loginGithub": "使用 GitHub 登录",
       "account": "账户",
       "signIn": "选择登录方式",
       "unavailable": "暂时没有可用的登录方式。"
     },
     "hero": {
-      "subtitle": "把 Minecraft 原理图变成可以走进去的世界。",
-      "eyebrow": "红石 · 建筑 · 网页世界",
       "ctaCreate": "创建你的空间",
       "lever": "拉杆",
       "leverOn": "ON",
@@ -92,8 +89,7 @@
     },
     "quote": {
       "line1": "每个原理图都承载着一个回忆。",
-      "line2": "每个建筑都值得被记忆重走。",
-      "desc": "这是一个 Minecraft 档案馆，记录你的一切建筑回忆。支持建筑归档与第一人称探索。"
+      "line2": "每个建筑都值得被记忆重走。"
     },
     "stats": {
       "formats": "格式支持",
@@ -102,25 +98,20 @@
     },
     "features": {
       "step1": {
-        "title": "导入",
-        "subtitle": "从文件到世界",
-        "desc": "支持上传 .litematic, .schem 和 .schematic 格式文件。"
+        "title": "导入"
       },
       "step2": {
         "title": "还原",
-        "subtitle": "原生视觉表现",
         "desc": "直接解析真实 Minecraft 方块状态与资源包，实现 1:1 外观保真。"
       },
       "step3": {
         "title": "游览",
-        "subtitle": "第一人称视角",
         "desc": "具有真实物理碰撞，在你的作品中自由长廊漫步。"
       }
     },
     "create": {
       "title1": "创建你的",
       "title2": "世界空间",
-      "desc": "Litemora 空间不仅是一个只读预览，它是你 Minecraft 原理图的永久在线画廊，完全在浏览器中依靠真实几何和碰撞运行。",
       "placeholder": "你的空间名称或标识",
       "blockTitle": "命令方块",
       "submit": "创建空间",
@@ -142,9 +133,9 @@
       }
     },
     "discover": {
-      "title": "探索空间",
-      "desc": "浏览社区中精选的建筑世界与原理图画廊。"
+      "title": "探索空间"
     },
+    "documentation": "文档",
     "footer": "Litemora - 开源的原理图查看器。由 Cubane 与 Three.js 提供支持。"
   },
   "credits": {
@@ -162,12 +153,6 @@
       "blocks": "{count} 方块",
       "size": "尺寸（X × Y × Z）",
       "previewAlt": "{title} 的世界预览"
-    },
-    "empty": {
-      "hint": "电路已经接好，等第一个世界通电。"
-    },
-    "notFound": {
-      "hint": "检查一下地址拼写，或回到首页探索其他 Space。"
     }
   }
 }

@@ -77,14 +77,11 @@
   },
   "home": {
     "nav": {
-      "loginGithub": "Login with GitHub",
       "account": "Account",
       "signIn": "Choose a sign-in method",
       "unavailable": "Sign-in is currently unavailable."
     },
     "hero": {
-      "subtitle": "Where schematics become playable worlds.",
-      "eyebrow": "Redstone · Architecture · Web worlds",
       "ctaCreate": "Create your space",
       "lever": "Lever",
       "leverOn": "ON",
@@ -92,8 +89,7 @@
     },
     "quote": {
       "line1": "Every schematic carries a memory.",
-      "line2": "Every build deserves to be revisited.",
-      "desc": "This is a Minecraft archive for your architectural memories, with build preservation and first-person exploration."
+      "line2": "Every build deserves to be revisited."
     },
     "stats": {
       "formats": "Formats",
@@ -102,25 +98,20 @@
     },
     "features": {
       "step1": {
-        "title": "Typical",
-        "subtitle": "Schematic to World",
-        "desc": "Supports .litematic, .schem, and .schematic formats."
+        "title": "Typical"
       },
       "step2": {
         "title": "Create",
-        "subtitle": "Native Aesthetics",
         "desc": "Uses real Minecraft block states and resource packs for 1:1 fidelity."
       },
       "step3": {
         "title": "Share",
-        "subtitle": "First Person View",
         "desc": "Walk through your creations with true physics and collision."
       }
     },
     "create": {
       "title1": "Create Your",
       "title2": "World Space.",
-      "desc": "A Litemora space is a permanent, shareable gallery for your Minecraft schematic, running purely in the browser with real geometry and collision.",
       "placeholder": "your-space-name",
       "blockTitle": "Command block",
       "submit": "Create space",
@@ -142,9 +133,9 @@
       }
     },
     "discover": {
-      "title": "Discover Spaces",
-      "desc": "Explore curated schematic worlds created by the community."
+      "title": "Discover Spaces"
     },
+    "documentation": "Documentation",
     "footer": "Litemora - Open Source Schematic Viewer. Powered by Cubane & Three.js."
   },
   "credits": {
@@ -162,12 +153,6 @@
       "blocks": "{count} blocks",
       "size": "Size (X × Y × Z)",
       "previewAlt": "Preview of {title}"
-    },
-    "empty": {
-      "hint": "The circuit is wired up and waiting for its first world."
-    },
-    "notFound": {
-      "hint": "Check the address, or head back home to explore other Spaces."
     }
   }
 }

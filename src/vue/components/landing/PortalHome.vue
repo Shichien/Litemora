@@ -6,19 +6,21 @@ import {
   fetchDiscoverProjectionFeed,
 } from '@three/gallery/gallery-api.js'
 import { getStaticThumbnailUrl, loadThumbnailManifest } from '@three/gallery/world-thumbnails.js'
+import { normalizeThumbnailSky, THUMBNAIL_SKIES } from '@three/gallery/thumbnail-skies.js'
 import { resolvePublicAssetUrl } from '@three/utils/public-asset-url.js'
 import { buildSpaceUrl, isValidSpaceName, normalizeSpaceName } from '@three/utils/space-context.js'
 import ProviderIcon from '@ui-components/auth/ProviderIcon.vue'
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
 import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import { useGalleryAuth } from '@ui/composables/useGalleryAuth.js'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { iconBlock, PLACEHOLDER_BUILD_COUNT } from './portal-scenes.js'
 import PortalDiscoverCard from './PortalDiscoverCard.vue'
 import PortalSignalSection from './PortalSignalSection.vue'
-import { heroBuildScene, iconBlock, PLACEHOLDER_BUILD_COUNT } from './portal-scenes.js'
 
-const { t } = useI18n()
+const PistonDoorPreview = defineAsyncComponent(() => import('./PistonDoorPreview.vue'))
+const { t, te } = useI18n()
 const authMenuOpen = ref(false)
 const authMenuRef = ref(null)
 const authTriggerRef = ref(null)
@@ -183,6 +185,7 @@ function buildDiscoverCard(item, fallback = null) {
     author: `By ${ownerName}`,
     url: `/${spaceName}/worlds/${routeId}`,
     imageUrl,
+    thumbnailSky: normalizeThumbnailSky(item.thumbnailSky),
     ownerAvatar: String(item.ownerAvatar || '').trim(),
     ownerInitial: ownerName.slice(0, 1).toUpperCase() || 'L',
     spaceLabel: spaceName,
@@ -221,24 +224,23 @@ const logoUrl = resolvePublicAssetUrl('logo.webp')
 const lampOffUrl = blockTex('redstone_lamp')
 const lampOnUrl = blockTex('redstone_lamp_on')
 const rootStyle = {
-  '--signal-dust-line': `url("${blockTex('redstone_dust_line0')}")`,
-  '--signal-dust-dot': `url("${blockTex('redstone_dust_dot')}")`,
+  '--signal-dust': `url("${resolvePublicAssetUrl('homepage/redstone-rail.png')}")`,
+  '--button-circuit': `url("${resolvePublicAssetUrl('homepage/redstone-button.png')}")`,
   '--portal-command-block': `url("${blockTex('command_block_front')}")`,
 }
 
-const heroBlocks = heroBuildScene()
 const stepIcons = [
   iconBlock('piston_side', { top: 'piston_top' }),
   iconBlock('crafting_table_front', { top: 'crafting_table_top' }),
   iconBlock('observer_front', { top: 'observer_top' }),
 ]
-const formatChips = ['.litematic', '.schem', '.schematic']
 
 const prefersReducedMotion = typeof window !== 'undefined'
   && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
-// The lever in the hero powers the whole page; it switches on shortly after load.
+// Page lighting is independent from the interactive door.
 const leverOn = ref(true)
+const doorOpen = ref(false)
 const booted = ref(false)
 
 // ---------------------------------------------------------------------------
@@ -273,50 +275,23 @@ function sectionRef(name) {
   }
 }
 
-// Hero art scales down to fit its column.
-const heroArtFrame = ref(null)
-const heroArtScale = ref(1)
-const heroArtSize = ref({ width: 0, height: 0 })
-function measureHeroArt() {
-  const frame = heroArtFrame.value
-  const scene = frame?.querySelector('.iso-scene')
-  if (!frame || !scene) {
-    return
-  }
-  const width = scene.offsetWidth
-  const height = scene.offsetHeight
-  heroArtSize.value = { width, height }
-  heroArtScale.value = width > 0 ? Math.min(1, frame.clientWidth / width) : 1
-}
-const heroStageStyle = computed(() => ({
-  transform: heroArtScale.value < 1 ? `scale(${heroArtScale.value})` : 'none',
-}))
-const heroArtBoxStyle = computed(() => ({
-  height: heroArtSize.value.height ? `${Math.round(heroArtSize.value.height * heroArtScale.value)}px` : null,
-}))
-
-// The rail starts at the primary CTA: a stub runs from the CTA's left edge to the gutter.
 const heroSection = ref(null)
 const heroCta = ref(null)
 const railTop = ref(0)
-const railStub = ref(0)
 function measureRail() {
   const sectionEl = heroSection.value?.$el
   const ctaEl = heroCta.value
-  const railEl = sectionEl?.querySelector(':scope > .signal-rail')
-  if (!sectionEl || !ctaEl || !railEl) {
+  if (!sectionEl || !ctaEl) {
     return
   }
   const sectionRect = sectionEl.getBoundingClientRect()
   const ctaRect = ctaEl.getBoundingClientRect()
-  const railRect = railEl.getBoundingClientRect()
   railTop.value = Math.round(ctaRect.top + ctaRect.height / 2 - sectionRect.top)
-  railStub.value = Math.max(0, Math.round(ctaRect.left - (railRect.left + railRect.width / 2)))
-}
-
-function measureLayout() {
-  measureHeroArt()
-  measureRail()
+  // Keep the 16-texel pattern in phase across independently powered sections.
+  const origin = sectionRect.top + railTop.value
+  for (const el of sectionEls.values()) {
+    el.style.setProperty('--dust-offset', `${Math.round(origin - el.getBoundingClientRect().top)}px`)
+  }
 }
 
 function scrollToSection(id) {
@@ -390,17 +365,14 @@ onMounted(async () => {
   void loadThumbnails()
 
   await nextTick()
-  measureLayout()
+  measureRail()
   if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => measureLayout())
-    if (heroArtFrame.value) {
-      resizeObserver.observe(heroArtFrame.value)
-    }
-    if (heroSection.value?.$el) {
-      resizeObserver.observe(heroSection.value.$el)
+    resizeObserver = new ResizeObserver(measureRail)
+    for (const el of [heroCta.value, heroSection.value.$el, ...sectionEls.values()]) {
+      resizeObserver.observe(el)
     }
   }
-  document.fonts?.ready?.then(() => measureLayout()).catch(() => {})
+  document.fonts?.ready?.then(measureRail)
   setupObservers()
 
   if (prefersReducedMotion) {
@@ -527,14 +499,10 @@ onBeforeUnmount(() => {
       marker="none"
       :powered="heroPowered"
       :rail-top="railTop"
-      :stub="railStub"
+      stub
     >
       <div class="hero-grid">
         <div class="hero-copy">
-          <p class="hero-eyebrow">
-            <span class="hero-eyebrow__dot" aria-hidden="true" />
-            {{ t('home.hero.eyebrow') }}
-          </p>
           <h1 class="hero-title">
             <button
               type="button"
@@ -547,47 +515,43 @@ onBeforeUnmount(() => {
             </button>
             <span class="hero-title-word">Litemora</span>
           </h1>
-          <p class="hero-subtitle">{{ t('home.hero.subtitle') }}</p>
 
           <div class="hero-actions">
             <a
               ref="heroCta"
               href="#create-space"
-              class="rs-btn rs-btn--primary rs-btn--lg hero-cta"
+              class="rs-btn rs-btn--primary rs-btn--lg"
               @click.prevent="scrollToSection('create-space')"
             >
+              <span class="hero-cta-circuit" aria-hidden="true" />
               {{ t('home.hero.ctaCreate') }}
             </a>
             <a
               href="#discover"
-              class="rs-btn rs-btn--dot rs-btn--lg"
+              class="rs-btn rs-btn--lg"
               @click.prevent="scrollToSection('discover')"
             >
+              <span class="hero-cta-circuit" aria-hidden="true" />
               {{ t('home.discover.title') }}
             </a>
           </div>
-
-          <ul class="hero-formats" :aria-label="t('home.stats.formats')">
-            <li v-for="chip in formatChips" :key="chip" class="rs-chip">{{ chip }}</li>
-          </ul>
         </div>
 
         <div class="hero-art">
-          <div ref="heroArtFrame" class="hero-art__frame" :style="heroArtBoxStyle">
-            <div class="hero-art__stage" :style="heroStageStyle">
-              <IsoScene :blocks="heroBlocks" :unit="44" :powered="heroPowered" />
-            </div>
+          <div class="hero-art__frame">
+            <PistonDoorPreview :open="doorOpen" />
           </div>
           <button
             type="button"
             class="hero-lever"
-            :class="{ 'is-on': leverOn }"
-            :aria-pressed="leverOn ? 'true' : 'false'"
-            @click="leverOn = !leverOn"
+            :class="{ 'is-on': doorOpen }"
+            :aria-pressed="doorOpen ? 'true' : 'false'"
+            :aria-label="doorOpen ? '关闭活塞门' : '打开活塞门'"
+            @click="doorOpen = !doorOpen"
           >
             <span class="hero-lever__switch" aria-hidden="true"><span /></span>
-            <span class="hero-lever__label">{{ t('home.hero.lever') }}</span>
-            <span class="hero-lever__state rs-pixel">{{ leverOn ? t('home.hero.leverOn') : t('home.hero.leverOff') }}</span>
+            <span class="hero-lever__label">{{ doorOpen ? '关门' : '开门' }}</span>
+            <span class="hero-lever__state rs-pixel">{{ doorOpen ? '已打开' : '已关闭' }}</span>
           </button>
         </div>
       </div>
@@ -605,7 +569,6 @@ onBeforeUnmount(() => {
           <span>{{ t('home.quote.line1') }}</span>
           <span class="quote-line2">{{ t('home.quote.line2') }}</span>
         </h2>
-        <p>{{ t('home.quote.desc') }}</p>
       </div>
 
       <div class="stats-row">
@@ -659,9 +622,8 @@ onBeforeUnmount(() => {
               <span class="step-num rs-pixel">0{{ step }}</span>
             </div>
             <h4 class="step-title">{{ t(`home.features.step${step}.title`) }}</h4>
-            <p class="step-desc">
-              {{ t(`home.features.step${step}.subtitle`) }}
-              <span class="muted">{{ t(`home.features.step${step}.desc`) }}</span>
+            <p v-if="te(`home.features.step${step}.desc`)" class="step-desc">
+              {{ t(`home.features.step${step}.desc`) }}
             </p>
           </div>
         </template>
@@ -681,7 +643,6 @@ onBeforeUnmount(() => {
             <span>{{ t('home.create.title1') }}</span>
             <span class="section-heading__accent">{{ t('home.create.title2') }}</span>
           </h2>
-          <p class="section-desc">{{ t('home.create.desc') }}</p>
 
           <form class="create-form command-block" :class="{ 'is-ready': canCreate }" @submit.prevent="handleSubmit">
             <div class="command-block__bar">
@@ -755,13 +716,13 @@ onBeforeUnmount(() => {
       :powered="sectionPowered('discover')"
     >
       <h2 class="section-heading">{{ t('home.discover.title') }}</h2>
-      <p class="section-desc">{{ t('home.discover.desc') }}</p>
 
       <div class="discover-grid" :class="{ 'is-even': discoverSpaces.length === 4 }">
         <PortalDiscoverCard
-          v-for="space in discoverSpaces"
+          v-for="(space, index) in discoverSpaces"
           :key="space.url"
           :space="space"
+          :sky="space.thumbnailSky || THUMBNAIL_SKIES[index % THUMBNAIL_SKIES.length]"
           :variant="space.variant"
         />
       </div>
@@ -778,6 +739,7 @@ onBeforeUnmount(() => {
     >
       <RedstoneCredits class="home-credits" />
       <p>{{ t('home.footer') }}</p>
+      <a class="rs-btn home-docs" href="/docs/api/">{{ t('home.documentation') }}</a>
     </PortalSignalSection>
   </main>
 </template>
@@ -1025,30 +987,6 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.hero-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 22px;
-  color: #ff8f7c;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.hero-eyebrow__dot {
-  width: 8px;
-  height: 8px;
-  background: var(--rs-red-off);
-  transition: background 0.3s, box-shadow 0.3s;
-}
-
-.is-powered .hero-eyebrow__dot {
-  background: var(--rs-red-hot);
-  box-shadow: var(--rs-glow);
-}
-
 .hero-title {
   display: flex;
   align-items: center;
@@ -1121,17 +1059,6 @@ onBeforeUnmount(() => {
   text-shadow: 4px 4px 0 #2a0b08;
 }
 
-.hero-subtitle {
-  max-width: 15em;
-  margin: 30px 0 0;
-  color: var(--rs-text);
-  font-size: clamp(28px, 2.7vw, 38px);
-  font-weight: 700;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-  text-wrap: balance;
-}
-
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1141,17 +1068,52 @@ onBeforeUnmount(() => {
 
 .hero-actions .rs-btn {
   --rs-btn-h: 48px;
-  padding: 0 22px;
+  gap: 12px;
+  padding: 0 18px 0 0;
   font-size: 15px;
 }
 
-.hero-formats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 28px 0 0;
-  padding: 0;
-  list-style: none;
+.hero-cta-circuit {
+  display: grid;
+  align-items: center;
+  flex: none;
+  align-self: stretch;
+  padding-right: 8px;
+  background: #211e20;
+  border-right: 1px solid #110e0f;
+  box-shadow: inset 0 1px #ffffff17, inset 0 -2px #0005;
+}
+
+.hero-cta-circuit::before {
+  content: '';
+  width: 48px;
+  height: 16px;
+  background: var(--button-circuit) left var(--circuit-frame, 0%) / 100% 400% no-repeat;
+  image-rendering: pixelated;
+  transition: background-position-y 300ms steps(3, end);
+}
+
+.hero-actions .rs-btn:is(:hover, :focus-visible, :active) {
+  --circuit-frame: 100%;
+}
+
+.hero-actions .rs-btn:active .hero-cta-circuit::before {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-content.is-powered .hero-cta-circuit::before {
+    animation: hero-circuit-start 900ms steps(3, end);
+  }
+
+  .hero-actions .rs-btn + .rs-btn .hero-cta-circuit::before {
+    animation-delay: 150ms;
+  }
+}
+
+@keyframes hero-circuit-start {
+  0%, 100% { background-position-y: var(--circuit-frame, 0%); }
+  35%, 70% { background-position-y: 100%; }
 }
 
 .hero-art {
@@ -1187,12 +1149,6 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   width: 100%;
-}
-
-.hero-art__stage {
-  flex: none;
-  transform-origin: 50% 0;
-  filter: drop-shadow(0 28px 24px rgba(0, 0, 0, 0.55));
 }
 
 /* Lever: switches the page's redstone on and off. */
@@ -1276,14 +1232,6 @@ onBeforeUnmount(() => {
   color: var(--rs-red-hot);
 }
 
-.section-desc {
-  max-width: 34em;
-  margin: 16px 0 0;
-  color: var(--rs-text-2);
-  font-size: 16px;
-  line-height: 1.7;
-}
-
 /* ---------------------------------------------------------------- Manifesto */
 .quote-stats-section {
   --signal-marker-top: calc(var(--signal-pad-top) + 10px);
@@ -1307,14 +1255,6 @@ onBeforeUnmount(() => {
 
 .quote-stats-section.is-powered .quote-line2 {
   color: var(--rs-text-2);
-}
-
-.quote-container p {
-  max-width: 40em;
-  margin: 24px 0 0;
-  color: var(--rs-text-2);
-  font-size: 17px;
-  line-height: 1.75;
 }
 
 .stats-row {
@@ -1418,20 +1358,11 @@ onBeforeUnmount(() => {
 }
 
 .step-desc {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   margin: 8px 0 0;
-  color: var(--rs-text);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.6;
-}
-
-.step-desc .muted {
   color: var(--rs-text-2);
   font-weight: 400;
   font-size: 14px;
+  line-height: 1.6;
 }
 
 /* Wire + repeater between step cards. */
@@ -1470,10 +1401,6 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   align-items: start;
   gap: 72px;
-}
-
-.create-half .section-desc {
-  max-width: 36em;
 }
 
 /* Command block terminal */
@@ -1731,6 +1658,10 @@ onBeforeUnmount(() => {
   padding: 10px 14px;
 }
 
+.home-docs {
+  margin-top: 16px;
+}
+
 /* ---------------------------------------------------------------- Responsive */
 @media (max-width: 1100px) {
   .hero-grid {
@@ -1779,12 +1710,6 @@ onBeforeUnmount(() => {
     padding-bottom: 48px;
   }
 
-  .hero-eyebrow {
-    margin-bottom: 18px;
-    font-size: 12px;
-    letter-spacing: 0.1em;
-  }
-
   .hero-title {
     gap: 14px;
   }
@@ -1805,11 +1730,6 @@ onBeforeUnmount(() => {
     text-shadow: 3px 3px 0 #2a0b08;
   }
 
-  .hero-subtitle {
-    margin-top: 22px;
-    font-size: 25px;
-  }
-
   .hero-actions {
     margin-top: 28px;
     gap: 10px;
@@ -1818,6 +1738,9 @@ onBeforeUnmount(() => {
   .hero-actions .rs-btn {
     --rs-btn-h: 46px;
     flex: 1 1 auto;
+    justify-content: flex-start;
+    gap: 8px;
+    padding-right: 12px;
   }
 
   .stats-row {
@@ -1875,6 +1798,7 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .Litemora-home::before,
+  .hero-cta-circuit::before,
   .hero-art::before,
   .quote-line2,
   .stat-lamp,

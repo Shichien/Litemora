@@ -9,21 +9,19 @@
 //   --signal-gutter     width of the rail gutter (content starts after it)
 //   --signal-pad-top    space above the section content
 //   --signal-marker-top marker offset from the section top
-//   --signal-dust-line  mask url of the dust texture (vertical)
-//   --signal-dust-dot   mask url of the dust dot texture
-import RedstoneTorch from '@ui-components/redstone/RedstoneTorch.vue'
-import { computed } from 'vue'
+//   --signal-dust       top-down tiles from the default resource pack
 import { resolvePublicAssetUrl } from '@/js/utils/public-asset-url.js'
+import RedstoneTorch from '@ui-components/redstone/RedstoneTorch.vue'
 
-const props = defineProps({
+defineProps({
   powered: { type: Boolean, default: false },
   // 'torch' | 'lamp' | 'none'
   marker: { type: String, default: 'torch' },
   as: { type: String, default: 'section' },
   // Rail start in px from the section top (the hero feeds the rail from its CTA).
   railTop: { type: Number, default: 0 },
-  // Optional horizontal stub at railTop, running right for this many px.
-  stub: { type: Number, default: 0 },
+  // Connect the rail to the content edge with a south/east bend.
+  stub: { type: Boolean, default: false },
   // The rail ends at the marker instead of the section bottom.
   end: { type: Boolean, default: false },
 })
@@ -31,25 +29,20 @@ const props = defineProps({
 const BLOCK_DIR = 'minecraft-default-pack/assets/minecraft/textures/block/'
 const lampOff = resolvePublicAssetUrl(`${BLOCK_DIR}redstone_lamp.png`)
 const lampOn = resolvePublicAssetUrl(`${BLOCK_DIR}redstone_lamp_on.png`)
-
-const railStyle = computed(() => (props.railTop > 0 ? { top: `${props.railTop}px` } : null))
-const stubStyle = computed(() => ({ top: `${props.railTop}px`, height: `${Math.max(0, props.stub)}px` }))
 </script>
 
 <template>
   <component
     :is="as"
     class="signal-section"
-    :class="{ 'is-powered': powered, 'is-end': end, [`has-${marker}`]: marker !== 'none' }"
+    :class="{ 'is-powered': powered, 'is-end': end, 'has-stub': stub }"
+    :style="{ '--rail-top': `${railTop}px` }"
   >
-    <span class="signal-rail" :style="railStyle" aria-hidden="true">
-      <span class="signal-rail__glow" />
-      <span class="signal-rail__on" />
-    </span>
-    <span v-if="stub > 0" class="signal-stub" :style="stubStyle" aria-hidden="true">
-      <span class="signal-rail__on" />
-    </span>
-    <span v-if="stub > 0" class="signal-joint" :style="{ top: `${railTop}px` }" aria-hidden="true" />
+    <span class="signal-dust signal-rail" aria-hidden="true" />
+    <template v-if="stub">
+      <span class="signal-dust signal-stub" aria-hidden="true" />
+      <span class="signal-dust signal-joint" aria-hidden="true" />
+    </template>
 
     <span v-if="marker === 'torch'" class="signal-marker" aria-hidden="true">
       <span class="signal-marker__layer is-off"><RedstoneTorch :lit="false" :size="48" /></span>
@@ -68,8 +61,7 @@ const stubStyle = computed(() => ({ top: `${props.railTop}px`, height: `${Math.m
 
 <style scoped>
 .signal-section {
-  --_rail-w: 32px;
-  --_core: 4px;
+  --_tile: 48px;
   --_rail-x: calc(var(--signal-inset, 24px) + var(--signal-gutter, 64px) / 2);
   position: relative;
   box-sizing: border-box;
@@ -86,18 +78,49 @@ const stubStyle = computed(() => ({ top: `${props.railTop}px`, height: `${Math.m
   min-width: 0;
 }
 
-/* Rail: a column of tiled dust texture. Off = dark dust, on = lit dust + travelling pulse. */
-.signal-rail,
-.signal-stub {
+/* The atlas contains the three wire shapes at power 0, then at power 15. */
+.signal-dust {
+  --_column: 0;
   position: absolute;
-  left: calc(var(--_rail-x) - var(--_rail-w) / 2);
-  width: var(--_rail-w);
+  z-index: 1;
+  left: calc(var(--_rail-x) - var(--_tile) / 2);
+  width: var(--_tile);
   pointer-events: none;
 }
 
+.signal-dust,
+.signal-dust::after {
+  background: var(--signal-dust) repeat-y;
+  background-size: auto var(--_tile);
+  background-position: calc(0px - var(--_column) * var(--_tile)) var(--_phase, 0px);
+  image-rendering: pixelated;
+}
+
+.signal-dust::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-position-x: calc((-3 - var(--_column)) * var(--_tile));
+  clip-path: inset(0 0 100%);
+}
+
+.signal-section.is-powered > .signal-dust::after {
+  clip-path: inset(0);
+}
+
 .signal-rail {
-  top: 0;
+  --_phase: calc(var(--dust-offset, 0px) + var(--_tile) / 2);
+  top: var(--rail-top);
   bottom: 0;
+}
+
+.signal-rail::after {
+  transition: clip-path 0.6s steps(8, end);
+}
+
+.has-stub .signal-rail {
+  --_phase: 0px;
+  top: calc(var(--rail-top) + var(--_tile) / 2);
 }
 
 .is-end .signal-rail {
@@ -105,91 +128,26 @@ const stubStyle = computed(() => ({ top: `${props.railTop}px`, height: `${Math.m
   height: calc(var(--signal-marker-top, 96px) + 12px);
 }
 
-/* Mask = a solid wire core plus the scattered dust texture around it. */
-.signal-rail::before,
-.signal-stub::before,
-.signal-rail__on {
-  content: '';
-  position: absolute;
-  inset: 0;
-  -webkit-mask:
-    linear-gradient(90deg, transparent calc(50% - var(--_core) / 2), #000 calc(50% - var(--_core) / 2), #000 calc(50% + var(--_core) / 2), transparent calc(50% + var(--_core) / 2)),
-    var(--signal-dust-line) center top / var(--_rail-w) var(--_rail-w) repeat-y;
-  mask:
-    linear-gradient(90deg, transparent calc(50% - var(--_core) / 2), #000 calc(50% - var(--_core) / 2), #000 calc(50% + var(--_core) / 2), transparent calc(50% + var(--_core) / 2)),
-    var(--signal-dust-line) center top / var(--_rail-w) var(--_rail-w) repeat-y;
-}
-
-.signal-rail::before,
-.signal-stub::before {
-  background: #5a1610;
-}
-
-.signal-rail__on {
-  background:
-    linear-gradient(180deg, transparent 0, rgba(255, 214, 196, 0.95) 50%, transparent 100%) 0 -180px / 100% 180px no-repeat,
-    var(--rs-red-hot);
-  clip-path: inset(0 0 100% 0);
-  transition: clip-path 0.9s steps(9, end);
-}
-
-.signal-rail__glow {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 20%, rgba(255, 50, 25, 0.16) 50%, transparent 80%);
-  clip-path: inset(0 0 100% 0);
-  transition: clip-path 0.9s steps(9, end);
-}
-
-.is-powered .signal-rail__on,
-.is-powered .signal-rail__glow {
-  clip-path: inset(0);
-}
-
-.is-powered .signal-rail__on {
-  animation: signal-pulse 2.8s linear 0.9s infinite;
-}
-
-/* Horizontal stub: the same vertical strip, rotated to run right from the rail. */
 .signal-stub {
+  --_column: 1;
+  left: var(--_rail-x);
+  top: var(--rail-top);
+  height: calc((var(--signal-gutter) - var(--_tile)) / 2);
   transform-origin: 50% 0;
   transform: rotate(-90deg);
 }
 
-.signal-stub .signal-rail__on {
-  animation: none;
-  transition-duration: 0.3s;
-  transition-timing-function: steps(3, end);
-}
-
 .signal-joint {
-  position: absolute;
-  left: calc(var(--_rail-x) - 5px);
-  width: 10px;
-  height: 10px;
-  margin-top: -5px;
-  background: #5a1610;
-  transition: background 0.2s, box-shadow 0.2s;
-}
-
-.is-powered .signal-joint {
-  background: var(--rs-red-hot);
-  box-shadow: 0 0 8px rgba(255, 60, 30, 0.7);
-}
-
-@keyframes signal-pulse {
-  from {
-    background-position: 0 -180px, 0 0;
-  }
-  to {
-    background-position: 0 calc(100% + 180px), 0 0;
-  }
+  --_column: 2;
+  top: calc(var(--rail-top) - var(--_tile) / 2);
+  height: var(--_tile);
 }
 
 /* Marker on the rail, level with the section heading. */
 .signal-marker {
   --_mk: 48px;
   position: absolute;
+  z-index: 1;
   left: calc(var(--_rail-x) - var(--_mk) / 2);
   top: calc(var(--signal-marker-top, 96px) - var(--_mk) / 2 + 8px);
   width: var(--_mk);
@@ -227,12 +185,12 @@ const stubStyle = computed(() => ({ top: `${props.railTop}px`, height: `${Math.m
   opacity: 0;
 }
 
-.is-powered .signal-marker__layer.is-on {
+.signal-section.is-powered > .signal-marker .is-on {
   opacity: 1;
   transition-delay: 0.2s;
 }
 
-.is-powered .signal-marker__layer.is-off {
+.signal-section.is-powered > .signal-marker .is-off {
   opacity: 0;
   transition-delay: 0.2s;
 }
@@ -252,19 +210,18 @@ const stubStyle = computed(() => ({ top: `${props.railTop}px`, height: `${Math.m
   box-shadow: 0 0 0 2px #050506;
 }
 
-.is-powered .signal-marker--lamp .signal-marker__layer.is-on {
+.signal-section.is-powered > .signal-marker--lamp .is-on {
   box-shadow: 0 0 0 2px #050506, 0 0 22px rgba(255, 190, 90, 0.45);
   transition-delay: 0.8s;
 }
 
-.is-powered .signal-marker--lamp .signal-marker__layer.is-off {
+.signal-section.is-powered > .signal-marker--lamp .is-off {
   transition-delay: 0.8s;
 }
 
 @media (max-width: 720px) {
   .signal-section {
-    --_rail-w: 16px;
-    --_core: 3px;
+    --_tile: 32px;
   }
 
   .signal-marker {
@@ -280,23 +237,11 @@ const stubStyle = computed(() => ({ top: `${props.railTop}px`, height: `${Math.m
   .signal-marker--lamp {
     --_mk: 24px;
   }
-
-  .signal-joint {
-    left: calc(var(--_rail-x) - 4px);
-    width: 8px;
-    height: 8px;
-    margin-top: -4px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .signal-rail__on,
-  .signal-rail__glow,
+  .signal-rail::after,
   .signal-marker__layer {
     transition: none !important;
-  }
-
-  .is-powered .signal-rail__on {
-    animation: none;
   }
 }
 </style>

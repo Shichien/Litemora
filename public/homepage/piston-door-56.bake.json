@@ -1,0 +1,11 @@
+{
+  "source": "public/homepage/piston-door-56.litematic",
+  "sourceSha256": "d012d6c3cbf6b2e2775a776a4de1f05cfa939183fff2438fd7d238e76d85d32c",
+  "resourcePack": "public/minecraft-default-pack",
+  "blockCount": 49,
+  "uniqueBlockStates": 37,
+  "bytes": 553400,
+  "endpointAnimation": true,
+  "playbackSource": "public/homepage/piston-door-56-playback.json",
+  "motionCount": 120
+}

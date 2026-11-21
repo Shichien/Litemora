@@ -1,0 +1,18 @@
+{
+  "displayName": "经典 56 体积 3×3 活塞门",
+  "sourceUrl": "https://mineschematic.com/s/tiny-3x3-piston-door-f5336481",
+  "sourceLabel": "存档：geo_rz · 作品来源",
+  "downloadUrl": "/homepage/piston-door-56.litematic",
+  "designCredit": "SacredRedstone · 2017 classic 56-volume design",
+  "tutorialCredit": "bilodau",
+  "tutorialUrl": "https://www.bilibili.com/video/BV1Yt411M7NZ/",
+  "originalShowcaseUrl": "https://www.youtube.com/watch?v=rH34dMlb1Q8",
+  "archiveAuthor": "geo_rz",
+  "archiveSource": "https://www.mc-mod.net/schematics/smallest-3x3-piston-door/",
+  "sha256": "d012d6c3cbf6b2e2775a776a4de1f05cfa939183fff2438fd7d238e76d85d32c",
+  "size": { "x": 1, "y": 8, "z": 7 },
+  "volume": 56,
+  "nonAirBlocks": 49,
+  "entityCount": 0,
+  "notes": "经典 56 体积结构的存档变体：混凝土替换教程石英，底侧不可移动熔炉替换为黑曜石，省略外部输入拉杆。逐格核对核心最高层、两中继器延时、投掷器与侦测器支路及底部布局。保留下载原始字节，不是原作者提供的文件。首页开闭采用现有 redstone-sim 离线模拟并逐次核验的预录方块轨迹，运行时播放后归一到精确开闭终态，并非实时红石模拟。已核验 9 格门洞清空、门板实际搬运与方块守恒；投掷器库存为空，连续实时模拟后续循环存在偏差，未声称在 Minecraft 中可无限循环运行。"
+}

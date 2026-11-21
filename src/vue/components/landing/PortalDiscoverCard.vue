@@ -1,6 +1,7 @@
 <script setup>
 // Discover feed card: real thumbnail when one exists, otherwise a small iso build
 // that powers on while the card is hovered or focused.
+import { thumbnailSkyImage } from '@three/gallery/thumbnail-skies.js'
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
 import { computed, ref, watch } from 'vue'
 import { placeholderBuildScene } from './portal-scenes.js'
@@ -8,6 +9,7 @@ import { placeholderBuildScene } from './portal-scenes.js'
 const props = defineProps({
   space: { type: Object, required: true },
   variant: { type: Number, default: 0 },
+  sky: { type: String, required: true },
 })
 
 const active = ref(false)
@@ -28,13 +30,13 @@ function onImageError() {
   <a
     :href="space.url"
     class="discover-card rs-powerable"
-    :class="{ 'is-active': active, 'has-image': showImage }"
+    :class="{ 'is-active': active }"
     @mouseenter="active = true"
     @mouseleave="active = false"
     @focus="active = true"
     @blur="active = false"
   >
-    <div class="discover-art">
+    <div class="discover-art" :style="{ backgroundImage: thumbnailSkyImage(sky) }">
       <img
         v-if="showImage"
         class="discover-art__img"
@@ -166,21 +168,8 @@ function onImageError() {
   position: relative;
   aspect-ratio: 16 / 10;
   overflow: hidden;
-  background-color: var(--rs-bg-1);
-  background-image:
-    radial-gradient(70% 60% at 50% 62%, rgba(255, 60, 30, 0.08), transparent 70%),
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-  background-size: auto, 24px 24px, 24px 24px;
-  background-position: center, center, center;
+  background: var(--rs-bg-1) center / cover no-repeat;
   border-bottom: 1px solid var(--rs-line);
-}
-
-.discover-card.is-active .discover-art {
-  background-image:
-    radial-gradient(70% 60% at 50% 62%, rgba(255, 60, 30, 0.2), transparent 70%),
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
 }
 
 .discover-art__img {
@@ -189,21 +178,11 @@ function onImageError() {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: saturate(0.92) brightness(0.9);
-  transition: filter 0.25s, transform 0.4s;
+  transition: transform 0.4s;
 }
 
 .discover-card.is-active .discover-art__img {
-  filter: saturate(1.05) brightness(1);
   transform: scale(1.03);
-}
-
-.has-image .discover-art::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, transparent 55%, rgba(8, 9, 11, 0.55));
-  pointer-events: none;
 }
 
 .discover-art__build {
