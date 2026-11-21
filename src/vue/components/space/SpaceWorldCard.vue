@@ -1,4 +1,5 @@
 <script setup>
+import { thumbnailSkyImage } from '@three/gallery/thumbnail-skies.js'
 import { buildSpaceProjectionUrl } from '@three/utils/space-context.js'
 import { resolvePublicAssetUrl } from '@/js/utils/public-asset-url.js'
 import SpaceWorldThumb from '@ui-components/space/SpaceWorldThumb.vue'
@@ -73,7 +74,8 @@ const href = computed(() => {
 const showImage = computed(() => !!props.imageUrl && !imageFailed.value)
 const isPrivate = computed(() => props.item?.visibility === 'private')
 const title = computed(() => props.item?.title || props.item?.schematic?.name || routeId.value)
-const author = computed(() => props.item?.schematic?.author || 'Unknown')
+const isReplay = computed(() => props.item?.kind === 'replaymod' || /\.mcpr$/i.test(props.item?.fileName || ''))
+const author = computed(() => isReplay.value ? `Minecraft ${props.item?.replay?.minecraftVersion || 'ReplayMod'}` : props.item?.schematic?.author || 'Unknown')
 
 const blockCount = computed(() => {
   const item = props.item || {}
@@ -105,6 +107,10 @@ const formatLabel = computed(() => {
 })
 
 const blockLabel = computed(() => {
+  if (isReplay.value) {
+    const seconds = Math.floor(Number(props.item?.replay?.durationMs || 0) / 1000)
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+  }
   const formatted = new Intl.NumberFormat(locale.value === 'zh' ? 'zh-CN' : 'en-US').format(blockCount.value)
   return t('space.card.blocks', { count: formatted })
 })
@@ -151,7 +157,7 @@ function handleEnter(event) {
       <div class="world-card-foot">
         <span class="enter-cta" aria-hidden="true">
           <span class="enter-dot" />
-          <span>.litematic / .schem</span>
+          <span>.litematic / .schem / .schematic / .bp / .mcpr</span>
         </span>
       </div>
     </div>
@@ -163,7 +169,7 @@ function handleEnter(event) {
     :class="{ 'is-private': isPrivate }"
   >
     <div class="world-card-thumb">
-      <div class="thumb-media" :class="{ 'has-image-thumb': showImage }">
+      <div class="thumb-media" :class="{ 'has-image-thumb': showImage }" :style="{ '--thumbnail-sky': thumbnailSkyImage(item?.thumbnailSky) }">
         <SpaceWorldThumb :size="size" :seed="routeId" />
         <img
           v-if="showImage"
@@ -198,8 +204,8 @@ function handleEnter(event) {
       <h3 class="world-title">
         <a class="world-link" :href="href || undefined" @click="handleEnter">{{ title }}</a>
       </h3>
-      <p class="world-desc">
-        {{ item?.description || '点击此卡片可直接进入这个 3D 投影世界，并在浏览器中进行游览。' }}
+      <p v-if="item?.description || isReplay" class="world-desc">
+        {{ item?.description || '播放原始 ReplayMod 录像，自由查看记录下来的场景和机器运行过程。' }}
       </p>
 
       <div class="world-meta">
@@ -213,14 +219,8 @@ function handleEnter(event) {
         </span>
       </div>
 
-      <div class="world-card-foot">
-        <span class="enter-cta" aria-hidden="true">
-          <span class="enter-dot" />
-          <span>{{ t('space.card.enter') }}</span>
-          <svg class="enter-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" aria-hidden="true"><path d="M5 12h13" /><path d="m13 6 6 6-6 6" /></svg>
-        </span>
-
-        <div v-if="canManage" class="world-actions" @click.stop>
+      <div v-if="canManage" class="world-card-foot world-card-foot--actions">
+        <div class="world-actions" @click.stop>
           <button
             type="button"
             class="rs-btn rs-btn--ghost rs-btn--sm btn-settings"
@@ -339,6 +339,7 @@ function handleEnter(event) {
 .thumb-media {
   position: absolute;
   inset: 0;
+  background: var(--thumbnail-sky, none) center / cover no-repeat;
   filter: brightness(0.9) saturate(0.92);
   transition: filter 0.25s, transform 0.4s;
 }
@@ -360,6 +361,7 @@ function handleEnter(event) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  background: #cdd8e2 var(--thumbnail-sky, none) center / cover no-repeat;
   opacity: 0;
   transition: opacity 0.3s;
 }
@@ -513,6 +515,10 @@ function handleEnter(event) {
   margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--rs-line);
+}
+
+.world-card-foot--actions {
+  justify-content: flex-end;
 }
 
 .enter-cta {

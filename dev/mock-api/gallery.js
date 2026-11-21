@@ -21,6 +21,15 @@ import {
   normalizeLegacyProjectionSlug,
 } from '../../functions/api/gallery/_gallery-slugs.js'
 import {
+  buildGalleryItemSummary,
+  getGalleryItemKind,
+  normalizeFilePayload,
+  normalizeRedstoneSwitch,
+  normalizeReplaySummary,
+  sanitizeThumbnailDataUrl,
+} from '../../functions/api/gallery/_shared.js'
+import { normalizeThumbnailSky } from '../../src/js/gallery/thumbnail-skies.js'
+import {
   canManageMockGallery,
   createUniqueProjectionSlug,
   deleteFileIfExists,
@@ -239,10 +248,13 @@ export function registerGalleryMockApi(middlewares) {
         return
       }
 
+      const sourcePayload = normalizeFilePayload(payload)
+      const sourceBuffer = Buffer.from(sourcePayload.fileBase64, 'base64')
       const sourceFileMeta = normalizeMockSourceFileMetadata({
-        fileName: payload?.fileName || 'uploaded.schematic',
-        size: Number(payload?.fileSize || 0),
+        fileName: sourcePayload.fileName,
+        size: sourceBuffer.byteLength,
       })
+      const kind = getGalleryItemKind(sourceFileMeta.fileName)
 
       const profile = existingProfile || {
         space: spaceName,
@@ -265,7 +277,12 @@ export function registerGalleryMockApi(middlewares) {
         Array.isArray(existingManifest?.items) ? existingManifest.items : [],
       )
 
+      const redstoneSwitch = kind === 'replaymod' ? null : normalizeRedstoneSwitch(payload?.redstoneSwitch)
       const item = {
+        kind,
+        ...(kind === 'replaymod' ? { replay: normalizeReplaySummary(payload?.replay) } : {}),
+        thumbnailDataUrl: sanitizeThumbnailDataUrl(payload?.thumbnailDataUrl),
+        thumbnailSky: normalizeThumbnailSky(payload?.thumbnailSky),
         id: itemId,
         space: spaceName,
         title: projectionName,
@@ -279,9 +296,10 @@ export function registerGalleryMockApi(middlewares) {
           mimeType: sourceFileMeta.mimeType,
           size: sourceFileMeta.size,
         },
-        schematic: payload?.schematic || null,
-        previewModel: payload?.previewModel || null,
-        placement: payload?.placement || null,
+        schematic: kind === 'replaymod' ? null : payload?.schematic || null,
+        previewModel: kind === 'replaymod' ? null : payload?.previewModel || null,
+        placement: kind === 'replaymod' ? null : payload?.placement || null,
+        ...(redstoneSwitch ? { redstoneSwitch } : {}),
         owner: {
           id: viewer.id,
           name: viewer.name || viewer.email || spaceName,
@@ -291,23 +309,7 @@ export function registerGalleryMockApi(middlewares) {
         updatedAt: Date.now(),
       }
 
-      const summary = {
-        id: item.id,
-        title: item.title,
-        projectionSlug: item.projectionSlug,
-        description: item.description,
-        visibility: item.visibility,
-        fileName: item.fileName,
-        schematic: item.schematic,
-        placement: item.placement,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-        preview: {
-          totalSolidBlocks: Number(item?.previewModel?.totalSolidBlocks || 0),
-          sampled: !!item?.previewModel?.sampled,
-          bounds: item?.previewModel?.bounds || null,
-        },
-      }
+      const summary = buildGalleryItemSummary(item)
 
       const nextItems = [
         summary,
@@ -329,7 +331,7 @@ export function registerGalleryMockApi(middlewares) {
 
       await writeJsonFile(resolveGalleryItemPath(spaceName, itemId), item)
       await fs.mkdir(path.dirname(resolveGallerySourcePath(spaceName, itemId)), { recursive: true })
-      await fs.writeFile(resolveGallerySourcePath(spaceName, itemId), Buffer.from(String(payload?.fileBase64 || ''), 'base64'))
+      await fs.writeFile(resolveGallerySourcePath(spaceName, itemId), sourceBuffer)
       await writeJsonFile(profilePath, nextProfile)
       await writeJsonFile(manifestPath, nextManifest)
 
@@ -340,6 +342,10 @@ export function registerGalleryMockApi(middlewares) {
       })
     }
     catch (error) {
+      if (error?.message === 'file_too_large_for_kv') {
+        sendError(res, 413, 'file_too_large')
+        return
+      }
       res.statusCode = error?.message === 'invalid_source_file_type' ? 415 : 400
       res.setHeader('Content-Type', 'application/json; charset=utf-8')
       res.end(JSON.stringify({

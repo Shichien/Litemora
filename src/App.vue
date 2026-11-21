@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 
 import { useUiStore } from '@pinia/uiStore.js'
 import { isLocalDevAuthEnabled, loadAdminAuthSession } from '@three/auth/admin-auth.js'
-import { fetchGallery } from '@three/gallery/gallery-api.js'
+import { fetchGallery, fetchGalleryItem } from '@three/gallery/gallery-api.js'
 import { navigateToUrl } from '@three/utils/navigation.js'
 import {
   buildSpaceWorldsUrl,
@@ -23,6 +23,10 @@ const PortalHome = defineAsyncComponent(() => import('@ui-components/landing/Por
 const UiRoot = defineAsyncComponent(() => import('@ui-components/menu/UiRoot.vue'))
 const SpaceBreadcrumbs = defineAsyncComponent(() => import('@ui-components/space/SpaceBreadcrumbs.vue'))
 const SpaceWorldsPage = defineAsyncComponent(() => import('@ui-components/space/SpaceWorldsPage.vue'))
+
+const ReplayModPage = defineAsyncComponent(() => import('@ui-components/replaymod/ReplayModPage.vue'))
+const activeReplayItem = ref(null)
+let routeRevision = 0
 
 const threeCanvas = ref(null)
 const authSession = ref(loadAdminAuthSession())
@@ -113,7 +117,7 @@ function syncManageAccessBroadcast() {
   }))
 }
 
-async function resolveActiveSpaceManageAccess(spaceName) {
+async function resolveActiveSpaceManageAccess(spaceName, revision) {
   if (!spaceName) {
     canManageActiveSpace.value = false
     syncManageAccessBroadcast()
@@ -128,9 +132,13 @@ async function resolveActiveSpaceManageAccess(spaceName) {
 
   try {
     const payload = await fetchGallery(spaceName, authSession.value)
+    if (revision !== routeRevision)
+      return
     canManageActiveSpace.value = !!payload?.viewer?.canManage
   }
   catch {
+    if (revision !== routeRevision)
+      return
     canManageActiveSpace.value = false
   }
 
@@ -138,6 +146,7 @@ async function resolveActiveSpaceManageAccess(spaceName) {
 }
 
 async function syncRouteState() {
+  const revision = ++routeRevision
   authSession.value = loadAdminAuthSession()
 
   // Old /gallery/<space> links used to open a canvas with nothing in it; send them to the world list.
@@ -160,7 +169,25 @@ async function syncRouteState() {
 
   activeSpaceName.value = nextSpaceName
   activeProjectionId.value = nextProjectionId
-  await resolveActiveSpaceManageAccess(nextSpaceName)
+  await resolveActiveSpaceManageAccess(nextSpaceName, revision)
+  if (revision !== routeRevision)
+    return
+
+  let projectionItem = null
+  if (nextProjectionId && !nextIsRootPortal && !nextIsWorldsView) {
+    try {
+      const payload = await fetchGalleryItem(nextSpaceName, nextProjectionId, authSession.value)
+      projectionItem = payload?.item || null
+    }
+    catch {
+      // The ordinary projection loader retains its existing access/error handling.
+    }
+    if (revision !== routeRevision)
+      return
+  }
+  activeReplayItem.value = projectionItem?.kind === 'replaymod' || /\.mcpr$/i.test(projectionItem?.fileName || '')
+    ? projectionItem
+    : null
 
   if (nextIsRootPortal) {
     routeKind.value = 'portal'
@@ -169,7 +196,7 @@ async function syncRouteState() {
     routeKind.value = 'worlds'
   }
   else if (nextProjectionId) {
-    routeKind.value = 'projection'
+    routeKind.value = activeReplayItem.value ? 'replaymod' : 'projection'
   }
   else {
     routeKind.value = nextSpaceName ? 'worlds' : 'portal'
@@ -220,6 +247,7 @@ onBeforeUnmount(() => {
   <!-- 主容器：相对定位 -->
   <PortalHome v-if="routeKind === 'portal'" />
   <SpaceWorldsPage v-else-if="routeKind === 'worlds'" :space-name="activeSpaceName" />
+  <ReplayModPage v-else-if="routeKind === 'replaymod' && activeReplayItem" :item="activeReplayItem" :space-name="activeSpaceName" :projection-id="activeProjectionId" />
 
   <!-- Admin 配置弹窗：作为覆盖层显示在所有页面之上 -->
   <AdminConfigPage v-if="(isAdminMode && canManageActiveSpace) || canShowAdminConfig" class="admin-overlay" />
@@ -230,7 +258,7 @@ onBeforeUnmount(() => {
     and freshly mounted UI components that subscribe again.
   -->
   <div
-    v-if="routeKind !== 'portal' && routeKind !== 'worlds'"
+    v-if="routeKind === 'projection'"
     :key="currentWorldRouteKey"
     class="relative w-screen h-screen overflow-hidden"
   >

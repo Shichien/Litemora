@@ -8,6 +8,7 @@ import {
 import { navigateToUrl } from '@three/utils/navigation.js'
 import { buildSpaceProjectionUrl, buildSpaceWorldsAdminUrl, buildSpaceWorldsUrl } from '@three/utils/space-context.js'
 import { getStaticThumbnailUrl, loadThumbnailManifest } from '@/js/gallery/world-thumbnails.js'
+import ProviderIcon from '@ui-components/auth/ProviderIcon.vue'
 import IsoScene from '@ui-components/redstone/IsoScene.vue'
 import { redstoneCircuitScene } from '@ui-components/redstone/iso-presets.js'
 import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
@@ -137,14 +138,6 @@ const defaultBrandTitle = computed(() => {
 const brandTitle = computed(() => {
   const customTitle = String(galleryProfile.value?.title || '').trim()
   return customTitle || defaultBrandTitle.value
-})
-const brandSubtitle = computed(() => {
-  if (isProfileSettingsView.value) {
-    return `Profile Settings for ${props.spaceName}`
-  }
-
-  const itemLabel = galleryItems.value.length === 1 ? 'World' : 'Worlds'
-  return `${galleryItems.value.length} ${itemLabel} in ${props.spaceName}`
 })
 const brandAvatar = computed(() => {
   if (canEditProfileSettings.value && viewerAvatar.value) {
@@ -635,9 +628,7 @@ watch(
                   @click="handleProviderAuth(provider.id)"
                 >
                   <span class="menu-icon" aria-hidden="true">
-                    <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.83 1.23 1.83 1.23 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.91 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.13 3.17.77.84 1.23 1.91 1.23 3.22 0 4.59-2.81 5.61-5.49 5.9.43.37.82 1.09.82 2.2v3.26c0 .32.22.7.83.58A12 12 0 0 0 12 .5Z" />
-                    </svg>
+                    <ProviderIcon :provider="provider.id" />
                   </span>
                   <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
                 </button>
@@ -682,8 +673,6 @@ watch(
           :class="{ 'is-powered': isArchivePowered }"
         >
           <div class="hero-copy">
-            <span class="rs-eyebrow hero-eyebrow">Space / {{ spaceName }}</span>
-
             <div class="worlds-brand">
               <button
                 type="button"
@@ -710,9 +699,6 @@ watch(
                     <span class="title-text">{{ brandTitle }}</span>
                   </button>
                 </h1>
-                <p class="subtitle-text">
-                  {{ brandSubtitle }}
-                </p>
               </div>
             </div>
 
@@ -791,10 +777,7 @@ watch(
             <div class="empty-art" aria-hidden="true">
               <IsoScene :blocks="heroScene" :unit="22" :powered="false" />
             </div>
-            <span class="rs-eyebrow empty-eyebrow">No signal</span>
             <span class="empty-title">还没有任何世界</span>
-            <span class="empty-desc">当前 Space 尚未公开任何投影。</span>
-            <span class="empty-hint">{{ t('space.empty.hint') }}</span>
           </div>
 
           <div v-else class="card-grid">
@@ -804,7 +787,7 @@ watch(
               create-title="创建新的投影"
               :create-description="galleryItems.length
                 ? '点击上传新的原理图投影，并为它配置公开性与世界参数'
-                : '点击开始上传 .litematic 或 .schem，并创建这个 Space 的第一个投影'"
+                : '点击开始上传 .litematic、.schem、.schematic、.bp 或 .mcpr，并创建这个 Space 的第一个投影'"
               @create="openAdminConfigPage"
             />
 
@@ -1184,12 +1167,6 @@ watch(
   text-decoration-color: var(--rs-red-hot);
 }
 
-.subtitle-text {
-  margin: 0;
-  color: var(--rs-text-2);
-  font: 13px/1.4 var(--rs-font-mono);
-}
-
 .hero-stats {
   display: flex;
   flex-wrap: wrap;
@@ -1382,22 +1359,10 @@ watch(
   opacity: 0.92;
 }
 
-.empty-eyebrow {
-  color: var(--rs-text-2);
-}
-
 .empty-title {
   color: var(--rs-text);
   font-size: 20px;
   font-weight: 700;
-}
-
-.empty-desc,
-.empty-hint {
-  max-width: 44ch;
-  color: var(--rs-text-2);
-  font-size: 14px;
-  line-height: 1.6;
 }
 
 /* ------------------------------------------------------------ responsive */
@@ -1471,10 +1436,6 @@ watch(
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
-  }
-
-  .subtitle-text {
-    font-size: 12px;
   }
 
   .hero-stat {

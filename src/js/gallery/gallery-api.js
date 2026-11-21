@@ -3,6 +3,7 @@ import {
   ensureProjectionDisplayName,
   normalizeProjectionSlug,
 } from '../utils/projection-name.js'
+import { normalizeThumbnailSky } from './thumbnail-skies.js'
 
 const PROJECTION_CACHE_PREFIX = 'mc-projection-cache'
 
@@ -291,8 +292,13 @@ function normalizeDiscoverProjectionItem(item = null) {
     return null
   }
 
+  const kind = item?.kind === 'replaymod' || /\.mcpr$/iu.test(String(item?.fileName || item?.sourceFile?.fileName || ''))
+    ? 'replaymod'
+    : 'schematic'
   return {
     id: projectionId,
+    kind,
+    ...(kind === 'replaymod' ? { replay: item?.replay || null } : {}),
     projectionSlug,
     routeId,
     space: spaceName,
@@ -300,8 +306,9 @@ function normalizeDiscoverProjectionItem(item = null) {
     ownerName: String(item?.owner?.name || item?.author?.name || spaceName).trim(),
     ownerAvatar: String(item?.owner?.avatar || item?.author?.avatar || '').trim(),
     thumbnailDataUrl: String(item?.thumbnailDataUrl || '').trim(),
+    thumbnailSky: normalizeThumbnailSky(item?.thumbnailSky),
     updatedAt: Number(item?.updatedAt || item?.createdAt || 0),
-    preview: item?.preview || null,
+    preview: kind === 'replaymod' ? null : item?.preview || null,
   }
 }
 
@@ -328,24 +335,31 @@ function buildProjectionCacheItem({
   fileSize = 0,
 }) {
   const safeItem = item && typeof item === 'object' ? item : {}
+  const kind = safeItem.kind === 'replaymod' || /\.mcpr$/iu.test(String(fileName || safeItem.fileName || ''))
+    ? 'replaymod'
+    : 'schematic'
   return {
     ...safeItem,
+    kind,
     id: String(safeItem.id || '').trim(),
     projectionSlug: String(safeItem.projectionSlug || '').trim(),
     space: String(spaceName || safeItem.space || '').trim(),
     title: String(safeItem.title || title || schematic?.name || fileName || 'World').trim(),
     description: String(safeItem.description || description || '').trim(),
     visibility: normalizeProjectionVisibility(safeItem.visibility || visibility),
-    schematic: safeItem.schematic || schematic || null,
-    placement: safeItem.placement || placement || null,
-    preview: buildProjectionPreview({
-      item: safeItem,
-      preview: safeItem.preview,
-      previewModel,
-      schematic,
-    }),
+    schematic: kind === 'replaymod' ? null : safeItem.schematic || schematic || null,
+    placement: kind === 'replaymod' ? null : safeItem.placement || placement || null,
+    preview: kind === 'replaymod'
+      ? null
+      : buildProjectionPreview({
+          item: safeItem,
+          preview: safeItem.preview,
+          previewModel,
+          schematic,
+        }),
     thumbnailDataUrl: String(safeItem.thumbnailDataUrl || thumbnailDataUrl || '').trim(),
-    previewModel: safeItem.previewModel || previewModel || null,
+    thumbnailSky: normalizeThumbnailSky(safeItem.thumbnailSky),
+    previewModel: kind === 'replaymod' ? null : safeItem.previewModel || previewModel || null,
     sourceFile: {
       fileName: String(fileName || safeItem.fileName || 'uploaded.schematic').trim(),
       mimeType: String(mimeType || safeItem.mimeType || 'application/octet-stream').trim(),
@@ -552,10 +566,13 @@ export async function createGalleryItem({
   file,
   schematic,
   previewModel,
+  replay = null,
   placement = null,
+  redstoneSwitch = null,
   visibility = 'public',
   thumbnailDataUrl = '',
   projectionName = '',
+  thumbnailSky = '',
   session = null,
 }) {
   const projectionSlug = normalizeProjectionNameCandidate(projectionName, title, schematic, file)
@@ -577,10 +594,13 @@ export async function createGalleryItem({
           description: String(description || '').trim(),
           projectionName: String(projectionName || '').trim(),
           visibility: String(visibility || 'public').trim(),
+          replay: replay || null,
           schematic: schematic || null,
           previewModel: previewModel || null,
           placement: placement || null,
+          redstoneSwitch: redstoneSwitch || null,
           thumbnailDataUrl: String(thumbnailDataUrl || '').trim(),
+          thumbnailSky: normalizeThumbnailSky(thumbnailSky),
           fileName: file?.name || 'uploaded.schematic',
           mimeType: file?.type || 'application/octet-stream',
           fileSize: Number(file?.size || fileBuffer.byteLength || 0),
@@ -595,10 +615,13 @@ export async function createGalleryItem({
       formData.set('description', String(description || '').trim())
       formData.set('projectionName', String(projectionName || '').trim())
       formData.set('visibility', String(visibility || 'public').trim())
+      formData.set('replay', JSON.stringify(replay || null))
       formData.set('schematic', JSON.stringify(schematic || null))
       formData.set('previewModel', JSON.stringify(previewModel || null))
       formData.set('placement', JSON.stringify(placement || null))
+      formData.set('redstoneSwitch', JSON.stringify(redstoneSwitch || null))
       formData.set('thumbnailDataUrl', String(thumbnailDataUrl || '').trim())
+      formData.set('thumbnailSky', normalizeThumbnailSky(thumbnailSky))
       formData.set('file', file, file?.name || 'uploaded.schematic')
 
       return requestJson('/api/gallery/items', {

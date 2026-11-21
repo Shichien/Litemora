@@ -23,7 +23,8 @@ export const LOCAL_DEV_MOCK_ACCOUNT = {
 }
 
 const SAFE_SOURCE_MIME_TYPE = 'application/octet-stream'
-const ALLOWED_SOURCE_FILE_EXTENSIONS = new Set(['.litematic', '.schem', '.schematic'])
+const ALLOWED_SOURCE_FILE_EXTENSIONS = new Set(['.litematic', '.schem', '.schematic', '.bp', '.mcpr'])
+const MAX_SOURCE_FILE_BYTES = 15 * 1024 * 1024
 
 /* ------------------------------------------------------------------ *
  * 响应封装 (Connect 风格, 与原来的中间件写法保持完全一致)
@@ -136,10 +137,14 @@ export function normalizeMockSourceFileMetadata(value = {}) {
     throw new Error('invalid_source_file_type')
   }
 
+  const size = Math.max(0, Math.round(Number(value?.size || 0) || 0))
+  if (size > MAX_SOURCE_FILE_BYTES) {
+    throw new Error('file_too_large_for_kv')
+  }
   return {
     fileName,
     mimeType: SAFE_SOURCE_MIME_TYPE,
-    size: Math.max(0, Math.round(Number(value?.size || 0) || 0)),
+    size,
   }
 }
 

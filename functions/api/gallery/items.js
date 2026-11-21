@@ -54,9 +54,12 @@ async function readCreateRequestPayload(request) {
         projectionName: formData.get('projectionName'),
         visibility: formData.get('visibility'),
         thumbnailDataUrl: formData.get('thumbnailDataUrl'),
+        thumbnailSky: formData.get('thumbnailSky'),
+        replay: parseJsonField(formData.get('replay'), null),
         schematic: parseJsonField(formData.get('schematic'), null),
         previewModel: parseJsonField(formData.get('previewModel'), null),
         placement: parseJsonField(formData.get('placement'), null),
+        redstoneSwitch: parseJsonField(formData.get('redstoneSwitch'), null),
         fileName: uploadFile?.name || formData.get('fileName'),
         mimeType: uploadFile?.type || formData.get('mimeType'),
         fileSize: Number(uploadFile?.size || 0),
@@ -189,13 +192,13 @@ export async function onRequestPost(context) {
       return sendError(409, 'projection_name_exists', 'A projection with the same name already exists in this space')
     }
     if (error?.message === 'missing_file_base64') {
-      return sendError(400, 'missing_file_base64', 'The uploaded schematic file data is required')
+      return sendError(400, 'missing_file_base64', 'The uploaded source file data is required')
     }
     if (error?.message === 'file_too_large_for_kv') {
       return sendError(413, 'file_too_large', 'The current gallery storage can only accept files up to roughly 15 MB raw size')
     }
     if (error?.message === 'invalid_source_file_type') {
-      return sendError(415, 'invalid_source_file_type', 'Only .litematic, .schem, and .schematic files are allowed')
+      return sendError(415, 'invalid_source_file_type', 'Only .litematic, .schem, .schematic, .bp, and .mcpr files are allowed')
     }
     return sendError(500, 'gallery_item_create_failed', error?.message || 'unknown_error')
   }

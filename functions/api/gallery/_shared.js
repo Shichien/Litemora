@@ -1,3 +1,5 @@
+import { normalizeThumbnailSky } from '../../../src/js/gallery/thumbnail-skies.js'
+import { normalizeRedstoneSwitch } from '../../../src/js/world/redstone-sim/recording-config.js'
 import { getKv, sendError, sendJson } from '../_space.js'
 import { readAccountSession, trimString } from '../auth/_shared.js'
 import {
@@ -16,7 +18,7 @@ const MAX_FILE_BASE64_LENGTH = 20 * 1024 * 1024
 const MAX_SOURCE_FILE_BYTES = 15 * 1024 * 1024
 const MAX_PREVIEW_BLOCKS = 40000
 const MAX_THUMBNAIL_DATA_URL_LENGTH = 1.5 * 1024 * 1024
-const ALLOWED_SOURCE_FILE_EXTENSIONS = new Set(['.litematic', '.schem', '.schematic'])
+const ALLOWED_SOURCE_FILE_EXTENSIONS = new Set(['.litematic', '.schem', '.schematic', '.bp', '.mcpr'])
 const SAFE_SOURCE_MIME_TYPE = 'application/octet-stream'
 
 function toNumber(value, fallback = 0) {
@@ -51,7 +53,27 @@ function getFileExtension(fileName = '') {
   return normalized.slice(dotIndex)
 }
 
-function sanitizeThumbnailDataUrl(value = '') {
+// The source extension, never a caller-supplied kind, selects the playback path.
+export function getGalleryItemKind(fileName = '') {
+  return getFileExtension(fileName) === '.mcpr' ? 'replaymod' : 'schematic'
+}
+
+export function normalizeReplaySummary(value = null) {
+  const minecraftVersion = sanitizeText(value?.minecraftVersion, 40)
+  const protocolVersion = Number(value?.protocolVersion)
+  const durationMs = Number(value?.durationMs)
+  return {
+    minecraftVersion: /^[\w.+-]+$/u.test(minecraftVersion) ? minecraftVersion : '',
+    protocolVersion: Number.isSafeInteger(protocolVersion) && protocolVersion > 0 && protocolVersion <= 0x7FFFFFFF
+      ? protocolVersion
+      : null,
+    durationMs: Number.isSafeInteger(durationMs) && durationMs >= 0 && durationMs <= 0x7FFFFFFF
+      ? durationMs
+      : 0,
+  }
+}
+
+export function sanitizeThumbnailDataUrl(value = '') {
   const normalized = trimString(value)
   if (!normalized) {
     return ''
@@ -148,21 +170,27 @@ export function buildDiscoverProjectionEntry(spaceName, item = null, profile = n
     return null
   }
 
+  const kind = getGalleryItemKind(item?.sourceFile?.fileName || item?.fileName)
   return {
     id: trimString(item?.id),
+    kind,
+    ...(kind === 'replaymod' ? { replay: normalizeReplaySummary(item?.replay) } : {}),
     projectionSlug: trimString(item?.projectionSlug),
     routeId,
     space: trimString(spaceName),
     title: sanitizeText(item?.title || item?.schematic?.name || item?.fileName || 'World', 160),
     ownerName: sanitizeText(item?.owner?.name || profile?.ownerName || spaceName, 120),
     ownerAvatar: sanitizeText(item?.owner?.avatar || profile?.ownerAvatar, 1024),
+    thumbnailSky: normalizeThumbnailSky(item?.thumbnailSky),
     thumbnailDataUrl: sanitizeThumbnailDataUrl(item?.thumbnailDataUrl),
     updatedAt: Math.round(toNumber(item?.updatedAt, Date.now())),
-    preview: {
-      totalSolidBlocks: Math.max(0, Math.round(toNumber(item?.previewModel?.totalSolidBlocks || item?.preview?.totalSolidBlocks))),
-      sampled: !!(item?.previewModel?.sampled || item?.preview?.sampled),
-      bounds: normalizeBounds(item?.previewModel?.bounds || item?.preview?.bounds),
-    },
+    preview: kind === 'replaymod'
+      ? null
+      : {
+          totalSolidBlocks: Math.max(0, Math.round(toNumber(item?.previewModel?.totalSolidBlocks || item?.preview?.totalSolidBlocks))),
+          sampled: !!(item?.previewModel?.sampled || item?.preview?.sampled),
+          bounds: normalizeBounds(item?.previewModel?.bounds || item?.preview?.bounds),
+        },
   }
 }
 
@@ -339,23 +367,31 @@ export function normalizeSchematicSummary(value = {}) {
   }
 }
 
+export { normalizeRedstoneSwitch }
+
 export function buildGalleryItemSummary(item) {
+  const kind = getGalleryItemKind(item?.sourceFile?.fileName || item?.fileName)
   return {
     id: trimString(item?.id),
+    kind,
+    ...(kind === 'replaymod' ? { replay: normalizeReplaySummary(item?.replay) } : {}),
     title: sanitizeText(item?.title, 160),
     projectionSlug: sanitizeText(item?.projectionSlug, 80),
     description: sanitizeLongText(item?.description),
     visibility: normalizeVisibility(item?.visibility),
     fileName: sanitizeText(item?.fileName, 240),
-    schematic: normalizeSchematicSummary(item?.schematic),
-    placement: normalizePlacement(item?.placement),
+    schematic: kind === 'replaymod' ? null : normalizeSchematicSummary(item?.schematic),
+    placement: kind === 'replaymod' ? null : normalizePlacement(item?.placement),
+    thumbnailSky: normalizeThumbnailSky(item?.thumbnailSky),
     createdAt: Math.round(toNumber(item?.createdAt, Date.now())),
     updatedAt: Math.round(toNumber(item?.updatedAt, Date.now())),
-    preview: {
-      totalSolidBlocks: Math.max(0, Math.round(toNumber(item?.previewModel?.totalSolidBlocks))),
-      sampled: !!item?.previewModel?.sampled,
-      bounds: normalizeBounds(item?.previewModel?.bounds),
-    },
+    preview: kind === 'replaymod'
+      ? null
+      : {
+          totalSolidBlocks: Math.max(0, Math.round(toNumber(item?.previewModel?.totalSolidBlocks))),
+          sampled: !!item?.previewModel?.sampled,
+          bounds: normalizeBounds(item?.previewModel?.bounds),
+        },
     thumbnailDataUrl: sanitizeThumbnailDataUrl(item?.thumbnailDataUrl),
   }
 }
@@ -426,12 +462,17 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
       size: body?.fileSize,
     },
   )
-  const schematic = normalizeSchematicSummary(body?.schematic)
-  const previewModel = normalizePreviewModel(body?.previewModel)
-  const title = sanitizeText(body?.title, 160) || schematic.name || normalizedSourceFile.fileName
+  const kind = getGalleryItemKind(normalizedSourceFile.fileName)
+  const schematic = kind === 'replaymod' ? null : normalizeSchematicSummary(body?.schematic)
+  const previewModel = kind === 'replaymod' ? null : normalizePreviewModel(body?.previewModel)
+  const title = sanitizeText(body?.title, 160) || schematic?.name || normalizedSourceFile.fileName
   const projectionSlug = resolveProjectionSlug(body?.projectionName, title)
+  const redstoneSwitch = kind === 'replaymod' ? null : normalizeRedstoneSwitch(body?.redstoneSwitch)
 
   return {
+    kind,
+    ...(kind === 'replaymod' ? { replay: normalizeReplaySummary(body?.replay) } : {}),
+    ...(redstoneSwitch ? { redstoneSwitch } : {}),
     id: itemId,
     space: spaceName,
     title,
@@ -443,7 +484,8 @@ export function buildGalleryItemPayload({ body, account, profile, spaceName, ite
     sourceFile: normalizedSourceFile,
     schematic,
     previewModel,
-    placement: normalizePlacement(body?.placement),
+    placement: kind === 'replaymod' ? null : normalizePlacement(body?.placement),
+    thumbnailSky: normalizeThumbnailSky(body?.thumbnailSky),
     thumbnailDataUrl: sanitizeThumbnailDataUrl(body?.thumbnailDataUrl),
     owner: {
       id: trimString(profile?.ownerAccountId || account?.id),
@@ -492,7 +534,7 @@ export async function requireGalleryAccount(context) {
   if (!account) {
     return {
       account: null,
-      response: sendError(401, 'authentication_required', 'Please sign in with GitHub or Google first'),
+      response: sendError(401, 'authentication_required', 'Please sign in first'),
     }
   }
 

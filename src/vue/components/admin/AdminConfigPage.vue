@@ -31,6 +31,9 @@ import {
   saveBackendWorldConfigRemote,
   saveAdminWorldConfig,
 } from '@three/world/backend-world-config.js'
+import { normalizeRedstoneSwitch } from '@three/world/redstone-sim/switch-recorder.js'
+import { resolveSwitchType, SWITCH_INPUTS } from '@three/world/redstone-sim/switch-types.js'
+import { simulateSwitchReplay } from '@three/world/redstone-sim/switch-sim-loader.js'
 import {
   clearAdminSchematicFile,
   loadAdminSchematicFile,
@@ -43,10 +46,15 @@ import {
 } from '@three/world/terrain/minecraft-resource-pack-storage.js'
 import schematicService from '@three/world/terrain/schematic-service.js'
 import SchematicRendererCanvas from '@ui-components/admin/SchematicRendererCanvas.vue'
+import ThumbnailSkyPicker from '@ui-components/admin/ThumbnailSkyPicker.vue'
+import ProviderIcon from '@ui-components/auth/ProviderIcon.vue'
 import RedstoneCredits from '@ui-components/redstone/RedstoneCredits.vue'
 import { useGalleryAuth } from '@ui/composables/useGalleryAuth.js'
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+
+const ReplayModImport = defineAsyncComponent(() => import('@ui-components/replaymod/ReplayModImport.vue'))
+const replayFile = shallowRef(null)
 
 const {
   authProviders,
@@ -83,6 +91,7 @@ const schematicObject = ref(null)
 const schematicPreview = ref(null)
 const schematicProjectionName = ref('')
 const schematicVisibility = ref('public')
+const thumbnailSky = ref('noon')
 const isParsingSchematic = ref(false)
 const schematicOffsetY = ref(0)
 const schematicApplyProgress = ref(null)
@@ -90,6 +99,17 @@ const resourcePackInfo = ref(null)
 const isSavingResourcePack = ref(false)
 const schematicRendererCanvasRef = ref(null)
 const projectionSpawnSelection = ref(null)
+
+const redstoneRecording = ref('door')
+const machineSeconds = ref(10)
+const redstoneSwitch = ref(null)
+const isPickingRedstoneSwitch = ref(false)
+const isCheckingRedstoneSwitch = ref(false)
+const redstoneSwitchStatus = ref({ text: '', warning: false })
+const redstoneDoorStateOptions = [
+  { value: 'closed', label: '关着' },
+  { value: 'open', label: '开着' },
+]
 
 const cameraPresetOptions = PRESET_NAMES
 const visualPresetOptions = PRESET_NAMES
@@ -308,6 +328,7 @@ async function restorePersistedSchematic() {
     schematicSourceFile.value = persisted.file
     schematicPreview.value = schematicService.getPreview()
     schematicOffsetY.value = normalizeSchematicOffsetY(schematicOffsetY.value)
+    resetRedstoneSwitch()
     primeProjectionSpawnSelectionForCreate()
     if (!sanitizedProjectionName.value) {
       schematicProjectionName.value = ensureProjectionDisplayName(
@@ -431,11 +452,18 @@ async function handleSchematicFileSelect(event) {
     return
   }
 
-  if (!/\.(litematic|schem)$/iu.test(file.name)) {
-    setStatus('请选择 .litematic 或 .schem 文件', 'warning')
+  if (/\.mcpr$/iu.test(file.name)) {
+    replayFile.value = file
+    event.target.value = ''
+    setStatus('已选择 ReplayMod 录像，正在准备预览。', 'neutral')
+    return
+  }
+  if (!/\.(litematic|schem|schematic|bp)$/iu.test(file.name)) {
+    setStatus('请选择 .litematic、.schem、.schematic、Axiom .bp 或 ReplayMod .mcpr 文件', 'warning')
     event.target.value = ''
     return
   }
+  replayFile.value = null
 
   isParsingSchematic.value = true
   try {
@@ -443,11 +471,13 @@ async function handleSchematicFileSelect(event) {
     schematicObject.value = schematic
     schematicFile.value = file.name
     schematicSourceFile.value = file
+    thumbnailSky.value = 'noon'
     schematicPreview.value = schematicService.getPreview()
     schematicProjectionName.value = ensureProjectionDisplayName(
-      schematic.name || file.name.replace(/\.(litematic|schem)$/iu, ''),
+      schematic.name || file.name.replace(/\.(litematic|schem|schematic|bp)$/iu, ''),
     )
     schematicOffsetY.value = normalizeSchematicOffsetY(schematicOffsetY.value)
+    resetRedstoneSwitch()
     primeProjectionSpawnSelectionForCreate()
     await saveAdminSchematicFile({
       accountId: currentAccountId.value,
@@ -480,6 +510,7 @@ function clearSchematicFile({ withStatus = true } = {}) {
   schematicObject.value = null
   schematicPreview.value = null
   projectionSpawnSelection.value = null
+  resetRedstoneSwitch()
   schematicProjectionName.value = ''
   schematicVisibility.value = 'public'
   schematicOffsetY.value = 0
@@ -540,7 +571,7 @@ async function applySchematic() {
           height: 360,
           quality: 0.82,
         })
-        if (!thumbnailDataUrl?.startsWith('data:image/jpeg;base64,')) {
+        if (!thumbnailDataUrl) {
           throw new Error('真实预览尚未就绪')
         }
       }
@@ -613,7 +644,9 @@ async function applySchematic() {
             z: 0,
           },
         },
+        redstoneSwitch: normalizeRedstoneSwitch(redstoneSwitch.value),
         visibility: schematicVisibility.value,
+        thumbnailSky: thumbnailSky.value,
         thumbnailDataUrl,
         projectionName: sanitizedProjectionName.value,
         session,
@@ -801,6 +834,105 @@ function setProjectionSpawnFromPreviewBlock(payload) {
   setStatus(`已将出生点设置到方块 (${x}, ${y}, ${z}) 上方 (${spawnPoint.x}, ${spawnPoint.y}, ${spawnPoint.z})`, 'success')
 }
 
+function resetRedstoneSwitch() {
+  redstoneSwitch.value = null
+  isPickingRedstoneSwitch.value = false
+  redstoneSwitchStatus.value = { text: '', warning: false }
+}
+
+function toggleRedstoneSwitchPicking() {
+  isPickingRedstoneSwitch.value = !isPickingRedstoneSwitch.value
+}
+
+function describeRedstoneSwitch(position, summary) {
+  const label = SWITCH_INPUTS[summary.switchType]?.[0]
+  const version = summary.sourceRelease ? `原理图来自 Java ${summary.sourceRelease}，按 ${summary.minecraftVersion} 规则模拟。` : ''
+  const warnings = [...Object.keys(summary.unsupportedBlocks || {}), ...(summary.unsupportedEvents || [])]
+  const caveat = warnings.length ? `。模拟未实现的行为或方块有 ${warnings.join('、')}` : ''
+  if (summary.mode === 'machine') {
+    const start = position ? `由${label}触发` : '从原理图保存状态启动'
+    return `${version}${start}，已运行 ${summary.totalTicks} 刻，记录到 ${summary.changeCount} 次方块变化${caveat}`
+  }
+  const ticks = segment => segment.toTick - segment.fromTick
+  const behavior = summary.mode === 'pulse'
+    ? `操作一次后机器运行 ${ticks(summary.segments.pulse)} 刻并自动复位`
+    : `第一次操作 ${ticks(summary.segments.open)} 刻，再操作一次 ${ticks(summary.segments.close)} 刻后回到原状`
+  return `${version}已标记${label} (${position.x}, ${position.y}, ${position.z})，动作往返检查通过，${behavior}${caveat}。请进入投影检查门洞是否完全打开和关闭`
+}
+
+async function markRedstoneSwitchFromPreviewBlock(payload) {
+  isPickingRedstoneSwitch.value = false
+  const position = {}
+  for (const axis of ['x', 'y', 'z']) {
+    // 拾取到的坐标带着预览偏移，开关要记在原理图自身的坐标系里
+    position[axis] = Math.round(Number(payload?.[axis]) - Number(payload?.previewOffset?.[axis] || 0))
+  }
+  const file = schematicSourceFile.value
+  if (!['x', 'y', 'z'].every(axis => Number.isFinite(position[axis])) || !file) {
+    redstoneSwitchStatus.value = { text: '当前高亮方块没有可用坐标，无法标记开关', warning: true }
+    return
+  }
+
+  const block = schematicService.getBlockAtRuntimePosition(position, schematicObject.value)
+  if (!resolveSwitchType(block?.name)) {
+    redstoneSwitchStatus.value = {
+      text: '请选择能触发机器的元件，例如拉杆、按钮、压力板、标靶或幽匿感测体。已保留之前的标记',
+      warning: true,
+    }
+    return
+  }
+
+  await checkRedstoneRecording(position)
+}
+
+async function checkRedstoneRecording(position) {
+  const file = schematicSourceFile.value
+  if (!file || isCheckingRedstoneSwitch.value) {
+    return
+  }
+  isPickingRedstoneSwitch.value = false
+  isCheckingRedstoneSwitch.value = true
+  redstoneSwitchStatus.value = { text: '正在试运行原理图…', warning: false }
+  try {
+    const { summary } = await simulateSwitchReplay({
+      buffer: await file.arrayBuffer(),
+      fileName: file.name || schematicFile.value || '',
+      position,
+      recording: redstoneRecording.value,
+      durationTicks: machineSeconds.value * 20,
+    })
+    if (file !== schematicSourceFile.value) {
+      return
+    }
+    redstoneSwitch.value = {
+      position,
+      recording: redstoneRecording.value,
+      durationTicks: machineSeconds.value * 20,
+      initialState: redstoneSwitch.value?.initialState || 'closed',
+      mode: summary.mode,
+    }
+    redstoneSwitchStatus.value = { text: describeRedstoneSwitch(position, summary), warning: !!summary.unsupportedEvents?.length || Object.keys(summary.unsupportedBlocks || {}).length > 0 }
+  }
+  catch (error) {
+    if (file !== schematicSourceFile.value) {
+      return
+    }
+    redstoneSwitch.value = null
+    redstoneSwitchStatus.value = { text: `模拟未通过，没有记录开关：${error?.message || '未知错误'}`, warning: true }
+  }
+  finally {
+    isCheckingRedstoneSwitch.value = false
+  }
+}
+
+function handlePreviewBlockPicked(payload) {
+  if (isPickingRedstoneSwitch.value) {
+    void markRedstoneSwitchFromPreviewBlock(payload)
+    return
+  }
+  setProjectionSpawnFromPreviewBlock(payload)
+}
+
 onMounted(async () => {
   emitter.on('schematic:apply-progress', onSchematicApplyProgress)
 
@@ -830,9 +962,6 @@ onBeforeUnmount(() => {
       <div v-if="!isAuthenticated" class="auth-modal">
         <div class="auth-container">
           <h2>管理后台</h2>
-          <p class="auth-tip">
-            使用管理员 OAuth 账户登录
-          </p>
           <div class="oauth-actions">
             <button
             v-for="provider in authProviders"
@@ -843,9 +972,7 @@ onBeforeUnmount(() => {
           >
             <span class="oauth-btn-inner">
               <span class="oauth-icon" :class="`is-${provider.id}`" aria-hidden="true">
-                <svg v-if="provider.id === 'github'" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 0.5C5.372 0.5 0 5.915 0 12.596C0 17.945 3.438 22.483 8.205 24.084C8.805 24.196 9.025 23.822 9.025 23.5C9.025 23.212 9.015 22.44 9.01 21.415C5.672 22.158 4.968 19.783 4.968 19.783C4.422 18.36 3.633 17.982 3.633 17.982C2.546 17.217 3.715 17.233 3.715 17.233C4.916 17.319 5.549 18.488 5.549 18.488C6.616 20.351 8.349 19.813 9.05 19.497C9.157 18.705 9.467 18.163 9.81 17.857C7.145 17.545 4.344 16.49 4.344 11.779C4.344 10.437 4.814 9.339 5.58 8.475C5.455 8.161 5.046 6.898 5.697 5.188C5.697 5.188 6.705 4.859 8.998 6.436C9.959 6.162 10.989 6.025 12.019 6.021C13.049 6.025 14.08 6.162 15.043 6.436C17.334 4.859 18.34 5.188 18.34 5.188C18.994 6.898 18.584 8.161 18.461 8.475C19.229 9.339 19.696 10.437 19.696 11.779C19.696 16.503 16.891 17.541 14.218 17.847C14.648 18.223 15.03 18.966 15.03 20.106C15.03 21.738 15.015 23.056 15.015 23.5C15.015 23.825 15.232 24.202 15.84 24.083C20.604 22.48 24 17.944 24 12.596C24 5.915 18.627 0.5 12 0.5Z" />
-                </svg>
+                <ProviderIcon :provider="provider.id" />
               </span>
               <span>{{ isAuthenticating ? '登录中...' : `使用 ${provider.label} 登录` }}</span>
             </span>
@@ -865,13 +992,9 @@ onBeforeUnmount(() => {
     <!-- 管理后台界面 -->
     <div v-else class="admin-shell">
       <header class="admin-header">
-        <div>
-          <h2>控制台</h2>
-          <p v-if="currentAccountDisplay" class="subtitle">
-            当前账户: {{ currentAccountDisplay }}
-          </p>
-        </div>
+        <h2>控制台</h2>
         <div class="header-right">
+          <span v-if="currentAccountDisplay" class="current-account">当前账户：{{ currentAccountDisplay }}</span>
           <span class="dirty" :class="{ active: isDirty }">{{ isDirty ? '未保存' : '已保存' }}</span>
           <button class="btn ghost" @click="backToGame">
             返回
@@ -1081,20 +1204,22 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="subsection-title">
-            导入 Minecraft 投影文件
+            导入 Minecraft 投影或录像
           </div>
           <div class="setting-row">
             <input
               type="file"
-              accept=".litematic,.schem"
+              accept=".litematic,.schem,.schematic,.bp,.mcpr"
+              :disabled="isParsingSchematic"
               @change="handleSchematicFileSelect"
             >
           </div>
           <p class="schematic-preview-hint">
-            支持上传 `.litematic` 和 `.schem` 文件。
+            支持 Litematica .litematic、Sponge .schem、MCEdit .schematic、Axiom .bp（Version 0），以及 ReplayMod 原始录像 .mcpr。
           </p>
+          <ReplayModImport v-if="replayFile" :file="replayFile" @clear="replayFile = null" />
 
-          <div v-if="schematicFile" class="schematic-preview">
+          <div v-if="schematicFile && !replayFile" class="schematic-preview">
             <div class="preview-info">
               <label class="preview-info-field preview-info-field-name">
                 <strong>投影名</strong>
@@ -1131,6 +1256,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
+            <ThumbnailSkyPicker v-if="!getActiveProjectionId()" v-model="thumbnailSky" :disabled="isApplying" />
+
             <div class="setting-row schematic-preview-row">
               <div class="schematic-preview-stage">
                 <div class="preview-offset-overlay">
@@ -1156,12 +1283,13 @@ onBeforeUnmount(() => {
                   v-if="schematicObject"
                   :display-name="previewProjectionDisplayName"
                   :preview-metadata="schematicPreview"
+                  :thumbnail-sky="getActiveProjectionId() ? '' : thumbnailSky"
                   :resource-pack-signature="resourcePackSignature"
                   :schematic="schematicObject"
                   :source-file="schematicSourceFile"
                   :preview-offset="{ x: 0, y: schematicOffsetY, z: 0 }"
                   empty-label="真实渲染预览会显示在这里"
-                  @block-picked="setProjectionSpawnFromPreviewBlock"
+                  @block-picked="handlePreviewBlockPicked"
                 />
                 <div v-else class="schematic-preview-placeholder">
                   {{ isParsingSchematic ? '正在解析原理图...' : '暂无可渲染的原理图' }}
@@ -1169,8 +1297,60 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <p class="schematic-preview-hint">
-              鼠标移到高亮方块后双击，可直接把该方块上方设置为出生点。
+            <p class="schematic-preview-hint" :class="{ warning: isPickingRedstoneSwitch }">
+              {{ isPickingRedstoneSwitch
+                ? '双击要触发的元件，例如拉杆、压力板、标靶或幽匿感测体。'
+                : '鼠标移到高亮方块后双击，可直接把该方块上方设置为出生点。' }}
+            </p>
+
+            <div class="setting-row">
+              <label class="row-label" for="redstone-recording">红石模拟</label>
+              <div class="option-group">
+                <select id="redstone-recording" v-model="redstoneRecording" class="option-btn" :disabled="isCheckingRedstoneSwitch" @change="resetRedstoneSwitch">
+                  <option value="door">开关门</option>
+                  <option value="machine">运行机器</option>
+                </select>
+                <select v-if="redstoneRecording === 'machine'" v-model.number="machineSeconds" class="option-btn" aria-label="模拟时长" :disabled="isCheckingRedstoneSwitch" @change="resetRedstoneSwitch">
+                  <option v-for="seconds in [10, 30, 60, 120]" :key="seconds" :value="seconds">{{ seconds }} 秒</option>
+                </select>
+                <button v-if="redstoneRecording === 'machine'" class="option-btn" :disabled="isCheckingRedstoneSwitch" @click="checkRedstoneRecording(null)">
+                  从原始状态启动
+                </button>
+                <button
+                  class="option-btn"
+                  :class="{ active: isPickingRedstoneSwitch }"
+                  :disabled="isCheckingRedstoneSwitch"
+                  @click="toggleRedstoneSwitchPicking"
+                >
+                  {{ isPickingRedstoneSwitch ? '取消标记' : redstoneSwitch ? '重新标记开关' : '标记开关' }}
+                </button>
+                <button v-if="redstoneSwitch" class="option-btn" :disabled="isCheckingRedstoneSwitch" @click="resetRedstoneSwitch">
+                  移除标记
+                </button>
+              </div>
+              <div class="inline-help">
+                <span class="inline-help-icon" aria-hidden="true">?</span>
+                <span class="inline-help-tooltip">开关门会检查门能否复位。时钟、飞行器和消耗物品的机关可以选运行机器。标靶按箭中靶心触发，感测体按脚步触发，避雷针按遭雷击触发。</span>
+              </div>
+            </div>
+
+            <div v-if="redstoneSwitch && redstoneSwitch.mode === 'toggle'" class="setting-row">
+              <span class="row-label">原理图里门现在是</span>
+              <div class="option-group">
+                <button
+                  v-for="option in redstoneDoorStateOptions"
+                  :key="`redstone-door-state-${option.value}`"
+                  class="option-btn"
+                  :class="{ active: redstoneSwitch.initialState === option.value }"
+                  @click="redstoneSwitch.initialState = option.value"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+
+            <p v-if="redstoneSwitchStatus.text" class="schematic-preview-hint" :class="{ warning: redstoneSwitchStatus.warning }">
+              {{ redstoneSwitchStatus.text }}
             </p>
 
             <div class="preview-actions-right" style="margin-top: 12px;">
@@ -1259,10 +1439,6 @@ onBeforeUnmount(() => {
   margin: 0 0 24px;
   font-size: 13px;
   color: #cbd5e1;
-}
-
-.auth-tip {
-  margin-bottom: 12px;
 }
 
 .oauth-actions {
@@ -1365,14 +1541,15 @@ onBeforeUnmount(() => {
   font-size: 24px;
 }
 
-.subtitle {
-  margin: 6px 0 0;
+.current-account {
+  overflow-wrap: anywhere;
   font-size: 13px;
   color: #cbd5e1;
 }
 
 .header-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
