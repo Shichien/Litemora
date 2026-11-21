@@ -9,6 +9,7 @@
 
 # production
 /dist
+/docs/api/_build
 
 # various
 high-level-dependencies.html

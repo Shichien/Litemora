@@ -1,0 +1,16 @@
+version: 1
+project:
+  title: Litemora 浏览器 API
+  static_files:
+    - door-demo.html
+  toc:
+    - file: index.md
+    - file: schematic.md
+    - file: simulation.md
+    - file: recording.md
+site:
+  template: book-theme
+  options:
+    hide_breadcrumbs: true
+    logo_text: Litemora API
+    favicon: ../../public/favicon/favicon-192.webp

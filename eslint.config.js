@@ -15,6 +15,7 @@ const composer = antfu({
     'test-results/**/',
     'dist',
     'dist/**',
+    'docs/api/_build/**',
     'output',
     'output/**',
     '.playwright-cli',
@@ -42,6 +43,10 @@ const composer = antfu({
     'public/redstone-archive/*.replay.json',
     'public/**/world-state.json',
     'src/js/generated/**',
+    // Generated Minecraft protocol registries; format the generator instead.
+    'src/js/replaymod/data/protocol-*.js',
+    // wasm-bindgen output, rebuilt from scripts/redstone-wasm
+    'src/js/world/redstone-sim/pkg/**',
   ],
   rules: {
     // 允许使用 console.debug (用于调试功能)
@@ -55,6 +60,11 @@ composer.overrideRules({
   // `allowAllPropertiesOnSameLine`.
   'jsonc/object-property-newline': ['error', { allowAllPropertiesOnSameLine: true }],
   'vue/object-property-newline': ['error', { allowAllPropertiesOnSameLine: true }],
+})
+
+composer.append({
+  files: ['docs/api/*.md/*.js'],
+  rules: { 'no-console': 'off' },
 })
 
 composer.append({

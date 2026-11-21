@@ -4,15 +4,55 @@ import http from 'node:http'
 import path from 'node:path'
 
 import vue from '@vitejs/plugin-vue'
-import { loadEnv } from 'vite'
+import sirv from 'sirv'
+import { loadEnv, build as viteBuild } from 'vite'
 import glsl from 'vite-plugin-glsl'
 
 import _config from './_config'
 import { registerMockApi } from './dev/mock-api/index.js'
+import { bookBase, bookDir, bookHtml, buildBook } from './docs/api/build.mjs'
 import { getActiveProjectionId } from './src/js/utils/space-context.js'
 
 const HOST = _config.server.host
 const PORT = _config.server.port
+function apiDocs() {
+  return {
+    name: 'litemora-api-docs',
+    configureServer(server) {
+      const serve = sirv(bookHtml, { dev: true })
+      let dirty = true
+      let build = Promise.resolve()
+      server.watcher.on('all', (_event, file) => {
+        if (path.resolve(path.dirname(file)) === bookDir && /\.(?:html|md|yml)$/u.test(file))
+          dirty = true
+      })
+      server.middlewares.use(bookBase, (req, res, next) => {
+        if (dirty) {
+          dirty = false
+          build = build.then(buildBook, buildBook)
+        }
+        build.then(() => serve(req, res), (error) => {
+          dirty = true
+          next(error)
+        })
+      })
+    },
+    configurePreviewServer(server) {
+      const { root, build } = server.config
+      const html = path.join(path.resolve(root, build.outDir), bookBase)
+      server.middlewares.use(bookBase, sirv(html))
+    },
+    async writeBundle({ dir }) {
+      await viteBuild({
+        configFile: path.resolve(__dirname, 'sdk/vite.config.js'),
+        build: { outDir: path.resolve(dir, 'sdk') },
+      })
+      await buildBook()
+      await fs.cp(bookHtml, path.join(dir, bookBase), { recursive: true })
+    },
+  }
+}
+
 function configureLocalApi(server) {
   const { mode, envDir } = server.config
   const env = loadEnv(mode, envDir, ['OAUTH_', 'LITEMORA_'])
@@ -126,9 +166,12 @@ function excludeDevArtifactsFromBuild() {
 
 export default {
   worker: { format: 'es' },
+  // The generated Jupyter Book is a separate static site with its own bundles.
+  optimizeDeps: { entries: ['index.html'] },
   server: {
     host: HOST,
     port: PORT,
+    watch: { ignored: ['**/docs/api/_build/**', '**/output/**'] },
   },
   build: {
     target: 'es2022',
@@ -136,6 +179,10 @@ export default {
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Shared loading helpers must stay independent of optional engines.
+          if (id.includes('vite/preload-helper') || id.includes('commonjsHelpers')) {
+            return 'runtime-helpers'
+          }
           if (!id.includes('node_modules')) {
             return undefined
           }
@@ -166,7 +213,10 @@ export default {
             return undefined
           }
 
-          return 'vendor'
+          // Let Rollup keep optional world/editor dependencies behind their
+          // dynamic imports. One catch-all vendor chunk also made the portal
+          // download Minecraft registries and archive tooling on first load.
+          return undefined
         },
       },
     },
@@ -190,6 +240,7 @@ export default {
     },
   },
   plugins: [
+    apiDocs(),
     {
       name: 'mock-backend-world-config',
       configureServer: configureLocalApi,

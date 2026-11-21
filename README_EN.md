@@ -46,6 +46,8 @@ pnpm lint
 
 The dev server includes a local API middleware that serves spaces and projections from `public/spaces/`. You can work on the world list and world pages without a Cloudflare environment.
 
+The Documentation button opens the browser API reference at `/docs/api/`. Import `/sdk/litemora.js` to inspect a schematic, run a complete redstone action with `sim.runAnimation({ x, y, z })` and read its frames, or record a switch replay in a worker. Run `pnpm sdk:build` to generate a self-hostable `dist/sdk/`. Edit the [Jupyter Book sources](./docs/api/) and use `pnpm docs:build` to build the book separately. The regular `pnpm build` includes both in the site.
+
 ## Project layout
 
 ```

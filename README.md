@@ -47,6 +47,8 @@ pnpm lint
 
 开发服务器内置了本地 API 中间件，会从 `public/spaces/` 读取空间和投影数据，不需要 Cloudflare 环境即可调试世界列表和世界页面。
 
+首页底部的文档按钮打开 `/docs/api/`。手册说明如何在自己的网页中导入 `/sdk/litemora.js`，统计原理图、用 `sim.runAnimation({ x, y, z })` 一次运行完整的红石动作并取得所有帧，以及在后台录制回放。运行 `pnpm sdk:build` 可生成可独立托管的 `dist/sdk/`。手册用 Jupyter Book 编写在 [docs/api](./docs/api/)，可用 `pnpm docs:build` 单独构建。运行 `pnpm build` 会把模块和手册一起打入主站。
+
 ## 目录结构
 
 ```

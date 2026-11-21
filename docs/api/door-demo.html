@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>单拉杆活塞门演示</title>
+  <style>
+    :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-content: center; }
+    main { display: flex; align-items: center; gap: clamp(12px, 4vw, 32px); padding: 8px; }
+    #door { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 5px; background: #45434a; }
+    #door span { width: clamp(16px, 5vw, 36px); aspect-ratio: 1; background: #22242b; }
+    #door .filled { background: #e3dccc; box-shadow: inset -2px -2px #b8b1a1; }
+    #door .moving { background: #ba8853; }
+    button { font: inherit; padding: 6px 18px; cursor: pointer; }
+    button:disabled { cursor: wait; }
+    output { display: block; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="door" role="img" aria-label="三乘三门洞正面"></div>
+    <div>
+      <button type="button">关门</button>
+      <output>门已打开</output>
+    </div>
+  </main>
+  <script type="module">
+    const door = document.querySelector('#door')
+    const button = document.querySelector('button')
+    const status = document.querySelector('output')
+    const lever = { x: 3, y: 1, z: 0 }
+    let sim
+    let settled = true
+    for (let i = 0; i < 9; i++)
+      door.append(document.createElement('span'))
+
+    function draw(x, y, z, state) {
+      if (z !== 1 || x < 3 || x > 5 || y < 5 || y > 7)
+        return
+      const cell = door.children[(7 - y) * 3 + x - 3]
+      cell.classList.toggle('filled', state !== 'minecraft:air')
+      cell.classList.toggle('moving', state.startsWith('minecraft:moving_piston['))
+    }
+
+    function play({ frames, fromTick }) {
+      return new Promise((resolve) => {
+        const start = performance.now()
+        let index = 0
+        function update(now) {
+          const tick = fromTick + (now - start) / 50
+          while (index < frames.length && frames[index].tick <= tick) {
+            for (const { x, y, z, state } of frames[index++].changes)
+              draw(x, y, z, state)
+          }
+          if (index === frames.length)
+            resolve()
+          else
+            requestAnimationFrame(update)
+        }
+        requestAnimationFrame(update)
+      })
+    }
+
+    button.addEventListener('click', async () => {
+      button.disabled = true
+      try {
+        if (!sim) {
+          status.textContent = '正在加载活塞门…'
+          const { initRedstoneWasm, RedstoneSim } = await import('/sdk/litemora.js')
+          await initRedstoneWasm()
+          const file = await fetch('/redstone-archive/single-lever-piston-door-3x3.litematic')
+          if (!file.ok)
+            throw new Error(`原理图读取失败（HTTP ${file.status}）`)
+          sim = new RedstoneSim(new Uint8Array(await file.arrayBuffer()), 'litematic', false)
+          for (const [x, y, z, state] of JSON.parse(sim.blocks()))
+            draw(x, y, z, state)
+        }
+        const animation = sim.runAnimation(settled ? lever : undefined)
+        settled = animation.settled
+        status.textContent = '正在播放…'
+        await play(animation)
+        const open = sim.block_at(4, 6, 1) === 'minecraft:air'
+        button.textContent = settled ? (open ? '关门' : '开门') : '继续运行'
+        const result = settled ? (open ? '门已打开' : '门已关闭') : '尚未停稳'
+        status.textContent = `${result} · 第 ${animation.toTick} 刻`
+      }
+      catch (error) {
+        status.textContent = error.message
+      }
+      finally {
+        button.disabled = false
+      }
+    })
+
+    window.addEventListener('pagehide', (event) => {
+      if (!event.persisted)
+        sim?.free()
+    })
+  </script>
+</body>
+</html>
