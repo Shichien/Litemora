@@ -410,7 +410,6 @@ export default class Camera {
       this.instance.rotation.set(this.gameplayPitch, facingAngle, 0, 'YXZ')
       this.orbitControls.target.copy(this._lookTarget)
       this.trackballControls.target.copy(this._lookTarget)
-      this._applyViewBob(rigOutput)
       return
     }
 
@@ -444,27 +443,12 @@ export default class Camera {
     this.instance.lookAt(this._lookTarget)
     this.orbitControls.target.copy(this._lookTarget)
     this.trackballControls.target.copy(this._lookTarget)
-    this._applyViewBob(rigOutput)
   }
 
   _applyFov(fov) {
     if (Math.abs(this.instance.fov - fov) > FOV_EPSILON) {
       this.instance.fov = fov
-    }
-    // Rebuilt every gameplay frame: it clears last frame's bob and keeps
-    // projectionMatrixInverse unbobbed for block raycasts.
-    this.instance.updateProjectionMatrix()
-  }
-
-  /**
-   * MC GameRenderer: projection = P * bob. Only projectionMatrix carries the
-   * bob; the camera transform and projectionMatrixInverse stay unbobbed, so
-   * the crosshair ray and block picking are unaffected.
-   * @param {object|null} rigOutput
-   */
-  _applyViewBob(rigOutput) {
-    if (rigOutput?.bobActive) {
-      this.instance.projectionMatrix.multiply(rigOutput.bobMatrix)
+      this.instance.updateProjectionMatrix()
     }
   }
 

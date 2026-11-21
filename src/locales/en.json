@@ -32,7 +32,7 @@
     "controls": "Controls",
     "reset": "Reset Defaults",
     "done": "Done",
-    "cameraStyle": "Camera Style",
+    "cameraStyle": "Field of View Preset",
     "viewDistance": "View Distance",
     "unloadPadding": "Unload Padding",
     "speedLines": "Speed Lines",

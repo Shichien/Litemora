@@ -1,9 +1,9 @@
-import { BOBBING_PRESETS, FOV_PRESETS } from '../config/settings-presets.js'
+import { FOV_PRESETS } from '../config/settings-presets.js'
 
 /**
- * CameraRig defaults. The rig only produces modifiers (FOV, bobbing, third-person
+ * CameraRig defaults. The rig only produces modifiers (FOV, third-person
  * framing); Camera owns mode, pitch, collision and the final camera transform.
- * fov / bobbing start from the 'default' preset so the resting pose matches the
+ * FOV starts from the 'default' preset so the resting pose matches the
  * settings menu until settings:camera-rig-changed arrives.
  */
 export const CAMERA_RIG_CONFIG = {
@@ -29,7 +29,4 @@ export const CAMERA_RIG_CONFIG = {
   // Minecraft FOV: baseFov (vertical) times the eased flight/sprint modifier,
   // blended toward 1 by fovEffectScale (MC "FOV Effects" slider).
   fov: { ...FOV_PRESETS.default },
-
-  // Minecraft view bobbing, scaled by intensity (1 = vanilla)
-  bobbing: structuredClone(BOBBING_PRESETS.default),
 }

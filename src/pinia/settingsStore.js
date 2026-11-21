@@ -7,7 +7,6 @@ import emitter from '@three/utils/event/event-bus.js'
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 import {
-  BOBBING_PRESETS,
   CHUNK_DEFAULTS,
   ENV_DEFAULTS,
   FOV_PRESETS,
@@ -58,7 +57,6 @@ export const useSettingsStore = defineStore('settings', () => {
   // Camera settings
   const cameraPreset = ref(DEFAULT_SETTINGS.cameraPreset)
   const cameraFov = reactive({ ...FOV_PRESETS.default })
-  const cameraBobbing = reactive({ ...BOBBING_PRESETS.default })
 
   // Visual settings (SpeedLines)
   const visualPreset = ref(DEFAULT_SETTINGS.visualPreset)
@@ -174,14 +172,9 @@ export const useSettingsStore = defineStore('settings', () => {
     const fovPreset = FOV_PRESETS[presetName] || FOV_PRESETS.default
     Object.assign(cameraFov, fovPreset)
 
-    // Apply Bobbing preset
-    const bobbingPreset = BOBBING_PRESETS[presetName] || BOBBING_PRESETS.default
-    Object.assign(cameraBobbing, bobbingPreset)
-
     if (emit) {
       emitter.emit('settings:camera-rig-changed', {
         fov: { ...cameraFov },
-        bobbing: { ...cameraBobbing },
       })
       saveSettings()
     }
@@ -284,7 +277,6 @@ export const useSettingsStore = defineStore('settings', () => {
     emitter.emit('settings:mouse-sensitivity-changed', mouseSensitivity.value)
     emitter.emit('settings:camera-rig-changed', {
       fov: { ...cameraFov },
-      bobbing: { ...cameraBobbing },
     })
     emitter.emit('settings:postprocess-changed', {
       speedLines: { ...speedLines },
@@ -343,7 +335,6 @@ export const useSettingsStore = defineStore('settings', () => {
     // State - Camera
     cameraPreset,
     cameraFov,
-    cameraBobbing,
 
     // State - Visual
     visualPreset,

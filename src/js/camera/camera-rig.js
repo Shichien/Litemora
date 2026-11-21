@@ -5,8 +5,6 @@ import { CAMERA_RIG_CONFIG } from './camera-rig-config.js'
 
 const OPACITY_EPSILON = 0.005
 const THIRD_PERSON_MODES = new Set(['third-person-back', 'third-person-front'])
-const BOB_MODES = new Set(['first-person', 'third-person-back', 'third-person-front'])
-const DEG = Math.PI / 180
 
 /**
  * 帧率无关的指数阻尼
@@ -33,8 +31,6 @@ function assignFinite(target, source, keys) {
  * CameraRig computes per-frame camera modifiers from the player state:
  * - Minecraft FOV: baseFov * lerp(effectScale, 1, modifier), where the
  *   modifier (flight x1.1, sprint x1.15) is eased per tick by the player
- * - Minecraft view bobbing (GameRenderer.bobView) as a view-space matrix that
- *   Camera multiplies into the projection only, so aiming rays stay unbobbed
  * - third-person framing: shoulder offset, wheel height, distance, cave pull-in
  *   and player fade
  * Camera owns the mode, pitch, collision and the final transform, and calls
@@ -62,16 +58,11 @@ export default class CameraRig {
     // Reused output (no per-frame allocation)
     this.output = {
       fov: this._currentFov,
-      // View-space bob transform; Camera post-multiplies it into the projection.
-      bobMatrix: new THREE.Matrix4(),
-      bobActive: false,
       shoulderOffset: 0,
       height: 0,
       distance: this.config.follow.distance,
       focusDistance: this.config.follow.focusDistance,
     }
-    this._bobState = { walkDistance: 0, bob: 0 }
-    this._tmpBobRotation = new THREE.Matrix4()
 
     this._handleWheel = ({ deltaY } = {}) => {
       // First person: the wheel belongs to the hotbar. Bird view: OrbitControls zoom.
@@ -90,7 +81,7 @@ export default class CameraRig {
       )
     }
 
-    this._handleCameraRigChanged = ({ fov, bobbing } = {}) => {
+    this._handleCameraRigChanged = ({ fov } = {}) => {
       if (fov) {
         if (fov.enabled !== undefined) {
           this.config.fov.enabled = !!fov.enabled
@@ -98,13 +89,6 @@ export default class CameraRig {
         assignFinite(this.config.fov, fov, ['baseFov', 'fovEffectScale'])
         this.config.fov.baseFov = THREE.MathUtils.clamp(this.config.fov.baseFov, 30, 120)
         this.config.fov.fovEffectScale = THREE.MathUtils.clamp(this.config.fov.fovEffectScale, 0, 2)
-      }
-      if (bobbing) {
-        if (bobbing.enabled !== undefined) {
-          this.config.bobbing.enabled = !!bobbing.enabled
-        }
-        assignFinite(this.config.bobbing, bobbing, ['intensity'])
-        this.config.bobbing.intensity = THREE.MathUtils.clamp(this.config.bobbing.intensity, 0, 3)
       }
     }
 
@@ -148,7 +132,6 @@ export default class CameraRig {
     const isThirdPerson = THIRD_PERSON_MODES.has(mode)
 
     this._updateFov(player)
-    this._updateBobbing(BOB_MODES.has(mode), player)
     this._updateFraming(mode, isThirdPerson, playerPos, dt)
     this._updatePlayerOpacity(isThirdPerson, dt)
 
@@ -170,39 +153,6 @@ export default class CameraRig {
     }
     this._currentFov = fov.baseFov * fovMultiplier
     this.output.fov = this._currentFov
-  }
-
-  /**
-   * MC GameRenderer.bobView, in view space:
-   *   translate(sin(w*pi)*b*0.5, -|cos(w*pi)*b|, 0)
-   *   rotZ(sin(w*pi)*b*3 deg) * rotX(|cos(w*pi - 0.2)*b|*5 deg)
-   * w is the backwards-interpolated walk distance and b the eased bob amount.
-   * @param {boolean} isBobMode - first or third person
-   * @param {object} player
-   */
-  _updateBobbing(isBobMode, player) {
-    const out = this.output
-    const bobbing = this.config.bobbing
-    out.bobActive = false
-
-    if (!isBobMode || !bobbing.enabled || !player.movement?.getViewBobState) {
-      out.bobMatrix.identity()
-      return
-    }
-
-    const state = player.movement.getViewBobState(this._bobState)
-    const b = state.bob * (Number.isFinite(bobbing.intensity) ? bobbing.intensity : 1)
-    if (b <= 1e-5) {
-      out.bobMatrix.identity()
-      return
-    }
-
-    const phase = state.walkDistance * Math.PI
-    const sinPhase = Math.sin(phase)
-    out.bobMatrix.makeTranslation(sinPhase * b * 0.5, -Math.abs(Math.cos(phase) * b), 0)
-    out.bobMatrix.multiply(this._tmpBobRotation.makeRotationZ(sinPhase * b * 3 * DEG))
-    out.bobMatrix.multiply(this._tmpBobRotation.makeRotationX(Math.abs(Math.cos(phase - 0.2) * b) * 5 * DEG))
-    out.bobActive = true
   }
 
   _updateFraming(mode, isThirdPerson, playerPos, dt) {
@@ -287,11 +237,6 @@ export default class CameraRig {
     fovFolder.addBinding(this.config.fov, 'baseFov', { label: '基础 FOV', min: 30, max: 110, step: 1 })
     fovFolder.addBinding(this.config.fov, 'fovEffectScale', { label: 'FOV 效果', min: 0, max: 2, step: 0.05 })
     fovFolder.addBinding(this, '_currentFov', { label: '当前 FOV', readonly: true })
-
-    const bobbing = this.config.bobbing
-    const bobbingFolder = debugFolder.addFolder({ title: '视角摇晃', expanded: false })
-    bobbingFolder.addBinding(bobbing, 'enabled', { label: '启用' })
-    bobbingFolder.addBinding(bobbing, 'intensity', { label: '强度', min: 0, max: 3, step: 0.05 })
   }
 
   destroy() {

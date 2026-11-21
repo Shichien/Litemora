@@ -35,30 +35,6 @@ export const FOV_PRESETS = {
 }
 
 // ========================================
-// Camera Bobbing Presets
-// ========================================
-// Minecraft "View Bobbing": driven by walked distance, so the step rhythm
-// follows the real speed. intensity scales vanilla amplitudes (1 = vanilla).
-export const BOBBING_PRESETS = {
-  off: {
-    enabled: false,
-    intensity: 1,
-  },
-  default: {
-    enabled: true,
-    intensity: 1,
-  },
-  cinematic: {
-    enabled: true,
-    intensity: 0.5,
-  },
-  arcade: {
-    enabled: true,
-    intensity: 1.5,
-  },
-}
-
-// ========================================
 // SpeedLines Presets
 // ========================================
 export const SPEEDLINES_PRESETS = {
