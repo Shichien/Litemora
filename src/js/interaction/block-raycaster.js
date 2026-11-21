@@ -2,6 +2,7 @@ import * as THREE from 'three'
 
 import Experience from '../experience.js'
 import { blocks } from '../world/terrain/blocks-config.js'
+import { getMinecraftBlockCollisionProfile, getMinecraftBlockDefinition, getMinecraftSelectionBoxes } from '../world/terrain/minecraft-block-data.js'
 
 // 默认使用屏幕中心作为射线发射点（适配 PointerLock/FPS 交互）
 const CENTER_SCREEN = new THREE.Vector2(0, 0)
@@ -56,17 +57,6 @@ function parseMinecraftBlockString(blockString = '') {
   return { name, properties }
 }
 
-function fullBlockBox(worldX, worldY, worldZ) {
-  return {
-    minX: worldX - 0.5,
-    minY: worldY - 0.5,
-    minZ: worldZ - 0.5,
-    maxX: worldX + 0.5,
-    maxY: worldY + 0.5,
-    maxZ: worldZ + 0.5,
-  }
-}
-
 function axisNormal(axis, direction) {
   const sign = direction >= 0 ? -1 : 1
   if (axis === 'x') {
@@ -80,8 +70,7 @@ function axisNormal(axis, direction) {
 
 /**
  * BlockRaycaster
- * - 原理图渲染层 / 红石动态方块：InstancedMesh 求交
- * - 运行时（WASM）原理图层：按 chunkManager 方块数据做体素步进
+ * - 原版方块按状态查询选中形状；自定义模型直接与可见网格求交。
  * - 结果保存在 this.current，由 BlockSelectionHelper 等在 update 中轮询读取
  */
 export default class BlockRaycaster {
@@ -102,13 +91,6 @@ export default class BlockRaycaster {
 
     this.raycaster = new THREE.Raycaster()
     this.raycaster.far = this.params.maxDistance
-
-    // 缓存对象，避免每帧分配
-    this._instanceMatrix = new THREE.Matrix4()
-    this._worldMatrix = new THREE.Matrix4()
-    this._worldPos = new THREE.Vector3()
-    this._hitPoint = new THREE.Vector3()
-    this._hitNormal = new THREE.Vector3()
 
     this._currentKey = null
     this.current = null
@@ -171,8 +153,8 @@ export default class BlockRaycaster {
     this.camera?.updateMatrixWorld?.(true)
     this.raycaster.setFromCamera(ndc, this.camera)
 
-    const { meshTargets, hasRuntimeSchematicTargets } = this._collectTargets()
-    if (meshTargets.length === 0 && !hasRuntimeSchematicTargets) {
+    const { meshTargets, hasRuntimeSchematicTargets, visibleStates } = this._collectTargets()
+    if (!meshTargets.length && !hasRuntimeSchematicTargets && !visibleStates.size) {
       this._clear()
       return
     }
@@ -181,21 +163,19 @@ export default class BlockRaycaster {
     if (meshTargets.length) {
       const hits = this.raycaster.intersectObjects(meshTargets, true)
       for (const hit of hits) {
-        if (!this._isSupportedHit(hit)) {
-          continue
-        }
-
-        meshInfo = this._buildHitInfo(hit)
-        if (meshInfo) {
-          break
+        const candidate = hit.object.userData.minecraftDynamicBlockBatch || hit.object.userData.minecraftDynamicBlock
+          ? this._buildDynamicMinecraftHitInfo(hit)
+          : this._buildMinecraftSchematicHitInfo(hit)
+        if (candidate && (!meshInfo || candidate.distance < meshInfo.distance)) {
+          meshInfo = candidate
         }
       }
     }
 
-    const runtimeInfo = hasRuntimeSchematicTargets
-      ? this._raycastWasmSchematicLayer()
+    const blockInfo = hasRuntimeSchematicTargets || visibleStates.size
+      ? this._raycastSchematicLayer(hasRuntimeSchematicTargets ? null : visibleStates)
       : null
-    const info = this._pickNearestHitInfo(meshInfo, runtimeInfo)
+    const info = meshInfo && (!blockInfo || meshInfo.distance <= blockInfo.distance) ? meshInfo : blockInfo
 
     if (!info) {
       this._clear()
@@ -221,72 +201,33 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     }
   }
 
-  /**
-   * 收集当前可拾取的目标对象：原理图渲染层的 mesh + 红石回放的动态方块
-   * - 运行时（WASM）原理图层不走 mesh 求交，改为按方块数据做体素步进
-   */
   _collectTargets() {
-    const meshTargets = []
-    const playerPosition = this.experience.world?.player?.getPosition?.() || null
-    const schematicTargets = this.experience.world?.minecraftSchematicRenderLayer?.getRaycastTargets?.(
-      playerPosition,
+    const world = this.experience.world
+    const meshTargets = [...(world?.redstoneReplayController?.getRaycastTargets() || [])]
+    const schematicTargets = world?.minecraftSchematicRenderLayer?.getRaycastTargets(
+      world.player?.getPosition?.(),
       this.params.maxDistance,
     ) || []
-    const dynamicTargets = this.experience.world?.redstoneReplayController?.getRaycastTargets?.() || []
-    meshTargets.push(...dynamicTargets)
+    // The instanced renderer may still be building or hiding some state groups.
+    const visibleStates = new Set()
     let hasRuntimeSchematicTargets = false
-    for (const target of schematicTargets) {
-      if (target?.userData?.litemoraWasmSchematicLayer) {
+    for (const mesh of schematicTargets) {
+      if (mesh.userData.litemoraWasmSchematicLayer) {
         hasRuntimeSchematicTargets = true
-        continue
       }
-      meshTargets.push(target)
+      else if (mesh.userData.instanceToWorldBlock) {
+        if (getMinecraftBlockDefinition(mesh.userData.blockName)) {
+          visibleStates.add(mesh.userData.blockString)
+        }
+        else {
+          meshTargets.push(mesh)
+        }
+      }
     }
-
-    return {
-      meshTargets,
-      hasRuntimeSchematicTargets,
-    }
+    return { meshTargets, hasRuntimeSchematicTargets, visibleStates }
   }
 
-  /**
-   * 从 intersect 结果构建“方块信息”
-   * @param {THREE.Intersection} hit
-   */
-  _buildHitInfo(hit) {
-    const mesh = hit.object
-    if (
-      mesh?.userData?.minecraftDynamicBlock
-      || mesh?.userData?.minecraftDynamicBlockBatch
-    ) {
-      return this._buildDynamicMinecraftHitInfo(hit)
-    }
-    if (mesh?.userData?.litemoraWasmSchematicLayer) {
-      return this._buildWasmSchematicHitInfo(hit)
-    }
-
-    if (!mesh?.isInstancedMesh) {
-      return null
-    }
-
-    const instanceId = hit.instanceId
-    if (instanceId === undefined || instanceId === null) {
-      return null
-    }
-
-    if (mesh?.userData?.minecraftSchematicLayer && mesh?.userData?.instanceToWorldBlock) {
-      return this._buildMinecraftSchematicHitInfo(hit)
-    }
-
-    return null
-  }
-
-  _raycastWasmSchematicLayer() {
-    const renderLayer = this.experience.world?.minecraftSchematicRenderLayer
-    if (!renderLayer?.isRuntimeRendererActive?.()) {
-      return null
-    }
-
+  _raycastSchematicLayer(visibleStates) {
     const maxDistance = Number(this.raycaster.far)
     if (!Number.isFinite(maxDistance) || maxDistance <= 0) {
       return null
@@ -327,7 +268,7 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
 
     while (travelled <= maxDistance + RAY_EPSILON && iterations < maxIterations) {
       const cellExitDistance = Math.min(nextX, nextY, nextZ, maxDistance)
-      const hitInfo = this._raycastImportedBlockCell(blockX, blockY, blockZ, cellExitDistance)
+      const hitInfo = this._raycastImportedBlockCell(blockX, blockY, blockZ, cellExitDistance, visibleStates)
       if (hitInfo) {
         return hitInfo
       }
@@ -354,66 +295,52 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     return null
   }
 
-  _raycastImportedBlockCell(worldBlockX, worldBlockY, worldBlockZ, cellExitDistance) {
-    const block = this.chunkManager?.getBlockWorld?.(worldBlockX, worldBlockY, worldBlockZ) || null
+  _raycastImportedBlockCell(worldBlockX, worldBlockY, worldBlockZ, cellExitDistance, visibleStates) {
+    const block = this.chunkManager.getBlockWorld(worldBlockX, worldBlockY, worldBlockZ)
     if (!block?.isImportedMinecraft) {
       return null
     }
+    const blockString = buildMinecraftBlockString(block.minecraftBlock.name, block.minecraftBlock.properties)
+    if (visibleStates && !visibleStates.has(blockString)) {
+      return null
+    }
+    return this._intersectBlockShape(worldBlockX, worldBlockY, worldBlockZ, block, blockString, cellExitDistance)
+  }
 
-    const boxes = this._getSelectionBoxesForImportedBlock(worldBlockX, worldBlockY, worldBlockZ, block)
+  _intersectBlockShape(worldBlockX, worldBlockY, worldBlockZ, block, blockString, maxDistance) {
+    const selectionBoxes = getMinecraftSelectionBoxes(block.stateId)
     let closestHit = null
-    for (const box of boxes) {
-      const hit = this._intersectRayAabb(box)
-      if (!hit || hit.distance > cellExitDistance + RAY_EPSILON) {
-        continue
-      }
-
-      if (!closestHit || hit.distance < closestHit.distance) {
+    for (const box of selectionBoxes || []) {
+      const hit = this._intersectRayAabb(box, worldBlockX, worldBlockY, worldBlockZ)
+      if (hit && hit.distance <= maxDistance + RAY_EPSILON && (!closestHit || hit.distance < closestHit.distance)) {
         closestHit = hit
       }
     }
-
     if (!closestHit) {
       return null
     }
-
     return this._buildSemanticMinecraftHitInfo({
       worldBlockX,
       worldBlockY,
       worldBlockZ,
       block,
-      distance: closestHit.distance,
-      point: closestHit.point,
-      normal: closestHit.normal,
+      blockString,
+      selectionBoxes,
+      ...closestHit,
     })
   }
 
-  _getSelectionBoxesForImportedBlock(worldX, worldY, worldZ, block = null) {
-    if (Array.isArray(block?.collisionBoxes) && block.collisionBoxes.length) {
-      return block.collisionBoxes.map(([minX, minY, minZ, maxX, maxY, maxZ]) => ({
-        minX: worldX - 0.5 + Number(minX),
-        minY: worldY - 0.5 + Number(minY),
-        minZ: worldZ - 0.5 + Number(minZ),
-        maxX: worldX - 0.5 + Number(maxX),
-        maxY: worldY - 0.5 + Number(maxY),
-        maxZ: worldZ - 0.5 + Number(maxZ),
-      }))
-    }
-
-    return [fullBlockBox(worldX, worldY, worldZ)]
-  }
-
-  _intersectRayAabb(box) {
+  _intersectRayAabb(box, x, y, z) {
     const origin = this.raycaster.ray.origin
     const direction = this.raycaster.ray.direction
     let tMin = 0
     let tMax = this.raycaster.far
-    let hitAxis = 'z'
+    let hitAxis
 
     const axes = [
-      ['x', box.minX, box.maxX],
-      ['y', box.minY, box.maxY],
-      ['z', box.minZ, box.maxZ],
+      ['x', x - 0.5 + box[0], x - 0.5 + box[3]],
+      ['y', y - 0.5 + box[1], y - 0.5 + box[4]],
+      ['z', z - 0.5 + box[2], z - 0.5 + box[5]],
     ]
 
     for (const [axis, minValue, maxValue] of axes) {
@@ -435,7 +362,7 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
         far = swap
       }
 
-      if (near > tMin) {
+      if (near > tMin || (near === 0 && !hitAxis)) {
         tMin = near
         hitAxis = axis
       }
@@ -451,6 +378,15 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     }
 
     const distance = Math.max(0, tMin)
+    // From inside the shape, the selected face opposes the main direction of travel.
+    if (!hitAxis) {
+      hitAxis = 'x'
+      for (const axis of ['y', 'z']) {
+        if (Math.abs(direction[axis]) > Math.abs(direction[hitAxis])) {
+          hitAxis = axis
+        }
+      }
+    }
     return {
       distance,
       point: this.raycaster.ray.at(distance, new THREE.Vector3()),
@@ -463,6 +399,8 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     worldBlockY,
     worldBlockZ,
     block,
+    blockString,
+    selectionBoxes,
     distance,
     point,
     normal,
@@ -500,49 +438,9 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       minecraftBlock: block?.minecraftBlock || null,
       isImportedMinecraft: true,
       collisionBoxes: block?.collisionBoxes || null,
-      blockString: buildMinecraftBlockString(blockName, block?.minecraftBlock?.properties || {}),
+      selectionBoxes,
+      blockString,
     }
-  }
-
-  _isSupportedHit(hit) {
-    const mesh = hit?.object
-    if (mesh?.userData?.minecraftDynamicBlock) {
-      return true
-    }
-    if (mesh?.userData?.minecraftDynamicBlockBatch) {
-      return hit.instanceId !== undefined && hit.instanceId !== null
-    }
-    if (mesh?.userData?.litemoraWasmSchematicLayer) {
-      return true
-    }
-
-    return !!(
-      mesh?.isInstancedMesh
-      && hit.instanceId !== undefined
-      && hit.instanceId !== null
-    )
-  }
-
-  _pickNearestHitInfo(meshInfo = null, runtimeInfo = null) {
-    if (!meshInfo) {
-      return runtimeInfo
-    }
-    if (!runtimeInfo) {
-      return meshInfo
-    }
-
-    const meshDistance = Number(meshInfo.distance)
-    const runtimeDistance = Number(runtimeInfo.distance)
-    if (!Number.isFinite(meshDistance)) {
-      return runtimeInfo
-    }
-    if (!Number.isFinite(runtimeDistance)) {
-      return meshInfo
-    }
-
-    return runtimeDistance < meshDistance
-      ? runtimeInfo
-      : meshInfo
   }
 
   _buildMinecraftSchematicHitInfo(hit) {
@@ -570,10 +468,6 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
     const localX = Math.floor(worldBlockX - originX)
     const localZ = Math.floor(worldBlockZ - originZ)
 
-    mesh.getMatrixAt(instanceId, this._instanceMatrix)
-    this._worldMatrix.multiplyMatrices(mesh.matrixWorld, this._instanceMatrix)
-    this._worldPos.setFromMatrixPosition(this._worldMatrix)
-
     const block = this.chunkManager?.getBlockWorld?.(worldBlockX, worldBlockY, worldBlockZ) || null
     const blockId = block?.id ?? blocks.empty.id
     const blockName = block?.minecraftBlock?.name || mesh?.userData?.blockName || 'minecraft:unknown'
@@ -589,7 +483,7 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
 
       local: { x: localX, y: worldBlockY, z: localZ },
       worldBlock: { x: worldBlockX, y: worldBlockY, z: worldBlockZ },
-      worldPosition: this._worldPos.clone(),
+      worldPosition: new THREE.Vector3(worldBlockX, worldBlockY, worldBlockZ),
 
       renderScale: 1,
       heightScale: 1,
@@ -626,113 +520,16 @@ Dist: ${info.distance?.toFixed(2) || 'N/A'}`
       || '',
     )
     const minecraftBlock = parseMinecraftBlockString(blockString)
-    const chunkWidth = this.chunkManager?.chunkWidth ?? 64
-    const chunkX = Math.floor(worldBlockX / chunkWidth)
-    const chunkZ = Math.floor(worldBlockZ / chunkWidth)
-    const originX = chunkX * chunkWidth
-    const originZ = chunkZ * chunkWidth
-    const localX = Math.floor(worldBlockX - originX)
-    const localZ = Math.floor(worldBlockZ - originZ)
-    let face = hit.face ?? null
-    if (face?.normal) {
-      this._hitNormal.copy(face.normal).transformDirection(object.matrixWorld).normalize()
-      face = {
-        ...face,
-        normal: this._hitNormal.clone(),
-      }
-    }
-
-    return {
-      chunkX,
-      chunkZ,
-      origin: { x: originX, z: originZ },
-      instanceId,
-      blockId: blocks.empty.id,
-      blockName: minecraftBlock.name,
-      local: { x: localX, y: worldBlockY, z: localZ },
-      worldBlock: { x: worldBlockX, y: worldBlockY, z: worldBlockZ },
-      worldPosition: new THREE.Vector3(worldBlockX, worldBlockY, worldBlockZ),
-      renderScale: 1,
-      heightScale: 1,
-      point: hit.point?.clone?.() ?? null,
-      face,
-      distance: hit.distance ?? null,
-      source: 'minecraft-schematic',
+    const profile = getMinecraftBlockCollisionProfile(minecraftBlock.name, minecraftBlock.properties)
+    const info = this._intersectBlockShape(worldBlockX, worldBlockY, worldBlockZ, {
+      stateId: profile.stateId,
+      collisionBoxes: profile.collisionBoxes,
       minecraftBlock,
-      isImportedMinecraft: true,
-      collisionBoxes: null,
-      blockString,
+    }, blockString, this.raycaster.far)
+    if (info) {
+      info.instanceId = instanceId
     }
-  }
-
-  _buildWasmSchematicHitInfo(hit) {
-    const mesh = hit.object
-    const point = hit.point?.clone?.()
-    if (!point) {
-      return null
-    }
-
-    this._hitPoint.copy(point)
-    let face = hit.face ?? null
-    if (face?.normal) {
-      this._hitNormal.copy(face.normal).transformDirection(mesh.matrixWorld).normalize()
-      this._hitPoint.addScaledVector(this._hitNormal, -0.01)
-      face = {
-        ...face,
-        normal: this._hitNormal.clone(),
-      }
-    }
-    else {
-      this._hitPoint.addScaledVector(this.raycaster.ray.direction, 0.01)
-    }
-
-    const worldBlockX = Math.round(this._hitPoint.x)
-    const worldBlockY = Math.round(this._hitPoint.y)
-    const worldBlockZ = Math.round(this._hitPoint.z)
-    if (!Number.isFinite(worldBlockX) || !Number.isFinite(worldBlockY) || !Number.isFinite(worldBlockZ)) {
-      return null
-    }
-
-    const block = this.chunkManager?.getBlockWorld?.(worldBlockX, worldBlockY, worldBlockZ) || null
-    if (!block?.isImportedMinecraft) {
-      return null
-    }
-
-    const chunkWidth = this.chunkManager?.chunkWidth ?? 64
-    const chunkX = Math.floor(worldBlockX / chunkWidth)
-    const chunkZ = Math.floor(worldBlockZ / chunkWidth)
-    const originX = chunkX * chunkWidth
-    const originZ = chunkZ * chunkWidth
-    const localX = Math.floor(worldBlockX - originX)
-    const localZ = Math.floor(worldBlockZ - originZ)
-    const blockName = block?.minecraftBlock?.name || 'minecraft:unknown'
-
-    return {
-      chunkX,
-      chunkZ,
-      origin: { x: originX, z: originZ },
-
-      instanceId: null,
-      blockId: block?.id ?? blocks.empty.id,
-      blockName,
-
-      local: { x: localX, y: worldBlockY, z: localZ },
-      worldBlock: { x: worldBlockX, y: worldBlockY, z: worldBlockZ },
-      worldPosition: new THREE.Vector3(worldBlockX, worldBlockY, worldBlockZ),
-
-      renderScale: 1,
-      heightScale: 1,
-
-      point,
-      face,
-      distance: hit.distance ?? null,
-
-      source: 'minecraft-schematic',
-      minecraftBlock: block?.minecraftBlock || null,
-      isImportedMinecraft: true,
-      collisionBoxes: block?.collisionBoxes || null,
-      blockString: buildMinecraftBlockString(blockName, block?.minecraftBlock?.properties || {}),
-    }
+    return info
   }
 
   _clear() {

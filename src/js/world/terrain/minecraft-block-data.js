@@ -1,5 +1,6 @@
-import blockCollisionShapes from 'minecraft-data/minecraft-data/data/pc/1.21.4/blockCollisionShapes.json'
-import blockDefinitions from 'minecraft-data/minecraft-data/data/pc/1.21.4/blocks.json'
+import blockCollisionShapes from 'minecraft-data/minecraft-data/data/pc/26.1/blockCollisionShapes.json'
+import blockDefinitions from 'minecraft-data/minecraft-data/data/pc/26.1/blocks.json'
+import selectionShapes from '../../generated/minecraft-selection-shapes.json'
 
 const blocksByName = new Map(blockDefinitions.map(block => [block.name, block]))
 const defaultStateValueCache = new Map()
@@ -195,8 +196,13 @@ function getFallbackCollisionBoxes(block = null) {
   return [[0, 0, 0, 1, 1, 1]]
 }
 
-function getMinecraftBlockDefinition(blockName = '') {
+export function getMinecraftBlockDefinition(blockName = '') {
   return blocksByName.get(normalizeMinecraftBlockName(blockName)) || null
+}
+
+// State IDs have the same ordering as the vanilla registry used by GenerateSelectionShapes.
+export function getMinecraftSelectionBoxes(stateId) {
+  return selectionShapes.shapes[selectionShapes.states[stateId]]
 }
 
 export function getMinecraftBlockCollisionProfile(blockName = '', properties = {}) {

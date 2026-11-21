@@ -61,20 +61,20 @@ export function getOverlayGeometryForTarget(target, geometryCache, options = {})
     return cache.get(cacheKey) || null
   }
 
-  // Prefer collision boxes for the mining overlay so imported Minecraft models
-  // do not reuse their atlas UVs for destroy-stage textures.
-  if (!Array.isArray(target?.collisionBoxes) || !target.collisionBoxes.length || !target?.worldBlock) {
+  // Selection and mining use the same local boxes the ray hit, with plain UVs for cracks.
+  const boxes = target?.selectionBoxes ?? target?.collisionBoxes
+  if (!Array.isArray(boxes) || !boxes.length) {
     return getMinecraftOverlayGeometry()
   }
 
-  const boxesKey = buildCollisionBoxesCacheKey(target.collisionBoxes)
+  const boxesKey = buildCollisionBoxesCacheKey(boxes)
   if (!boxesKey) {
     return getMinecraftOverlayGeometry()
   }
 
   const cacheKey = `boxes:${scale}:${boxesKey}`
   if (!cache.has(cacheKey)) {
-    const geometries = target.collisionBoxes
+    const geometries = boxes
       .map(normalizeCollisionBox)
       .filter(box => box && Object.values(box).every(Number.isFinite))
       .map((box) => {

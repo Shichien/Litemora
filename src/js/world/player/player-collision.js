@@ -1,16 +1,65 @@
 import * as THREE from 'three'
 import Experience from '../../experience.js'
-import { isSlabBlockName, isSlabBlockType, isStairBlockName, isStairBlockType } from '../terrain/block-behaviors.js'
-import { getBlockTypeById } from '../terrain/blocks-config.js'
 
-const EMPTY_BLOCK_ID = 0
+// Same separation tolerance as Minecraft's VoxelShape.collide.
+const EPSILON = 1e-7
+const FULL_BLOCK = [[0, 0, 0, 1, 1, 1]]
 
-/**
- * 玩家胶囊体与方块的碰撞检测/修正
- * - broadPhase: 根据胶囊包围盒筛出潜在方块
- * - narrowPhase: 逐块计算最近点并检测是否与胶囊相交
- * - resolveCollisions: 按重叠深度由小到大修正位置与速度
- */
+function overlaps(a, b, axis) {
+  return a.max[axis] > b.min[axis] + EPSILON && a.min[axis] < b.max[axis] - EPSILON
+}
+
+function clipAxis(body, shapes, axis, sideA, sideB, distance) {
+  if (distance === 0) {
+    return 0
+  }
+  for (const { box } of shapes) {
+    if (!overlaps(body, box, sideA) || !overlaps(body, box, sideB)) {
+      continue
+    }
+    if (distance > 0 && body.max[axis] <= box.min[axis] + EPSILON) {
+      distance = Math.min(distance, Math.max(0, box.min[axis] - body.max[axis]))
+    }
+    else if (distance < 0 && body.min[axis] >= box.max[axis] - EPSILON) {
+      distance = Math.max(distance, Math.min(0, box.max[axis] - body.min[axis]))
+    }
+  }
+  body.min[axis] += distance
+  body.max[axis] += distance
+  return distance
+}
+
+// Entity.collideWithShapes: land first, then move along the larger horizontal component.
+function clipMovement(bounds, movement, shapes, floorY) {
+  const body = bounds.clone()
+  const downLimit = Math.min(0, floorY - body.min.y)
+  const y = clipAxis(body, shapes, 'y', 'x', 'z', Math.max(movement.y, downLimit))
+  let x, z
+  if (Math.abs(movement.x) < Math.abs(movement.z)) {
+    z = clipAxis(body, shapes, 'z', 'x', 'y', movement.z)
+    x = clipAxis(body, shapes, 'x', 'y', 'z', movement.x)
+  }
+  else {
+    x = clipAxis(body, shapes, 'x', 'y', 'z', movement.x)
+    z = clipAxis(body, shapes, 'z', 'x', 'y', movement.z)
+  }
+  return new THREE.Vector3(x, y, z)
+}
+
+function worldBox(x, y, z, shape) {
+  if (!Array.isArray(shape)) {
+    return new THREE.Box3(
+      new THREE.Vector3(shape.minX, shape.minY, shape.minZ),
+      new THREE.Vector3(shape.maxX, shape.maxY, shape.maxZ),
+    )
+  }
+  const [x0, y0, z0, x1, y1, z1] = shape
+  return new THREE.Box3(
+    new THREE.Vector3(x - 0.5 + x0, y - 0.5 + y0, z - 0.5 + z0),
+    new THREE.Vector3(x - 0.5 + x1, y - 0.5 + y1, z - 0.5 + z1),
+  )
+}
+
 export default class PlayerCollisionSystem {
   constructor() {
     this.experience = new Experience()
@@ -55,352 +104,150 @@ export default class PlayerCollisionSystem {
     this.stats.collisionCount = 0
   }
 
-  /**
-   * broad phase：通过胶囊体的 AABB 找到可能相交的方块
-   * @param {{ center:THREE.Vector3, halfHeight:number, radius:number }} playerCapsule
-   * @param {{ getBlockWorld:(x:number,y:number,z:number)=>{id:number,instanceId:any} }} provider 地形查询提供者（ChunkManager）
-   * @returns {{x:number,y:number,z:number}[]} 返回可能相交的方块列表
-   */
-  broadPhase(playerCapsule, provider) {
-    const candidates = []
-
+  // Blocks are centred on integer coordinates. Include neighbouring cells for
+  // shapes extending outside their own block, e.g. fences and piston heads.
+  collectShapes(area, provider) {
     if (!provider?.getBlockWorld) {
-      return candidates
+      return []
     }
-
-    const { center, radius, halfHeight } = playerCapsule
-    const vertical = halfHeight + radius
-
-    const minX = Math.floor(center.x - radius)
-    const maxX = Math.ceil(center.x + radius)
-    const minY = Math.floor(center.y - vertical)
-    const maxY = Math.ceil(center.y + vertical)
-    const minZ = Math.floor(center.z - radius)
-    const maxZ = Math.ceil(center.z + radius)
-
     const positions = []
-    for (let x = minX; x <= maxX; x++) {
-      for (let y = minY; y <= maxY; y++) {
-        for (let z = minZ; z <= maxZ; z++) {
+    const min = area.min.clone().addScalar(0.5 - EPSILON).floor().addScalar(-1)
+    const max = area.max.clone().addScalar(0.5 + EPSILON).floor().addScalar(1)
+    for (let x = min.x; x <= max.x; x++) {
+      for (let y = min.y; y <= max.y; y++) {
+        for (let z = min.z; z <= max.z; z++) {
           positions.push({ x, y, z })
         }
       }
     }
-
-    const blocksAtPositions = typeof provider.getBlocksWorld === 'function'
+    const records = provider.getBlocksWorld
       ? provider.getBlocksWorld(positions)
-      : positions.map(position => provider.getBlockWorld(position.x, position.y, position.z))
-
-    for (let index = 0; index < positions.length; index++) {
-      const { x, y, z } = positions[index]
-      const block = blocksAtPositions[index]
-      const hasCollision = block?.hasCollision ?? (block?.id && block.id !== EMPTY_BLOCK_ID)
-      if (!hasCollision) {
+      : positions.map(({ x, y, z }) => provider.getBlockWorld(x, y, z))
+    const shapes = []
+    for (const [i, block] of records.entries()) {
+      if (!(block?.hasCollision ?? block?.id)) {
         continue
       }
-
-      const candidateCollisionBoxes = this._buildCollisionBoxesForCandidate(x, y, z, block?.collisionBoxes)
-      candidates.push({
-        x,
-        y,
-        z,
-        id: block?.id,
-        name: block?.name,
-        minecraftBlock: block?.minecraftBlock,
-        collisionBoxes: candidateCollisionBoxes,
-      })
-      if (this.debug.active && this.params.showCandidates) {
-        this._addCandidateHelper(candidateCollisionBoxes)
+      const { x, y, z } = positions[i]
+      for (const shape of block.collisionBoxes ?? FULL_BLOCK) {
+        const box = worldBox(x, y, z, shape)
+        if (area.intersectsBox(box)) {
+          shapes.push({ box, block, x, y, z })
+        }
       }
     }
-
-    this.stats.candidateCount = candidates.length
-    return candidates
+    return shapes
   }
 
-  /**
-   * narrow phase：逐方块检测是否与胶囊相交
-   * @param {{x:number,y:number,z:number}[]} candidates
-   * @param {{ center:THREE.Vector3, halfHeight:number, radius:number, worldVelocity:THREE.Vector3, basePosition:THREE.Vector3 }} playerCapsule
-   * @returns {Array<{block:{x:number,y:number,z:number}, contactPoint:THREE.Vector3, normal:THREE.Vector3, overlap:number, ground:boolean}>} 返回实际发生碰撞的方块集合
-   */
-  narrowPhase(candidates, playerCapsule) {
-    const collisions = []
-    const { center, halfHeight, radius } = playerCapsule
-    const capsuleParams = { center, halfHeight, radius }
-
-    for (const block of candidates) {
-      const collisionBoxes = Array.isArray(block.collisionBoxes) && block.collisionBoxes.length
-        ? block.collisionBoxes
-        : this._buildCollisionBoxesForCandidate(block.x, block.y, block.z, null)
-
-      for (const collisionBox of collisionBoxes) {
-        const closestPoint = new THREE.Vector3(
-          this._clamp(center.x, collisionBox.minX, collisionBox.maxX),
-          this._clamp(center.y, collisionBox.minY, collisionBox.maxY),
-          this._clamp(center.z, collisionBox.minZ, collisionBox.maxZ),
-        )
-
-        const collision = this._capsuleContainsPoint(closestPoint, capsuleParams)
-        if (!collision) {
-          continue
-        }
-
-        collisions.push({
-          block,
-          contactPoint: closestPoint,
-          normal: collision.normal,
-          overlap: collision.overlap,
-          ground: collision.ground,
-          collisionBox,
-          isTopEdgeContact: this._isTopEdgeContact(closestPoint, collisionBox),
-        })
-
-        if (this.debug.active && this.params.showContacts) {
-          this._addContactHelper(closestPoint)
-        }
-      }
-    }
-
-    this.stats.collisionCount = collisions.length
-    return collisions
+  playerBounds(feet, { radius, height }) {
+    return new THREE.Box3(
+      new THREE.Vector3(feet.x - radius, feet.y, feet.z - radius),
+      new THREE.Vector3(feet.x + radius, feet.y + height, feet.z + radius),
+    )
   }
 
-  /**
-   * resolve：按重叠深度从小到大修正
-   * - 按重叠深度排序，优先处理浅层碰撞减少穿模
-   * - 推离方块并消除沿法线速度
-   * - 检测地面状态，清理下落速度
-   * - 优化：限制最大处理碰撞数和迭代次数，减少极端情况下的计算量
-   * @param {Array<{block:{x:number,y:number,z:number}, contactPoint:THREE.Vector3, normal:THREE.Vector3, overlap:number, ground:boolean}>} collisions 碰撞结果
-   * @param {{ basePosition:THREE.Vector3, center:THREE.Vector3, halfHeight:number, radius:number, worldVelocity:THREE.Vector3, isGrounded:boolean }} playerState 玩家状态（会被就地修改）
-   */
-  resolveCollisions(collisions, playerState) {
-    // 优化：限制最大处理碰撞数，优先处理重叠小的（浅层碰撞优先）
-    const MAX_COLLISIONS = 12
-    const limitedCollisions = collisions
-      .sort((a, b) => a.overlap - b.overlap)
-      .slice(0, MAX_COLLISIONS)
+  canOccupy(bounds, provider) {
+    return this.collectShapes(bounds.clone().expandByScalar(-EPSILON), provider).length === 0
+  }
 
-    // 优化：限制迭代次数，防止复杂场景下的性能问题
-    const MAX_ITERATIONS = 4
-    const capsuleParams = {
-      center: playerState.center,
-      halfHeight: playerState.halfHeight,
-      radius: playerState.radius,
-    }
-    const deltaPosition = new THREE.Vector3()
-
-    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-      let hasMoved = false
-
-      for (const collision of limitedCollisions) {
-        // 位置调整后需要重新确认是否仍在胶囊内
-        const resolvedCollision = this._capsuleContainsPoint(collision.contactPoint, capsuleParams)
-        if (!resolvedCollision) {
-          continue
-        }
-
-        const responseNormal = resolvedCollision.normal.clone()
-        let treatAsGround = resolvedCollision.ground
-
-        if (collision.isTopEdgeContact) {
-          const topSurfaceY = collision.collisionBox?.maxY
-          const isBelowOrLevelWithTop = Number.isFinite(topSurfaceY)
-            ? playerState.basePosition.y <= topSurfaceY + 0.08
-            : false
-          const isAscendingIntoHigherLedge = Number.isFinite(topSurfaceY)
-            && playerState.worldVelocity.y > 0.12
-            && topSurfaceY > playerState.basePosition.y + 0.15
-          const isWalkableEdgeContact = this._isWalkableEdgeContact(collision.block)
-
-          if (isWalkableEdgeContact && isBelowOrLevelWithTop && !isAscendingIntoHigherLedge) {
-            responseNormal.set(0, 1, 0)
-            treatAsGround = true
-          }
-          else if (isBelowOrLevelWithTop && !isAscendingIntoHigherLedge) {
-            const horizontalLengthSq = (responseNormal.x * responseNormal.x) + (responseNormal.z * responseNormal.z)
-            if (horizontalLengthSq > 1e-6) {
-              const horizontalLength = Math.sqrt(horizontalLengthSq)
-              responseNormal.set(
-                responseNormal.x / horizontalLength,
-                0,
-                responseNormal.z / horizontalLength,
-              )
-              treatAsGround = false
-            }
-          }
-        }
-
-        if (!treatAsGround && Math.abs(responseNormal.y) < 0.35) {
-          const horizontalLengthSq = (responseNormal.x * responseNormal.x) + (responseNormal.z * responseNormal.z)
-          if (horizontalLengthSq > 1e-6) {
-            const horizontalLength = Math.sqrt(horizontalLengthSq)
-            responseNormal.set(
-              responseNormal.x / horizontalLength,
-              0,
-              responseNormal.z / horizontalLength,
-            )
-          }
-        }
-
-        // 推离方块
-        deltaPosition.copy(responseNormal).multiplyScalar(resolvedCollision.overlap + 1e-4)
-        playerState.basePosition.add(deltaPosition)
-        playerState.center.add(deltaPosition)
-        hasMoved = true
-
-        // 速度去掉沿法线分量，避免继续穿透
-        const vn = playerState.worldVelocity.dot(responseNormal)
-        if (vn < 0) {
-          playerState.worldVelocity.addScaledVector(responseNormal, -vn)
-        }
-
-        // 地面判定：法线向上即可视为着地
-        if (treatAsGround) {
-          playerState.isGrounded = true
-          // 防止在地面上继续积累下落速度
-          if (playerState.worldVelocity.y < 0) {
-            playerState.worldVelocity.y = 0
-          }
-        }
+  // Find the top face supporting the feet. Prefer the nearest block centre if
+  // multiple blocks share that face, as in CollisionGetter.findSupportingBlock.
+  supportingBlock(bounds, shapes, maxDrop = EPSILON) {
+    let support = null
+    let highest = -Infinity
+    let nearest = Infinity
+    const x = (bounds.min.x + bounds.max.x) / 2
+    const z = (bounds.min.z + bounds.max.z) / 2
+    for (const shape of shapes) {
+      const { box } = shape
+      const drop = bounds.min.y - box.max.y
+      if (drop < -EPSILON || drop > maxDrop + EPSILON || !overlaps(bounds, box, 'x') || !overlaps(bounds, box, 'z')) {
+        continue
       }
-
-      // 如果本轮没有移动，提前退出
-      if (!hasMoved) {
-        break
+      const distance = (shape.x - x) ** 2 + (shape.y - bounds.min.y) ** 2 + (shape.z - z) ** 2
+      if (box.max.y > highest || (box.max.y === highest && distance < nearest)) {
+        support = shape.block
+        highest = box.max.y
+        nearest = distance
       }
     }
+    return support
+  }
 
+  // Player.maybeBackOffFromEdge reduces each unsupported component in 0.05-block increments.
+  backOffEdge(bounds, movement, shapes, maxDrop, floorY) {
+    if (bounds.min.y - floorY <= maxDrop) {
+      return
+    }
+    const probe = bounds.clone()
+    const supported = (x, z) => {
+      probe.copy(bounds)
+      probe.min.x += x
+      probe.max.x += x
+      probe.min.z += z
+      probe.max.z += z
+      return this.supportingBlock(probe, shapes, maxDrop)
+    }
+    const reduce = value => Math.sign(value) * Math.max(0, Math.abs(value) - 0.05)
+    while (movement.x && !supported(movement.x, 0)) movement.x = reduce(movement.x)
+    while (movement.z && !supported(0, movement.z)) movement.z = reduce(movement.z)
+    while (movement.x && movement.z && !supported(movement.x, movement.z)) {
+      movement.x = reduce(movement.x)
+      movement.z = reduce(movement.z)
+    }
+  }
+
+  resolveMovement(bounds, movement, shapes, grounded, stepHeight, floorY) {
+    const clipped = clipMovement(bounds, movement, shapes, floorY)
+    const landed = movement.y < 0 && clipped.y !== movement.y
+    if ((!grounded && !landed) || (clipped.x === movement.x && clipped.z === movement.z) || stepHeight <= 0) {
+      return clipped
+    }
+
+    // Entity.collide: try actual shape heights from lowest to highest, starting
+    // at the landing surface. A step must give more horizontal travel.
+    const start = bounds.clone()
+    const baseOffset = landed ? clipped.y : 0
+    start.min.y += baseOffset
+    start.max.y += baseOffset
+    const heights = new Set()
+    for (const { box } of shapes) {
+      for (const y of [box.min.y, box.max.y]) {
+        const height = y - start.min.y
+        if (height >= 0 && height <= stepHeight && height !== clipped.y)
+          heights.add(height)
+      }
+    }
+    const flatDistance = clipped.x ** 2 + clipped.z ** 2
+    for (const height of [...heights].sort((a, b) => a - b)) {
+      const step = clipMovement(start, new THREE.Vector3(movement.x, height, movement.z), shapes, floorY)
+      if (step.x ** 2 + step.z ** 2 > flatDistance) {
+        step.y += baseOffset
+        return step
+      }
+    }
+    return clipped
+  }
+
+  finishFrame(bounds, shapes, movement, clipped) {
+    this.stats.candidateCount = shapes.length
+    this.stats.collisionCount = Number(movement.x !== clipped.x) + Number(movement.y !== clipped.y) + Number(movement.z !== clipped.z)
+    if (!this.debug.active) {
+      return
+    }
+    const center = bounds.getCenter(new THREE.Vector3())
+    for (const { box } of shapes) {
+      if (this.params.showCandidates) {
+        const helper = this._candidateHelpers[this._candidateIndex++] || this._createCandidateHelper()
+        box.getCenter(helper.position)
+        box.getSize(helper.scale)
+        helper.visible = true
+      }
+      if (this.params.showContacts && box.intersectsBox(bounds)) {
+        this._addContactHelper(box.clampPoint(center, new THREE.Vector3()))
+      }
+    }
     this._finalizeHelpers()
-  }
-
-  /**
-   * 点是否在胶囊体内，返回法线与重叠
-   * @param {THREE.Vector3} point
-   * @param {{center:THREE.Vector3, halfHeight:number, radius:number}} capsule
-   * @returns {{ normal:THREE.Vector3, overlap:number, ground:boolean } | null} 返回碰撞信息，若不相交则为 null
-   */
-  _capsuleContainsPoint(point, capsule) {
-    const { center, halfHeight, radius } = capsule
-    // 将点转换到胶囊本地空间（轴向 y）
-    const local = new THREE.Vector3().subVectors(point, center)
-
-    // 投影到轴线 [-halfHeight, halfHeight]
-    const clampedY = this._clamp(local.y, -halfHeight, halfHeight)
-    const deltaX = local.x
-    const deltaZ = local.z
-    const deltaY = local.y - clampedY
-    const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ)
-
-    if (dist > radius) {
-      return null
-    }
-
-    const overlap = radius - dist
-
-    // 法线指向“远离方块”方向：从方块指向胶囊中心
-    let normal
-    if (dist > 1e-6) {
-      normal = new THREE.Vector3(-deltaX / dist, -deltaY / dist, -deltaZ / dist)
-    }
-    else {
-      // 退化情况：点在轴线上，使用 y 方向区分上下
-      normal = local.y < 0 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, -1, 0)
-    }
-
-    // 判断是否接地：法线朝上且接触点靠近胶囊底部球体
-    const bottomProximity = local.y + halfHeight // 接触点到胶囊底部中心的相对高度
-    const ground = normal.y > 0.5 && bottomProximity <= radius + 0.05
-
-    return { normal, overlap, ground }
-  }
-
-  _isWalkableEdgeContact(block = null) {
-    const blockType = getBlockTypeById(block?.id)
-    if (blockType && (isSlabBlockType(blockType) || isStairBlockType(blockType))) {
-      return true
-    }
-
-    const blockName = block?.minecraftBlock?.name || block?.name || ''
-    return isSlabBlockName(blockName) || isStairBlockName(blockName)
-  }
-
-  _isTopEdgeContact(point, collisionBox) {
-    if (!point || !collisionBox) {
-      return false
-    }
-
-    const epsilon = 1e-4
-    const touchesTop = Math.abs(point.y - collisionBox.maxY) <= epsilon
-    if (!touchesTop) {
-      return false
-    }
-
-    const touchesSideX = Math.abs(point.x - collisionBox.minX) <= epsilon || Math.abs(point.x - collisionBox.maxX) <= epsilon
-    const touchesSideZ = Math.abs(point.z - collisionBox.minZ) <= epsilon || Math.abs(point.z - collisionBox.maxZ) <= epsilon
-    return touchesSideX || touchesSideZ
-  }
-
-  _buildCollisionBoxesForCandidate(x, y, z, collisionBoxes = null) {
-    if (!Array.isArray(collisionBoxes) || !collisionBoxes.length) {
-      return [{
-        minX: x - 0.5,
-        minY: y - 0.5,
-        minZ: z - 0.5,
-        maxX: x + 0.5,
-        maxY: y + 0.5,
-        maxZ: z + 0.5,
-      }]
-    }
-
-    return collisionBoxes.map((box) => {
-      if (box && typeof box === 'object' && box.minX !== undefined) {
-        return box
-      }
-
-      const [minX, minY, minZ, maxX, maxY, maxZ] = Array.isArray(box) ? box : [0, 0, 0, 1, 1, 1]
-      return {
-        minX: x - 0.5 + Number(minX),
-        minY: y - 0.5 + Number(minY),
-        minZ: z - 0.5 + Number(minZ),
-        maxX: x - 0.5 + Number(maxX),
-        maxY: y - 0.5 + Number(maxY),
-        maxZ: z - 0.5 + Number(maxZ),
-      }
-    })
-  }
-
-  /**
-   * 调试：高亮候选方块
-   * @param {Array<{minX:number,minY:number,minZ:number,maxX:number,maxY:number,maxZ:number}>} collisionBoxes 候选碰撞盒
-   */
-  _addCandidateHelper(collisionBoxes = []) {
-    const boxes = Array.isArray(collisionBoxes) && collisionBoxes.length
-      ? collisionBoxes
-      : [{
-          minX: -0.5,
-          minY: -0.5,
-          minZ: -0.5,
-          maxX: 0.5,
-          maxY: 0.5,
-          maxZ: 0.5,
-        }]
-
-    for (const box of boxes) {
-      const helper = this._candidateHelpers[this._candidateIndex] || this._createCandidateHelper()
-      const width = Math.max(0.001, Number(box.maxX) - Number(box.minX))
-      const height = Math.max(0.001, Number(box.maxY) - Number(box.minY))
-      const depth = Math.max(0.001, Number(box.maxZ) - Number(box.minZ))
-      helper.position.set(
-        (Number(box.minX) + Number(box.maxX)) * 0.5,
-        (Number(box.minY) + Number(box.maxY)) * 0.5,
-        (Number(box.minZ) + Number(box.maxZ)) * 0.5,
-      )
-      helper.scale.set(width, height, depth)
-      helper.visible = true
-      this._candidateIndex++
-    }
   }
 
   /**
@@ -448,16 +295,5 @@ export default class PlayerCollisionSystem {
     for (let i = this._contactIndex; i < this._contactHelpers.length; i++) {
       this._contactHelpers[i].visible = false
     }
-  }
-
-  /**
-   * 数值夹取，避免越界
-   * @param {number} v 输入值
-   * @param {number} min 下界
-   * @param {number} max 上界
-   * @returns {number} 夹取后的数值
-   */
-  _clamp(v, min, max) {
-    return Math.max(min, Math.min(max, v))
   }
 }

@@ -18,7 +18,7 @@ const MINOR_COLLISION_ANGLE = THREE.MathUtils.degToRad(8)
 /**
  * 玩家移动控制器
  * - 采用固定 20 TPS 的近 Minecraft 运动更新
- * - 保留现有胶囊碰撞系统与方块碰撞箱查询
+ * - 按 Minecraft 的轴顺序裁剪玩家包围盒的位移
  */
 export class PlayerMovementController {
   constructor(config) {
@@ -46,11 +46,6 @@ export class PlayerMovementController {
     this.minorHorizontalCollision = false
     // Last tick's horizontal displacement (m/s), for HUD / camera consumers
     this.horizontalMoveSpeed = 0
-    // View bobbing (MC ClientAvatarState): walked distance and bob amplitude
-    this.walkDist = 0
-    this.walkDistO = 0
-    this.bob = 0
-    this.bobO = 0
     // Eased eye height and FOV modifier (MC Camera.tick)
     this.eyeHeight = null
     this.eyeHeightO = null
@@ -75,13 +70,6 @@ export class PlayerMovementController {
 
     this.poses = this._createPoseProfiles()
     this.currentPoseKey = 'standing'
-    this.capsule = {
-      radius: 0.3,
-      halfHeight: 0.6,
-      offset: new THREE.Vector3(0, 0.9, 0),
-    }
-    this._applyPose('standing')
-
     this.collision = new PlayerCollisionSystem()
     this.terrainProvider = this.experience.terrainDataManager
     this._hasInitializedRespawn = false
@@ -94,19 +82,7 @@ export class PlayerMovementController {
     this.group.rotation.y = this.facingAngle
     this.scene.add(this.group)
 
-    this._tmpDirection = new THREE.Vector3()
-    this._tmpNextPosition = new THREE.Vector3()
-    this._tmpPreviousBase = new THREE.Vector3()
-    this._tmpAttemptedBase = new THREE.Vector3()
-    this._tmpResolvedBase = new THREE.Vector3()
-    this._tmpStepProbeBase = new THREE.Vector3()
-    this._tmpCenter = new THREE.Vector3()
-    this._tmpBoxPoint = new THREE.Vector3()
-    this._tmpMovementProfile = {
-      slipperiness: 0.6,
-      speedFactor: 1,
-      jumpFactor: 1,
-    }
+    this.groundMovementProfile = getMinecraftBlockMovementProfile()
 
     this._respawnSetupTimer = setTimeout(() => {
       this._respawnSetupTimer = null
@@ -130,8 +106,8 @@ export class PlayerMovementController {
   getPortalProbeState() {
     return {
       basePosition: this.position.clone(),
-      radius: this.capsule.radius,
-      bodyHeight: (this.capsule.halfHeight * 2) + (this.capsule.radius * 2),
+      radius: this.currentPose.radius,
+      bodyHeight: this.currentPose.height,
     }
   }
 
@@ -141,19 +117,6 @@ export class PlayerMovementController {
       return target
     }
     return THREE.MathUtils.lerp(this.eyeHeightO, this.eyeHeight, this.partialTick)
-  }
-
-  /**
-   * Interpolated view-bob inputs (MC ClientAvatarState).
-   * @param {{walkDistance:number, bob:number}} [target]
-   * @returns {{walkDistance:number, bob:number}} walkDistance is MC's
-   *   "backwards interpolated" value, -(wd + (wd - wdO) * pt)
-   */
-  getViewBobState(target = { walkDistance: 0, bob: 0 }) {
-    const pt = this.partialTick
-    target.walkDistance = -(this.walkDist + (this.walkDist - this.walkDistO) * pt)
-    target.bob = THREE.MathUtils.lerp(this.bobO, this.bob, pt)
-    return target
   }
 
   /**
@@ -171,7 +134,7 @@ export class PlayerMovementController {
       this.isClimbing = false
       // MC never crouches while flying; stand up when there is room.
       if (this.currentPoseKey !== 'standing' && this._canOccupyPose(this.position, 'standing')) {
-        this._applyPose('standing')
+        this.currentPoseKey = 'standing'
       }
     }
     else {
@@ -209,10 +172,6 @@ export class PlayerMovementController {
     this._syncMeshCustom()
   }
 
-  /**
-   * Start-of-tick bookkeeping, in MC order: Camera.tick (eye height) and
-   * AbstractClientPlayer.updateBob both read the previous tick's state.
-   */
   _beginTick() {
     const ease = this.config.physics?.eyeHeightEase ?? 0.5
     const targetEyeHeight = this.poses[this.currentPoseKey]?.eyeHeight ?? 1.62
@@ -225,20 +184,12 @@ export class PlayerMovementController {
     this.fovModifierO = this.fovModifier
     this.fovModifier += (this._getTargetFovModifier() - this.fovModifier) * ease
     this.fovModifier = THREE.MathUtils.clamp(this.fovModifier, 0.1, 1.5)
-
-    // Bob target uses last tick's post-friction velocity (MC deltaMovement), in b/t.
-    const horizontalBlocksPerTick = Math.hypot(this.worldVelocity.x, this.worldVelocity.z) * this.physicsTick
-    const targetBob = this.isGrounded && !this.isFlying ? Math.min(0.1, horizontalBlocksPerTick) : 0
-    this.bobO = this.bob
-    this.bob += (targetBob - this.bob) * 0.4
-    this.walkDistO = this.walkDist
   }
 
   _endTick() {
     const dx = this.position.x - this.previousPosition.x
     const dz = this.position.z - this.previousPosition.z
     const moved = Math.hypot(dx, dz)
-    this.walkDist += moved * 0.6
     this.horizontalMoveSpeed = moved * this.physicsTickRate
     this.tickCount++
   }
@@ -321,7 +272,7 @@ export class PlayerMovementController {
   }
 
   _jumpFromGround() {
-    const jumpFactor = this._tmpMovementProfile.jumpFactor ?? 1
+    const jumpFactor = this.groundMovementProfile.jumpFactor ?? 1
     this.worldVelocity.y = Math.max(this.config.jumpForce * jumpFactor, this.worldVelocity.y)
 
     if (this.isSprinting) {
@@ -414,10 +365,6 @@ export class PlayerMovementController {
     this.isGrounded = this.position.y <= (this.config.physics?.minWorldY ?? Number.NEGATIVE_INFINITY)
   }
 
-  getCapsuleCenterWorld(target = new THREE.Vector3()) {
-    return this.group.localToWorld(target.copy(this.capsule.offset))
-  }
-
   /**
    * One 20 TPS tick, in MC LivingEntity.travelInAir order:
    * accelerate -> move/collide -> block speed factor -> gravity -> friction.
@@ -446,9 +393,7 @@ export class PlayerMovementController {
 
     // Friction uses the ground state from before the move.
     const frictionGrounded = this.isGrounded
-    this._updateGroundMovementProfile(this.position)
     const groundFriction = this._getGroundFriction()
-    const usesWaterDrag = this.isInWater
     this._applyMoveAcceleration(inputState, isCombatActive, frictionGrounded)
 
     if (this.isInWater) {
@@ -461,91 +406,41 @@ export class PlayerMovementController {
       this.worldVelocity.z = THREE.MathUtils.clamp(this.worldVelocity.z, -climbClamp, climbClamp)
       this._updateClimbVerticalVelocity(inputState)
     }
-    else if (frictionGrounded && this.worldVelocity.y < 0) {
+
+    const movement = this.worldVelocity.clone().multiplyScalar(this.physicsTick)
+    const body = this.collision.playerBounds(this.position, this.currentPose)
+    const stepHeight = this.config.physics?.autoStepHeight ?? 0.6
+    const sneakDrop = this.config.physics?.sneakSupportDrop ?? stepHeight
+    const sneakingOnGround = inputState.sneak && frictionGrounded && movement.y <= 0
+    const area = body.clone().union(body.clone().translate(movement))
+    area.max.y += stepHeight
+    area.min.y -= sneakingOnGround ? sneakDrop : 0
+    const shapes = this.collision.collectShapes(area.expandByScalar(1e-7), provider)
+    const floorY = this._getMinWorldY() ?? -Infinity
+    if (sneakingOnGround) {
+      this.collision.backOffEdge(body, movement, shapes, sneakDrop, floorY)
+    }
+    const clipped = this.collision.resolveMovement(body, movement, shapes, frictionGrounded, stepHeight, floorY)
+    this.position.add(clipped)
+    this.isGrounded = movement.y < 0 && movement.y !== clipped.y
+    this._updateHorizontalCollision(inputState, movement, clipped)
+    if (clipped.x !== movement.x)
+      this.worldVelocity.x = 0
+    if (clipped.z !== movement.z)
+      this.worldVelocity.z = 0
+    if (clipped.y !== movement.y)
       this.worldVelocity.y = 0
+
+    this._applySampledFloor(provider, body.min.y)
+    if (this._applyWorldFloorClampToPosition(this.position, this.worldVelocity)) {
+      this.isGrounded = true
     }
-
-    const predictedDisplacement = this._tmpDirection.copy(this.worldVelocity).multiplyScalar(this.physicsTick)
-    const maxAxisDisplacement = Math.max(
-      Math.abs(predictedDisplacement.x),
-      Math.abs(predictedDisplacement.y),
-      Math.abs(predictedDisplacement.z),
-    )
-    const subStepCount = THREE.MathUtils.clamp(
-      Math.ceil(maxAxisDisplacement / 0.3),
-      1,
-      8,
-    )
-    const subTick = this.physicsTick / subStepCount
-    const attemptedDx = predictedDisplacement.x
-    const attemptedDz = predictedDisplacement.z
-    const tickStartX = this.position.x
-    const tickStartZ = this.position.z
-
-    let workingGrounded = this.isGrounded
-    let edgeClamped = false
-
-    for (let stepIndex = 0; stepIndex < subStepCount; stepIndex++) {
-      const previousBasePosition = this._tmpPreviousBase.copy(this.position)
-
-      const canClimb = !this.isInWater && this._isTouchingClimbable(this.position)
-      this.isClimbing = canClimb
-
-      this._tmpNextPosition.copy(this.position).addScaledVector(this.worldVelocity, subTick)
-      this._tmpAttemptedBase.copy(this._tmpNextPosition)
-
-      const playerState = this._buildPlayerState(this._tmpNextPosition.clone(), workingGrounded)
-      const candidates = this.collision.broadPhase(playerState, provider)
-      const collisions = this.collision.narrowPhase(candidates, playerState)
-      this.collision.resolveCollisions(collisions, playerState)
-
-      const didStepUp = this._tryStepUp(
-        previousBasePosition,
-        this._tmpAttemptedBase,
-        playerState,
-        workingGrounded,
-        collisions,
-      )
-
-      this._applyGroundSampler(playerState)
-
-      // Snap only when walking off a small step; a falling or jumping player
-      // lands through normal collision, so jump arcs keep MC's 12-tick cycle.
-      if (frictionGrounded && !this.isInWater && !canClimb && !playerState.isGrounded && playerState.worldVelocity.y <= 0) {
-        this._snapToGround(playerState)
-      }
-
-      if (this._shouldClampSneakMovement(inputState, playerState)) {
-        const beforeX = playerState.basePosition.x
-        const beforeZ = playerState.basePosition.z
-        this._applySneakEdgeClamp(previousBasePosition, playerState)
-        if (beforeX !== playerState.basePosition.x || beforeZ !== playerState.basePosition.z) {
-          edgeClamped = true
-        }
-      }
-
-      if (!this.isInWater && !canClimb && !didStepUp) {
-        this._refreshGroundedState(playerState)
-      }
-
-      this._applyWorldFloor(playerState)
-
-      this.position.copy(playerState.basePosition)
-      this.worldVelocity.copy(playerState.worldVelocity)
-      workingGrounded = playerState.isGrounded
-
-      if (workingGrounded && this.worldVelocity.y < 0) {
-        this.worldVelocity.y = 0
-      }
-    }
-
-    this.isGrounded = workingGrounded
     this.isClimbing = !this.isInWater && this._isTouchingClimbable(this.position)
-    this._updateHorizontalCollision(inputState, attemptedDx, attemptedDz, tickStartX, tickStartZ, edgeClamped)
-
-    // Block speed factor (soul sand, honey, slime), from the block underfoot.
-    this._updateGroundMovementProfile(this.position)
-    const speedFactor = this.isGrounded ? (this._tmpMovementProfile.speedFactor ?? 1) : 1
+    const finalBounds = this.collision.playerBounds(this.position, this.currentPose)
+    this.collision.finishFrame(finalBounds, shapes, movement, clipped)
+    const support = this.collision.supportingBlock(finalBounds, shapes)
+    this.groundMovementProfile = this._resolveMovementProfileForSupportBlock(support)
+    const speedFactor = this.isGrounded ? (this.groundMovementProfile.speedFactor ?? 1) : 1
     if (speedFactor !== 1) {
       this.worldVelocity.x *= speedFactor
       this.worldVelocity.z *= speedFactor
@@ -553,22 +448,12 @@ export class PlayerMovementController {
 
     // Gravity after the move, then drag (MC: vy = (vy - 0.08) * 0.98).
     if (!this.isInWater && !this.isClimbing) {
-      if (this.isGrounded) {
-        if (this.worldVelocity.y < 0) {
-          this.worldVelocity.y = 0
-        }
-      }
-      else {
-        const gravity = this.config.physics?.gravityPerTick ?? 1.6
-        const verticalDrag = this.config.physics?.verticalDrag ?? 0.98
-        this.worldVelocity.y = (this.worldVelocity.y - gravity) * verticalDrag
-      }
+      const gravity = this.config.physics?.gravityPerTick ?? 1.6
+      const verticalDrag = this.config.physics?.verticalDrag ?? 0.98
+      this.worldVelocity.y = (this.worldVelocity.y - gravity) * verticalDrag
     }
 
-    if (usesWaterDrag) {
-      // Water keeps its legacy drag, applied before the move.
-    }
-    else {
+    if (!this.isInWater) {
       const airDrag = this.config.physics?.airDrag ?? 0.91
       const friction = frictionGrounded ? groundFriction : airDrag
       this.worldVelocity.x *= friction
@@ -588,13 +473,10 @@ export class PlayerMovementController {
    * attempted one; "minor" when the deflection from the input direction is
    * under 8 degrees (a glancing wall hit keeps the sprint going).
    */
-  _updateHorizontalCollision(inputState, attemptedDx, attemptedDz, startX, startZ, edgeClamped) {
-    const actualDx = this.position.x - startX
-    const actualDz = this.position.z - startZ
-    const attemptedSq = (attemptedDx * attemptedDx) + (attemptedDz * attemptedDz)
-    const differenceSq = ((attemptedDx - actualDx) ** 2) + ((attemptedDz - actualDz) ** 2)
-
-    this.horizontalCollision = !edgeClamped && attemptedSq > 1e-8 && differenceSq > 1e-8
+  _updateHorizontalCollision(inputState, attempted, actual) {
+    const actualDx = actual.x
+    const actualDz = actual.z
+    this.horizontalCollision = Math.abs(attempted.x - actualDx) > 1e-5 || Math.abs(attempted.z - actualDz) > 1e-5
     this.minorHorizontalCollision = false
     if (!this.horizontalCollision) {
       return
@@ -644,7 +526,7 @@ export class PlayerMovementController {
       acceleration = 0.02 * (walk / 4.317)
     }
     else if (isGrounded) {
-      const slip = THREE.MathUtils.clamp(this._tmpMovementProfile.slipperiness ?? 0.6, 0.01, 0.999)
+      const slip = THREE.MathUtils.clamp(this.groundMovementProfile.slipperiness ?? 0.6, 0.01, 0.999)
       acceleration = slip > 0.6 ? attribute * (0.21600002 / (slip * slip * slip)) : attribute
     }
     else {
@@ -746,8 +628,6 @@ export class PlayerMovementController {
       return {
         radius,
         height,
-        halfHeight: Math.max(0.05, (height - (radius * 2)) * 0.5),
-        offsetY: height * 0.5,
         eyeHeight: Number(pose.eyeHeight ?? (height - 0.18)),
       }
     }
@@ -770,47 +650,16 @@ export class PlayerMovementController {
       return
     }
 
-    this._applyPose(nextPoseKey)
+    this.currentPoseKey = nextPoseKey
   }
 
-  _applyPose(poseKey) {
-    const pose = this.poses[poseKey] || this.poses.standing
-    this.currentPoseKey = poseKey
-    this.capsule.radius = pose.radius
-    this.capsule.halfHeight = pose.halfHeight
-    this.capsule.offset.set(0, pose.offsetY, 0)
+  get currentPose() {
+    return this.poses[this.currentPoseKey]
   }
 
   _canOccupyPose(position, poseKey) {
     const provider = this.experience.terrainDataManager || this.terrainProvider
-    if (!provider?.getBlockWorld) {
-      return true
-    }
-
-    const pose = this.poses[poseKey] || this.poses.standing
-    const state = {
-      basePosition: position.clone(),
-      center: this._tmpCenter.copy(position).add(new THREE.Vector3(0, pose.offsetY, 0)),
-      halfHeight: pose.halfHeight,
-      radius: pose.radius,
-      worldVelocity: new THREE.Vector3(),
-      isGrounded: false,
-    }
-
-    const candidates = this.collision.broadPhase(state, provider)
-    const collisions = this.collision.narrowPhase(candidates, state)
-    return !collisions.some((collision) => {
-      if (collision?.ground) {
-        return false
-      }
-
-      const normalY = Number(collision?.normal?.y || 0)
-      if (normalY > 0.5) {
-        return false
-      }
-
-      return Number(collision?.overlap || 0) > 1e-4
-    })
+    return this.collision.canOccupy(this.collision.playerBounds(position, this.poses[poseKey]), provider)
   }
 
   _resolveMovementProfile(inputState) {
@@ -824,17 +673,8 @@ export class PlayerMovementController {
   }
 
   _getGroundFriction() {
-    const slipperiness = THREE.MathUtils.clamp(this._tmpMovementProfile.slipperiness ?? 0.6, 0.01, 0.999)
+    const slipperiness = THREE.MathUtils.clamp(this.groundMovementProfile.slipperiness ?? 0.6, 0.01, 0.999)
     return (slipperiness / 0.6) * (this.config.physics?.groundFriction ?? 0.546)
-  }
-
-  _updateGroundMovementProfile(basePosition) {
-    const maxSupportDrop = this.config.physics?.sneakSupportDrop ?? 0.55
-    const supportSurface = this._getDominantSupportSurface(basePosition, maxSupportDrop)
-    const profile = supportSurface?.movementProfile || getMinecraftBlockMovementProfile()
-    this._tmpMovementProfile.slipperiness = profile.slipperiness ?? 0.6
-    this._tmpMovementProfile.speedFactor = profile.speedFactor ?? 1
-    this._tmpMovementProfile.jumpFactor = profile.jumpFactor ?? 1
   }
 
   _computeWorldDirection(inputState) {
@@ -880,254 +720,32 @@ export class PlayerMovementController {
     return scale
   }
 
-  _buildPlayerState(basePosition, previousIsGrounded = false) {
-    const center = new THREE.Vector3().copy(basePosition).add(this.capsule.offset)
-    return {
-      basePosition,
-      center,
-      halfHeight: this.capsule.halfHeight,
-      radius: this.capsule.radius,
-      worldVelocity: this.worldVelocity.clone(),
-      isGrounded: previousIsGrounded,
-    }
-  }
-
   _getMinWorldY() {
     const minWorldY = Number(this.config.physics?.minWorldY)
     return Number.isFinite(minWorldY) ? minWorldY : null
   }
 
-  _applyGroundSampler(playerState) {
-    const provider = this.experience.terrainDataManager || this.terrainProvider
-    const minWorldY = this._getMinWorldY()
-
-    if (!this.isInWater && !playerState.isGrounded && this.groundSampler) {
-      const sampledY = this.groundSampler(
-        playerState.basePosition.x,
-        playerState.basePosition.z,
-        playerState.basePosition.y,
-      )
-
-      if (sampledY !== null && sampledY !== undefined && playerState.worldVelocity.y <= 0) {
-        const targetY = minWorldY !== null && sampledY <= minWorldY + 1e-4
-          ? minWorldY
-          : sampledY + 0.05
-        const dropDistance = playerState.basePosition.y - targetY
-
-        if (dropDistance <= 0.6) {
-          playerState.basePosition.y = targetY
-          playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-          playerState.worldVelocity.y = 0
-          playerState.isGrounded = true
-        }
+  _applySampledFloor(provider, previousY) {
+    if (this.isInWater || this.isGrounded || this.position.y > previousY) {
+      return
+    }
+    const { x, y, z } = this.position
+    let surface
+    if (this.groundSampler) {
+      surface = this.groundSampler(x, z, y)
+    }
+    else if (!provider?.getCollisionBoxesWorld && provider?.getTopSolidYWorld) {
+      const top = provider.getTopSolidYWorld(x, z)
+      if (Number.isFinite(top)) {
+        const floor = this._getMinWorldY()
+        surface = floor !== null && top <= floor ? floor : top + 0.5
       }
     }
-
-    if (
-      !this.isInWater
-      && !playerState.isGrounded
-      && !provider?.getCollisionBoxesWorld
-      && provider?.getTopSolidYWorld
-      && playerState.worldVelocity.y <= 0
-    ) {
-      const topY = provider.getTopSolidYWorld(playerState.basePosition.x, playerState.basePosition.z)
-      if (topY !== null && topY !== undefined) {
-        const targetY = minWorldY !== null && topY <= minWorldY + 1e-4
-          ? minWorldY
-          : topY + 0.55
-        const penetration = targetY - playerState.basePosition.y
-        if (penetration > 0 && penetration <= 0.8) {
-          playerState.basePosition.y = targetY
-          playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-          playerState.worldVelocity.y = 0
-          playerState.isGrounded = true
-        }
-      }
+    if (Number.isFinite(surface) && y <= surface && surface <= previousY) {
+      this.position.y = surface
+      this.worldVelocity.y = 0
+      this.isGrounded = true
     }
-  }
-
-  _snapToGround(playerState) {
-    const supportDrop = this._getSupportDrop(
-      playerState.basePosition,
-      0,
-      0,
-      null,
-      this._getSupportProbeOptions(playerState),
-    )
-    const maxSnap = this.config.physics?.snapToGroundDistance ?? 0.14
-
-    if (supportDrop === null || supportDrop > maxSnap) {
-      return
-    }
-
-    playerState.basePosition.y -= supportDrop
-    playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-    playerState.worldVelocity.y = 0
-    playerState.isGrounded = true
-  }
-
-  _shouldClampSneakMovement(inputState, playerState) {
-    return !!(inputState.sneak && playerState.isGrounded && (inputState.forward || inputState.backward || inputState.left || inputState.right))
-  }
-
-  _applySneakEdgeClamp(previousBasePosition, playerState) {
-    const supportDrop = this._getSupportDrop(
-      playerState.basePosition,
-      0,
-      0,
-      null,
-      this._getSupportProbeOptions(playerState),
-    )
-    if (supportDrop !== null && supportDrop <= (this.config.physics?.sneakSupportDrop ?? 0.55)) {
-      return
-    }
-
-    playerState.basePosition.x = previousBasePosition.x
-    playerState.basePosition.z = previousBasePosition.z
-    playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-    playerState.worldVelocity.x = 0
-    playerState.worldVelocity.z = 0
-  }
-
-  _tryStepUp(previousBasePosition, attemptedBasePosition, playerState, wasGrounded = false, collisions = []) {
-    const desiredDeltaX = attemptedBasePosition.x - previousBasePosition.x
-    const desiredDeltaZ = attemptedBasePosition.z - previousBasePosition.z
-    const desiredHorizontalDistanceSq = (desiredDeltaX * desiredDeltaX) + (desiredDeltaZ * desiredDeltaZ)
-    if (desiredHorizontalDistanceSq < 1e-5) {
-      return false
-    }
-
-    const actualDeltaX = playerState.basePosition.x - previousBasePosition.x
-    const actualDeltaZ = playerState.basePosition.z - previousBasePosition.z
-    const actualHorizontalDistanceSq = (actualDeltaX * actualDeltaX) + (actualDeltaZ * actualDeltaZ)
-    const horizontalBlocked = actualHorizontalDistanceSq < desiredHorizontalDistanceSq - 1e-4
-
-    const groundedStepHeight = this.config.physics?.autoStepHeight ?? 0.6
-    const jumpClimbHeight = this.config.physics?.jumpClimbHeight ?? 0.35
-    const isJumpingUpward = playerState.worldVelocity.y > 0.08
-    const isFalling = playerState.worldVelocity.y < -0.02
-    const canUseGroundedStepHeight = (playerState.isGrounded || wasGrounded) && !isJumpingUpward
-    const canUseAirborneStepHeight = !canUseGroundedStepHeight && !isJumpingUpward && !isFalling
-    const maxStepHeight = canUseGroundedStepHeight
-      ? groundedStepHeight
-      : (canUseAirborneStepHeight ? jumpClimbHeight : 0)
-
-    if (maxStepHeight <= 0) {
-      return false
-    }
-
-    const touchesStepSurface = collisions.some((collision) => {
-      const topY = Number(collision?.collisionBox?.maxY)
-      if (!Number.isFinite(topY)) {
-        return false
-      }
-
-      const rise = topY - previousBasePosition.y
-      return rise >= 0.01 && rise <= maxStepHeight + 0.05
-    })
-
-    if (!horizontalBlocked && !touchesStepSurface) {
-      return false
-    }
-
-    const probeBase = this._tmpStepProbeBase.copy(attemptedBasePosition)
-    probeBase.y = previousBasePosition.y + maxStepHeight
-
-    if (!this._canOccupyPose(probeBase, this.currentPoseKey)) {
-      return false
-    }
-
-    const desiredHorizontalDistance = Math.sqrt(desiredHorizontalDistanceSq)
-    const leadingFootOffset = Math.max(0.05, this.capsule.radius - 0.02)
-    const supportOffsetX = (desiredDeltaX / desiredHorizontalDistance) * leadingFootOffset
-    const supportOffsetZ = (desiredDeltaZ / desiredHorizontalDistance) * leadingFootOffset
-    const supportDrop = this._getSupportDrop(probeBase, supportOffsetX, supportOffsetZ, maxStepHeight + 0.05, {
-      directionX: desiredDeltaX,
-      directionZ: desiredDeltaZ,
-    })
-    if (supportDrop === null) {
-      return false
-    }
-
-    probeBase.y -= supportDrop
-
-    const rise = probeBase.y - previousBasePosition.y
-    if (rise < 0.01 || rise > maxStepHeight + 0.05) {
-      return false
-    }
-
-    if (!this._canOccupyPose(probeBase, this.currentPoseKey)) {
-      return false
-    }
-
-    playerState.basePosition.copy(probeBase)
-    playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-    playerState.worldVelocity.y = 0
-    playerState.isGrounded = true
-    return true
-  }
-
-  _refreshGroundedState(playerState) {
-    if (!playerState.isGrounded) {
-      return
-    }
-    // Rising (jump impulse): MC only sets onGround from a downward collision,
-    // so never pull a jumping player back onto the surface they just left.
-    if (playerState.worldVelocity.y > 0) {
-      playerState.isGrounded = false
-      return
-    }
-
-    const minWorldY = this._getMinWorldY()
-    const supportDrop = this._getSupportDrop(
-      playerState.basePosition,
-      0,
-      0,
-      null,
-      this._getSupportProbeOptions(playerState),
-    )
-    const maxGroundedSupport = (this.config.physics?.snapToGroundDistance ?? 0.14) + 0.02
-
-    if (supportDrop === null || supportDrop > maxGroundedSupport) {
-      if (minWorldY !== null && playerState.basePosition.y <= minWorldY + 0.051) {
-        playerState.basePosition.y = minWorldY
-        playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-        playerState.worldVelocity.y = 0
-        playerState.isGrounded = true
-        return
-      }
-
-      playerState.isGrounded = false
-      return
-    }
-
-    if (supportDrop > 0.001) {
-      playerState.basePosition.y -= supportDrop
-      playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-      playerState.worldVelocity.y = 0
-    }
-  }
-
-  _getSupportProbeOptions(playerState) {
-    const directionX = Number(playerState?.worldVelocity?.x || 0)
-    const directionZ = Number(playerState?.worldVelocity?.z || 0)
-    return { directionX, directionZ }
-  }
-
-  _applyWorldFloor(playerState) {
-    const minWorldY = Number(this.config.physics?.minWorldY)
-    if (!Number.isFinite(minWorldY)) {
-      return
-    }
-
-    if (playerState.basePosition.y >= minWorldY) {
-      return
-    }
-
-    playerState.basePosition.y = minWorldY
-    playerState.center.copy(playerState.basePosition).add(this.capsule.offset)
-    playerState.worldVelocity.y = 0
-    playerState.isGrounded = true
   }
 
   _applyWorldFloorClampToPosition(position, velocity = null) {
@@ -1143,206 +761,9 @@ export class PlayerMovementController {
     return true
   }
 
-  _getSupportDrop(position, offsetX = 0, offsetZ = 0, maxDropOverride = null, options = {}) {
-    void options
-    const maxDrop = Number.isFinite(maxDropOverride)
-      ? maxDropOverride
-      : (this.config.physics?.sneakSupportDrop ?? 0.55)
-    const supportSurface = this._getDominantSupportSurface(position, maxDropOverride, {
-      offsetX,
-      offsetZ,
-    })
-
-    if (!supportSurface) {
-      const minWorldY = this._getMinWorldY()
-      if (minWorldY !== null) {
-        const floorDrop = position.y - minWorldY
-        if (floorDrop >= -0.001 && floorDrop <= maxDrop) {
-          return Math.max(0, floorDrop)
-        }
-      }
-
-      return null
-    }
-
-    return supportSurface.drop
-  }
-
-  _getSupportSampleOffsets(directionX = 0, directionZ = 0) {
-    void directionX
-    void directionZ
-    const footRadius = Math.max(0.05, this.capsule.radius - 0.02)
-    const innerRadius = footRadius * 0.5
-    const diagonalRadius = footRadius * 0.7071
-    const sampleOffsets = [
-      { x: 0, z: 0 },
-      { x: footRadius, z: 0 },
-      { x: -footRadius, z: 0 },
-      { x: 0, z: footRadius },
-      { x: 0, z: -footRadius },
-      { x: innerRadius, z: 0 },
-      { x: -innerRadius, z: 0 },
-      { x: 0, z: innerRadius },
-      { x: 0, z: -innerRadius },
-      { x: diagonalRadius, z: diagonalRadius },
-      { x: diagonalRadius, z: -diagonalRadius },
-      { x: -diagonalRadius, z: diagonalRadius },
-      { x: -diagonalRadius, z: -diagonalRadius },
-    ]
-
-    const deduped = []
-    const seen = new Set()
-    for (const sample of sampleOffsets) {
-      const key = `${Math.round(sample.x * 1000)},${Math.round(sample.z * 1000)}`
-      if (seen.has(key)) {
-        continue
-      }
-      seen.add(key)
-      deduped.push(sample)
-    }
-
-    return deduped
-  }
-
-  _getDominantSupportSurface(position, maxDropOverride = null, options = {}) {
-    const provider = this.experience.terrainDataManager || this.terrainProvider
-    if (!provider?.getBlockWorld && !provider?.getCollisionBoxesWorld) {
-      return null
-    }
-
-    const sampleY = position.y
-    const maxDrop = Number.isFinite(maxDropOverride)
-      ? maxDropOverride
-      : (this.config.physics?.sneakSupportDrop ?? 0.55)
-    const offsetX = Number(options.offsetX || 0)
-    const offsetZ = Number(options.offsetZ || 0)
-    const surfaceBuckets = new Map()
-
-    for (const sampleOffset of this._getSupportSampleOffsets()) {
-      const sampleX = position.x + offsetX + sampleOffset.x
-      const sampleZ = position.z + offsetZ + sampleOffset.z
-      const sampleSupport = this._getSupportSurfaceAtSample(provider, sampleX, sampleY, sampleZ, maxDrop)
-      if (!sampleSupport) {
-        continue
-      }
-
-      const bucketKey = Math.round(sampleSupport.topY * 1000)
-      if (!surfaceBuckets.has(bucketKey)) {
-        surfaceBuckets.set(bucketKey, {
-          topY: sampleSupport.topY,
-          drop: sampleSupport.drop,
-          sampleCount: 0,
-          profileCounts: new Map(),
-        })
-      }
-
-      const bucket = surfaceBuckets.get(bucketKey)
-      bucket.sampleCount += 1
-      bucket.drop = Math.min(bucket.drop, sampleSupport.drop)
-      if (sampleSupport.movementProfile) {
-        bucket.profileCounts.set(
-          sampleSupport.movementProfile,
-          (bucket.profileCounts.get(sampleSupport.movementProfile) || 0) + 1,
-        )
-      }
-    }
-
-    const sampleCountThreshold = Math.max(2, Math.ceil(this._getSupportSampleOffsets().length * 0.25))
-    const substantialSurfaces = [...surfaceBuckets.values()]
-      .filter(surface => surface.sampleCount >= sampleCountThreshold)
-
-    const bestSurface = this._selectBestSupportSurface(
-      substantialSurfaces.length ? substantialSurfaces : [...surfaceBuckets.values()],
-    )
-
-    if (!bestSurface) {
-      return null
-    }
-
-    return {
-      topY: bestSurface.topY,
-      drop: bestSurface.drop,
-      sampleCount: bestSurface.sampleCount,
-      movementProfile: this._pickDominantMovementProfile(bestSurface.profileCounts),
-    }
-  }
-
-  _getSupportSurfaceAtSample(provider, sampleX, sampleY, sampleZ, maxDrop) {
-    const centerX = Math.floor(sampleX + 0.5)
-    const centerZ = Math.floor(sampleZ + 0.5)
-    const minBlockY = Math.floor(sampleY - maxDrop + 0.5) - 1
-    const maxBlockY = Math.floor(sampleY + 0.5)
-    let bestSupport = null
-
-    for (let worldX = centerX - 1; worldX <= centerX + 1; worldX += 1) {
-      for (let worldZ = centerZ - 1; worldZ <= centerZ + 1; worldZ += 1) {
-        for (let worldY = minBlockY; worldY <= maxBlockY; worldY += 1) {
-          const block = provider?.getBlockWorld?.(worldX, worldY, worldZ) || null
-          const movementProfile = this._resolveMovementProfileForSupportBlock(block)
-          const boxes = this._getSupportWorldCollisionBoxes(provider, block, worldX, worldY, worldZ)
-          if (!boxes.length) {
-            continue
-          }
-
-          for (const box of boxes) {
-            if (
-              sampleX < box.minX - 1e-4
-              || sampleX > box.maxX + 1e-4
-              || sampleZ < box.minZ - 1e-4
-              || sampleZ > box.maxZ + 1e-4
-            ) {
-              continue
-            }
-
-            const drop = sampleY - box.maxY
-            if (drop < -0.001 || drop > maxDrop) {
-              continue
-            }
-
-            if (
-              !bestSupport
-              || drop < bestSupport.drop - 1e-4
-              || (
-                Math.abs(drop - bestSupport.drop) <= 1e-4
-                && box.maxY > bestSupport.topY + 1e-4
-              )
-            ) {
-              bestSupport = {
-                topY: box.maxY,
-                drop: Math.max(0, drop),
-                movementProfile,
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return bestSupport
-  }
-
-  _getSupportWorldCollisionBoxes(provider, block, worldX, worldY, worldZ) {
-    if (block?.hasCollision) {
-      const localBoxes = Array.isArray(block.collisionBoxes) && block.collisionBoxes.length
-        ? block.collisionBoxes
-        : [[0, 0, 0, 1, 1, 1]]
-      return localBoxes.map(([minX, minY, minZ, maxX, maxY, maxZ]) => ({
-        minX: (worldX - 0.5) + Number(minX),
-        minY: (worldY - 0.5) + Number(minY),
-        minZ: (worldZ - 0.5) + Number(minZ),
-        maxX: (worldX - 0.5) + Number(maxX),
-        maxY: (worldY - 0.5) + Number(maxY),
-        maxZ: (worldZ - 0.5) + Number(maxZ),
-      }))
-    }
-
-    const worldBoxes = provider?.getCollisionBoxesWorld?.(worldX, worldY, worldZ)
-    return Array.isArray(worldBoxes) ? worldBoxes : []
-  }
-
   _resolveMovementProfileForSupportBlock(block = null) {
     if (!block) {
-      return null
+      return getMinecraftBlockMovementProfile()
     }
 
     const legacyBlockType = getBlockTypeById(block?.id)
@@ -1351,49 +772,6 @@ export class PlayerMovementController {
       minecraftBlock?.name || legacyBlockType?.name || block?.name || '',
       minecraftBlock?.properties || {},
     )
-  }
-
-  _pickDominantMovementProfile(profileCounts = new Map()) {
-    let bestProfile = null
-    let bestCount = -1
-
-    for (const [profile, count] of profileCounts.entries()) {
-      if (count > bestCount) {
-        bestProfile = profile
-        bestCount = count
-      }
-    }
-
-    return bestProfile || null
-  }
-
-  _selectBestSupportSurface(surfaces = []) {
-    let bestSurface = null
-
-    for (const surface of surfaces) {
-      if (!bestSurface) {
-        bestSurface = surface
-        continue
-      }
-
-      if (surface.topY > bestSurface.topY + 1e-4) {
-        bestSurface = surface
-        continue
-      }
-
-      if (Math.abs(surface.topY - bestSurface.topY) <= 1e-4) {
-        if (surface.sampleCount > bestSurface.sampleCount) {
-          bestSurface = surface
-          continue
-        }
-
-        if (surface.sampleCount === bestSurface.sampleCount && surface.drop < bestSurface.drop - 1e-4) {
-          bestSurface = surface
-        }
-      }
-    }
-
-    return bestSurface
   }
 
   _syncMeshCustom() {
@@ -1502,11 +880,8 @@ export class PlayerMovementController {
     this._syncMeshCustom()
   }
 
-  /** Teleports must not count as walking (bob) or carry jump/collision state. */
   _resetMotionState() {
-    this.walkDistO = this.walkDist
-    this.bob = 0
-    this.bobO = 0
+    this.groundMovementProfile = getMinecraftBlockMovementProfile()
     this.jumpDelayTicks = 0
     this.horizontalCollision = false
     this.minorHorizontalCollision = false
@@ -1547,8 +922,8 @@ export class PlayerMovementController {
       return false
     }
 
-    const bodyHeight = (this.capsule.halfHeight * 2) + (this.capsule.radius * 2)
-    const probePadding = this.capsule.radius + 0.12
+    const bodyHeight = this.currentPose.height
+    const probePadding = this.currentPose.radius + 0.12
     const minBlockX = Math.floor(basePosition.x - probePadding + 0.5) - 1
     const maxBlockX = Math.floor(basePosition.x + probePadding + 0.5) + 1
     const minBlockY = Math.floor(basePosition.y + 0.1 + 0.5) - 1
@@ -1578,12 +953,12 @@ export class PlayerMovementController {
   }
 
   _isClimbableBlockOverlapping(basePosition, worldX, worldY, worldZ, block, bodyHeight) {
-    const playerMinX = basePosition.x - this.capsule.radius
-    const playerMaxX = basePosition.x + this.capsule.radius
+    const playerMinX = basePosition.x - this.currentPose.radius
+    const playerMaxX = basePosition.x + this.currentPose.radius
     const playerMinY = basePosition.y
     const playerMaxY = basePosition.y + bodyHeight
-    const playerMinZ = basePosition.z - this.capsule.radius
-    const playerMaxZ = basePosition.z + this.capsule.radius
+    const playerMinZ = basePosition.z - this.currentPose.radius
+    const playerMaxZ = basePosition.z + this.currentPose.radius
     const sourceBoxes = Array.isArray(block?.collisionBoxes) && block.collisionBoxes.length
       ? block.collisionBoxes
       : [[0, 0, 0, 1, 1, 1]]

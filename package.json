@@ -33,7 +33,7 @@
     "buffer": "^6.0.3",
     "cubane": "1.0.19",
     "gsap": "^3.12.5",
-    "minecraft-data": "^3.105.0",
+    "minecraft-data": "^3.119.0",
     "mitt": "^3.0.1",
     "pako": "^2.1.0",
     "pinia": "^3.0.2",

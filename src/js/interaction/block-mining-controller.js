@@ -98,6 +98,7 @@ export default class BlockMiningController {
       source: raycastInfo.source || 'legacy',
       isImportedMinecraft: !!raycastInfo.isImportedMinecraft,
       blockString: String(raycastInfo.blockString || ''),
+      selectionBoxes: raycastInfo.selectionBoxes,
       collisionBoxes,
       minecraftBlock: raycastInfo.minecraftBlock
         ? {
@@ -125,6 +126,7 @@ export default class BlockMiningController {
 
     return (
       this.currentTarget.chunkX !== newInfo.chunkX
+      || this.currentTarget.selectionBoxes !== newInfo.selectionBoxes
       || this.currentTarget.chunkZ !== newInfo.chunkZ
       || this.currentTarget.worldBlock.x !== newInfo.worldBlock.x
       || this.currentTarget.worldBlock.y !== newInfo.worldBlock.y

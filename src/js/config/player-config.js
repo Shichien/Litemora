@@ -56,9 +56,7 @@ export const PLAYER_CONFIG = {
     // Velocity components below this (m/s) are zeroed (MC 0.003 b/t)
     minVelocity: 0.06,
     sneakSupportDrop: 0.55,
-    snapToGroundDistance: 0.14,
     autoStepHeight: 0.6,
-    jumpClimbHeight: 0.35,
     sprintJumpBoost: 4.0,
     minWorldY: 0,
     // Per-tick easing of eye height and FOV modifier (MC Camera)
