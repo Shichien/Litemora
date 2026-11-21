@@ -41,6 +41,7 @@ const composer = antfu({
     'public/.dev-gallery/**',
     'public/minecraft-default-pack/**',
     'public/redstone-archive/*.replay.json',
+    'public/homepage/*-playback.json',
     'public/**/world-state.json',
     'src/js/generated/**',
     // Generated Minecraft protocol registries; format the generator instead.
