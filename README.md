@@ -68,8 +68,16 @@ docs/          专题文档
 - 构建命令：`pnpm build`，输出目录 `dist`
 - `functions/` 下的接口由 Pages Functions 提供
 - KV 绑定：`LITEMORA_SPACE_KV`（空间、投影和画廊数据）
-- 机密变量：`LITEMORA_SESSION_SECRET`、`OAUTH_GITHUB_CLIENT_ID`、`OAUTH_GITHUB_CLIENT_SECRET`、`OAUTH_GOOGLE_CLIENT_ID`、`OAUTH_GOOGLE_CLIENT_SECRET`
-- 可选：`VITE_OAUTH_CALLBACK_ORIGIN`（构建时变量，指定 OAuth 回调域名）
+
+### 第三方登录
+
+首页右上角的 GitHub 图标打开登录菜单。菜单会显示当前环境已配置的登录方式，支持 GitHub、Google、X 和 Discord。
+
+本地开发时，复制 `.env.example` 为 `.env.local`，为需要的平台填写客户端 ID 和密钥，并设置随机的 `LITEMORA_SESSION_SECRET`。运行 `pnpm dev` 后，登录会向对应平台验证账号。本地未配置平台时仍可用开发账号调试。
+
+Cloudflare Pages 的生产和预览环境需分别设置变量。平台名使用 `GITHUB`、`GOOGLE`、`X` 或 `DISCORD`。把同一个客户端 ID 填入 `OAUTH_<平台>_CLIENT_ID` 和 `VITE_OAUTH_<平台>_CLIENT_ID`，后者供前端构建使用。把 `OAUTH_<平台>_CLIENT_SECRET` 和各环境单独生成的 `LITEMORA_SESSION_SECRET` 存为加密变量。修改构建变量后，重新构建和部署才会生效。
+
+在平台控制台登记完整回调地址 `https://litemora.art/auth-callback.html`，预览环境将 `VITE_OAUTH_CALLBACK_ORIGIN` 设为 `https://litemora.art`。Google、X 和 Discord 的本地测试需另行登记本地访问地址对应的 `/auth-callback.html`。共用线上 GitHub OAuth App 时，将本地的 `VITE_OAUTH_GITHUB_CALLBACK_ORIGIN` 设为 `https://litemora.art`。
 
 ## 工具脚本
 

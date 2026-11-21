@@ -1,18 +1,33 @@
 import { Buffer } from 'node:buffer'
 import fs from 'node:fs/promises'
+import http from 'node:http'
 import path from 'node:path'
 
 import vue from '@vitejs/plugin-vue'
+import { loadEnv } from 'vite'
 import glsl from 'vite-plugin-glsl'
 
 import _config from './_config'
 import { registerMockApi } from './dev/mock-api/index.js'
+import { getActiveProjectionId } from './src/js/utils/space-context.js'
 
 const HOST = _config.server.host
 const PORT = _config.server.port
-const CROSS_ORIGIN_ISOLATION_HEADERS = {
-  'Cross-Origin-Embedder-Policy': 'require-corp',
-  'Cross-Origin-Opener-Policy': 'same-origin',
+function configureLocalApi(server) {
+  const { mode, envDir } = server.config
+  const env = loadEnv(mode, envDir, ['OAUTH_', 'LITEMORA_'])
+  // Local OAuth requests must follow the developer's HTTP(S)_PROXY and NO_PROXY.
+  http.setGlobalProxyFromEnv?.()
+  server.middlewares.use((req, res, next) => {
+    // The world renderer needs isolation. Account pages need their OAuth popup's opener.
+    const url = new URL(req.url, 'http://localhost')
+    const world = getActiveProjectionId(url.pathname, url.search)
+    res.setHeader('Cross-Origin-Opener-Policy', world ? 'same-origin' : 'same-origin-allow-popups')
+    if (world || req.headers['sec-fetch-dest']?.endsWith('worker'))
+      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+    next()
+  })
+  registerMockApi(server.middlewares, env)
 }
 const INLINE_WASM_LITERAL_PATTERN = /(["'`])data:application\/wasm;base64,([A-Za-z0-9+/=]+)\1/g
 
@@ -114,10 +129,6 @@ export default {
   server: {
     host: HOST,
     port: PORT,
-    headers: { ...CROSS_ORIGIN_ISOLATION_HEADERS },
-  },
-  preview: {
-    headers: { ...CROSS_ORIGIN_ISOLATION_HEADERS },
   },
   build: {
     target: 'es2022',
@@ -181,12 +192,8 @@ export default {
   plugins: [
     {
       name: 'mock-backend-world-config',
-      configureServer(server) {
-        registerMockApi(server.middlewares)
-      },
-      configurePreviewServer(server) {
-        registerMockApi(server.middlewares)
-      },
+      configureServer: configureLocalApi,
+      configurePreviewServer: configureLocalApi,
     },
     externalizeInlineWasm(),
     excludeDevArtifactsFromBuild(),

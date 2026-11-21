@@ -5,7 +5,7 @@
  * `configurePreviewServer` 里调用, 把下面这些端点挂到 Vite 的 Connect 中间件栈上:
  *
  *   POST   /api/auth/github/exchange
- *   POST   /api/auth/google/exchange
+ *   POST   /api/auth/{google,x,discord}/exchange
  *   GET    /api/discover
  *   GET    /api/gallery
  *   GET    /api/gallery/item
@@ -28,8 +28,8 @@ import { registerDiscoverMockApi } from './discover.js'
 import { registerGalleryMockApi } from './gallery.js'
 import { registerWorldMockApi } from './world.js'
 
-export function registerMockApi(middlewares) {
-  registerAuthMockApi(middlewares)
+export function registerMockApi(middlewares, env) {
+  registerAuthMockApi(middlewares, env)
   registerDiscoverMockApi(middlewares)
   registerGalleryMockApi(middlewares)
   registerWorldMockApi(middlewares)
