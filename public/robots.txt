@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /admin-config
+Disallow: /debug
+Disallow: /gallery/
+
+Sitemap: https://litemora.art/sitemap.xml

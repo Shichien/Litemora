@@ -19,6 +19,9 @@
     <link rel="icon" sizes="512x512" href="/favicon/favicon-512.webp" />
     <meta name="rating" content="General" />
     <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://litemora.art/" />
+    <meta property="og:site_name" content="Litemora" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://litemora.art/" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Litemora | Playable Schematic Worlds" />
@@ -43,6 +46,40 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="theme-color" content="#08121b" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://litemora.art/#organization",
+            "name": "Litemora",
+            "url": "https://litemora.art/",
+            "logo": "https://litemora.art/logo.webp"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://litemora.art/#website",
+            "url": "https://litemora.art/",
+            "name": "Litemora",
+            "description": "A browser-based gallery for turning Minecraft .litematic, .schem, .schematic, and Axiom .bp files into explorable 3D worlds.",
+            "publisher": { "@id": "https://litemora.art/#organization" },
+            "inLanguage": ["en", "zh-CN"]
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://litemora.art/#application",
+            "name": "Litemora",
+            "url": "https://litemora.art/",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "Any",
+            "description": "Import supported Minecraft build files, render block states with resource-pack visuals, and explore builds in first person in the browser.",
+            "isAccessibleForFree": true,
+            "publisher": { "@id": "https://litemora.art/#organization" }
+          }
+        ]
+      }
+    </script>
     <link rel="stylesheet" href="/loading-screen.css" />
   </head>
   <body>
@@ -66,7 +103,18 @@
       </div>
     </div>
     <noscript class="text-center text-lg text-red-500">
-      请启用 JavaScript 以加载 Litemora 的交互内容。
+      <section>
+        <h1>Litemora — Playable Schematic Worlds</h1>
+        <p>Litemora is a browser-based gallery for Minecraft builds. Import a build and explore it in first person.</p>
+        <h2>What Litemora provides</h2>
+        <ul>
+          <li>Convert supported Minecraft build files into shareable web spaces.</li>
+          <li>Render Minecraft block states with resource-pack based visuals.</li>
+          <li>Explore public spaces and worlds in a first-person browser view.</li>
+        </ul>
+        <p>JavaScript is required for the interactive 3D viewer. Public spaces are available through their shared URLs; private spaces are not listed in the public index.</p>
+      </section>
+      <p>请启用 JavaScript 以加载 Litemora 的交互式 3D 内容。</p>
     </noscript>
     <script type="module" src="/src/main.js"></script>
   </body>

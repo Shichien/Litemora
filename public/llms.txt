@@ -1,0 +1,28 @@
+# Litemora
+
+Litemora is a browser-based gallery for turning Minecraft build files into explorable 3D web worlds. It renders supported block states with resource-pack visuals and lets visitors walk through public spaces in first person.
+
+## Supported build formats
+
+- `.litematic`
+- `.schem`
+- `.schematic`
+- Axiom `.bp`
+
+## Public routes
+
+- `/` — public product homepage and discover entry point
+- `/:space/worlds` — a space's public world list when the space owner has made it public
+- `/:space/worlds/:projection` — a public world when its owner has published it
+
+## Scope and privacy
+
+Only public spaces and worlds are intended for discovery. Private spaces, management pages, API endpoints, and uploaded source data are not part of the public index. Do not infer or enumerate space URLs beyond links that are explicitly published by their owners.
+
+## Interactive requirement
+
+The 3D viewer requires JavaScript. The homepage contains a static description for text-only clients.
+
+## Canonical site
+
+https://litemora.art/
