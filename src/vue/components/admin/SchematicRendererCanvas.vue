@@ -1,4 +1,5 @@
 <script setup>
+import { thumbnailSkyImage } from '@three/gallery/thumbnail-skies.js'
 import {
   BUNDLED_MINECRAFT_RESOURCE_PACK_NAME,
   loadBundledMinecraftResourcePackBlob,
@@ -75,6 +76,11 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  backgroundColor: {
+    type: [String, Number],
+    default: null,
+  },
+  thumbnailSky: { type: String, default: '' },
   resourcePackSignature: {
     type: String,
     default: '',
@@ -851,8 +857,18 @@ async function capturePreviewThumbnail(options = {}) {
   return captureRenderedThumbnail(rendererInstance, canvasRef.value, options)
 }
 
+function zoomPreview(factor) {
+  const camera = getRendererCamera(rendererInstance)
+  if (!camera?.isOrthographicCamera || !Number.isFinite(factor) || factor <= 0)
+    return
+  camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, 0.25, 5)
+  camera.updateProjectionMatrix()
+  rendererInstance.renderManager?.requestRender?.()
+}
+
 defineExpose({
   capturePreviewThumbnail,
+  zoomPreview,
 })
 
 async function renderCurrentSchematic() {
@@ -990,6 +1006,13 @@ async function renderCurrentSchematic() {
     loadedSchematic?.setPosition?.(getPreviewOffsetArray())
     renderer.cameraManager?.switchCameraPreset?.('isometric')
     renderer.cameraManager?.focusOnSchematics?.()
+    if (props.thumbnailSky) {
+      renderer.sceneManager.scene.background = null
+      renderer.renderManager.renderer.setClearAlpha(0)
+    }
+    else if (props.backgroundColor !== null) {
+      renderer.sceneManager?.setBackgroundColor?.(props.backgroundColor)
+    }
     renderer.renderManager?.requestRender?.()
 
     updateDiagnostics(loadedSchematic, sourcePayload.name)
@@ -1082,7 +1105,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="renderer-shell">
-    <canvas ref="canvasRef" class="renderer-frame" />
+    <canvas ref="canvasRef" class="renderer-frame" :style="{ backgroundImage: thumbnailSkyImage(thumbnailSky) }" />
 
     <div v-if="!hasRenderableSource" class="renderer-overlay is-empty">
       <strong>{{ emptyLabel }}</strong>
@@ -1153,7 +1176,7 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 380px;
   border: 0;
-  background: transparent;
+  background: transparent center / cover no-repeat;
   touch-action: pan-y;
 }
 

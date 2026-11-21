@@ -12,6 +12,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
+import { normalizeThumbnailSky } from '../src/js/gallery/thumbnail-skies.js'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const SPACE_REGEX = /^[a-z0-9-]{3,63}$/
@@ -69,6 +70,7 @@ function buildDiscoverEntry(space, item, profile) {
     ownerName: item.owner?.name || profile.ownerName || space,
     ownerAvatar: item.owner?.avatar || profile.ownerAvatar || '',
     thumbnailDataUrl: item.thumbnailDataUrl || '',
+    thumbnailSky: normalizeThumbnailSky(item.thumbnailSky),
     updatedAt: Math.round(Number(item.updatedAt) || Date.now()),
     preview: {
       totalSolidBlocks: Math.max(0, Math.round(Number(item.previewModel?.totalSolidBlocks ?? item.preview?.totalSolidBlocks) || 0)),

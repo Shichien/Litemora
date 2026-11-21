@@ -1,4 +1,13 @@
 {
+  "thumbnailSky": {
+    "label": "Cover background",
+    "noon": "Noon",
+    "sunset": "Sunset",
+    "end-void": "End void",
+    "dawn": "Dawn",
+    "moonrise": "Moonlit night",
+    "overworld-void": "Overworld void"
+  },
   "menu": {
     "settings": "Settings",
     "selectSkin": "Select Skin",

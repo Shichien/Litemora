@@ -23,8 +23,13 @@ export function captureRenderedThumbnail(renderer, sourceCanvas, options = {}, c
   const onError = (event) => {
     renderError = event?.error || new Error('封面渲染失败')
   }
+  const scene = renderer.sceneManager.scene
+  const background = scene.background
+  const clearAlpha = manager.renderer.getClearAlpha()
   manager.eventEmitter?.on('renderError', onError)
   try {
+    scene.background = null
+    manager.renderer.setClearAlpha(0)
     manager.render()
     if (renderError)
       throw renderError
@@ -33,38 +38,23 @@ export function captureRenderedThumbnail(renderer, sourceCanvas, options = {}, c
     const scale = Math.min(width / sourceCanvas.width, height / sourceCanvas.height)
     const drawWidth = sourceCanvas.width * scale
     const drawHeight = sourceCanvas.height * scale
-    // Validate before adding the letterbox background: transparent/solid frames
-    // must not become apparently valid JPEGs simply because they have a data URL.
     context.drawImage(sourceCanvas, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight)
     const { data } = context.getImageData(0, 0, width, height)
-    let first = -1
-    let varied = false
-    const stride = Math.max(1, Math.floor(width * height / 4096)) * 4
-    for (let index = 0; index < data.length; index += stride) {
-      if (data[index + 3] < 250)
-        continue
-      if (first < 0) {
-        first = index
-      }
-      else if (Math.abs(data[index] - data[first]) > 2
-        || Math.abs(data[index + 1] - data[first + 1]) > 2
-        || Math.abs(data[index + 2] - data[first + 2]) > 2) {
-        varied = true
-        break
-      }
-    }
-    if (!varied)
+    // Include alpha so a single flat face or translucent glass against air counts.
+    const pixels = new Uint32Array(data.buffer, data.byteOffset, data.byteLength / 4)
+    if (!pixels.some(pixel => pixel !== pixels[0]))
       throw new Error('封面画面为空白，请等待真实模型显示后重试')
-    context.globalCompositeOperation = 'destination-over'
-    context.fillStyle = '#081219'
-    context.fillRect(0, 0, width, height)
-    const result = canvas.toDataURL('image/jpeg', quality)
-    if (!result.startsWith('data:image/jpeg;base64,') || result.length < 100)
+    const result = canvas.toDataURL('image/webp', quality)
+    // Browsers without a WebP encoder produce PNG, which also preserves alpha.
+    if (!/^data:image\/(?:webp|png);base64,/.test(result) || result.length < 100)
       throw new Error('封面编码失败')
     return result
   }
   finally {
+    scene.background = background
+    manager.renderer.setClearAlpha(clearAlpha)
     manager.eventEmitter?.off('renderError', onError)
+    manager.requestRender()
   }
 }
 

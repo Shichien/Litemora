@@ -1,4 +1,13 @@
 {
+  "thumbnailSky": {
+    "label": "封面背景",
+    "noon": "正午",
+    "sunset": "黄昏",
+    "end-void": "末地虚空",
+    "dawn": "黎明",
+    "moonrise": "月夜",
+    "overworld-void": "主世界虚空"
+  },
   "menu": {
     "settings": "设置",
     "selectSkin": "选择皮肤",

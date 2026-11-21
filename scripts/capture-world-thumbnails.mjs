@@ -1,8 +1,8 @@
 // Captures static gallery thumbnails for public worlds.
 //
 // For every world it opens <base>/<space>/worlds/<routeId> in headless Edge, waits until the
-// scene and chunk streaming have settled, hides all DOM UI, switches the camera to bird
-// perspective, fits a 3/4 view to the build bounds, and saves a 960x600 webp to
+// scene and chunk streaming have settled, switches the camera to bird perspective,
+// fits a 3/4 view to the build bounds, and saves a transparent 960x600 WebP to
 // public/thumbnails/<space>/<routeId>.webp. Entries are merged into public/thumbnails/manifest.json
 // (format read by src/js/gallery/world-thumbnails.js).
 //
@@ -32,6 +32,7 @@
 // DEFAULT_VIEW field go in scripts/thumbnail-views.json, keyed by "space/routeId", e.g.
 //   { "deralive/st5": { "yaw": 315, "pitch": 26 }, "a/b": { "zoom": 1.2, "offsetY": -4 } }
 
+import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -67,12 +68,6 @@ const DEFAULT_VIEW = {
   fit: 'auto', // 'auto' | 'meshes' (chunk mesh bounds) | 'schematic' (whole schematic box)
   settleMs: 1500,
 }
-
-const HIDE_UI_CSS = `
-  body * { visibility: hidden !important; }
-  canvas.three-canvas { visibility: visible !important; }
-  *, *::before, *::after { transition: none !important; animation: none !important; cursor: none !important; }
-`
 
 function parseArgs(argv) {
   const options = {
@@ -485,12 +480,31 @@ async function waitForStreaming(page, timeoutMs) {
   throw new Error(`streaming did not settle before timeout; refusing a partial capture (${JSON.stringify(stats)})`)
 }
 
+// Read the build with the scene's own lights and materials, before the fullscreen
+// postprocessing passes. This keeps air transparent, including gaps inside a build.
+function pageCaptureBuild() {
+  const { camera, renderer, scene, world } = window.Experience
+  const gl = renderer.instance
+  world.environment.dayCycle.skyDome.mesh.visible = false
+  scene.background = null
+  // Fitting a large machine can move the camera hundreds of blocks away.
+  // The world's distance fog would then obscure the model itself.
+  scene.fog = null
+  gl.setRenderTarget(null)
+  gl.setClearColor(0x000000, 0)
+  gl.clear()
+  gl.render(scene, camera.instance)
+  return gl.domElement.toDataURL('image/png')
+}
+
 function convertToWebp(pngPath, webpPath) {
   const code = `
 import sys
 from PIL import Image
 src, dst, quality, max_bytes, w, h = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6])
-img = Image.open(src).convert('RGB').resize((w, h), Image.LANCZOS)
+img = Image.open(src).convert('RGBA').resize((w, h), Image.LANCZOS)
+if img.getchannel('A').getextrema() != (0, 255):
+    raise ValueError('Expected both empty sky and visible blocks in the capture')
 q = quality
 while True:
     img.save(dst, 'WEBP', quality=q, method=6)
@@ -539,8 +553,6 @@ async function captureWorld(browser, options, world, view) {
     if (identity.bootstrapError || identity.projectionId !== world.routeId) {
       throw new Error(`wrong or failed projection: ${identity.projectionId} ${identity.bootstrapError}`)
     }
-    await page.addStyleTag({ content: HIDE_UI_CSS })
-
     let prepared = await page.evaluate(pagePrepare, { timeOfDay: view.timeOfDay, sourceBounds })
     // The runtime bridge publishes its bounds and chunk grid shortly after scene ready.
     for (let i = 0; i < 120 && !prepared.pinned; i++) {
@@ -573,7 +585,8 @@ async function captureWorld(browser, options, world, view) {
 
     await fs.mkdir(RAW_DIR, { recursive: true })
     const pngPath = path.join(RAW_DIR, `${world.space}__${world.routeId}${options.outSuffix}.png`)
-    await page.screenshot({ path: pngPath, type: 'png' })
+    const png = await page.evaluate(pageCaptureBuild)
+    await fs.writeFile(pngPath, Buffer.from(png.split(',')[1], 'base64'))
     if (options.outSuffix) {
       console.log(`  tuning capture ${path.relative(ROOT, pngPath)}  distance ${fit.distance}  chunks ${stats?.residentChunks ?? '-'}/${stats?.totalChunks ?? '-'}  meshes ${stats?.meshes ?? '-'}  bounds ${JSON.stringify(box)}`)
       return null
